@@ -5,6 +5,10 @@ Atlantic & Eastern Pacific Hurricane ACE Tracker
 Tracks Accumulated Cyclone Energy (ACE) for both Atlantic and Eastern Pacific
 hurricane seasons with storm-by-storm historical data from 1991 onward.
 
+Data Sources:
+- Historical data: Tropycal library (HURDAT2 database)
+- Current season: Tropycal with NHC best track data
+
 Creates two separate spreadsheets:
 - ACE_Tracker_Atlantic.xlsx
 - ACE_Tracker_Pacific.xlsx
@@ -22,14 +26,14 @@ Usage:
 Author: Built with Claude for JP
 """
 
-import re
 import os
 import logging
-import urllib.request
 from datetime import datetime, timedelta, timezone
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
+import tropycal.tracks as tracks
+import tropycal.realtime as realtime
 
 # Configure logging
 logging.basicConfig(
@@ -49,13 +53,7 @@ BASINS = {
     'atlantic': {
         'name': 'Atlantic',
         'output_file': 'ACE_Tracker_Atlantic.xlsx',
-        'hurdat2_url': 'https://www.nhc.noaa.gov/data/hurdat/hurdat2-1851-2024-040425.txt',
-        'storm_id_prefix': 'AL',
-        'climatlas_pattern': r'North Atlantic Basin',
-        # Captures: name, max_wind (kt), ACE value — e.g. "Erin 05L (140, ACE=32.1975"
-        'climatlas_storm_pattern': r'[\[> ]\s*([A-Z][a-z]+)\s+\d+L\s+\((\d+),\s*ACE=([0-9.*]+)',
-        'climatlas_central_pattern': None,  # Atlantic has no central sub-basin
-        'climatlas_central_storm_pattern': None,
+        'tropycal_basin': 'north_atlantic',  # Tropycal basin name
         'normal_ace': 122.5,
         'noaa_thresholds': {
             'below_normal': 73,
@@ -70,13 +68,7 @@ BASINS = {
     'pacific': {
         'name': 'Eastern Pacific',
         'output_file': 'ACE_Tracker_Pacific.xlsx',
-        'hurdat2_url': 'https://www.nhc.noaa.gov/data/hurdat/hurdat2-nepac-1949-2024-031725.txt',
-        'storm_id_prefix': 'EP',
-        'climatlas_pattern': 'Eastern North Pacific',
-        'climatlas_storm_pattern': r'[\[> ]\s*([A-Z][a-z]+)\s+\d+E\s+\((\d+),\s*ACE=([0-9.*]+)',
-        # Central Pacific storms (like Iona 01C) should be included in Pacific totals
-        'climatlas_central_pattern': 'Central North Pacific',
-        'climatlas_central_storm_pattern': r'[\[> ]\s*([A-Z][a-z]+)\s+\d+C\s+\((\d+),\s*ACE=([0-9.*]+)',
+        'tropycal_basin': 'east_pacific',  # Tropycal basin name
         'normal_ace': 132.0,
         'noaa_thresholds': {
             'below_normal': 73,
@@ -90,7 +82,6 @@ BASINS = {
     }
 }
 
-CURRENT_SEASON_URL = "https://climatlas.com/tropical/"
 START_YEAR = 1991
 
 # ACE Calculation Constants
@@ -195,224 +186,220 @@ def finalize_storm(storm):
     return storm
 
 # =============================================================================
-# HURDAT2 PARSING
+# TROPYCAL DATA FETCHING
 # =============================================================================
 
-def parse_hurdat2(basin_key):
-    basin = BASINS[basin_key]
-    url = basin['hurdat2_url']
-    prefix = basin['storm_id_prefix']
+def _tropycal_basin_name(basin_key):
+    """Get Tropycal basin name from configuration."""
+    return BASINS[basin_key]['tropycal_basin']
+
+
+def _extract_synoptic_winds(storm_obj):
+    """Extract synoptic-time wind readings from a Tropycal Storm object.
+
+    Returns list of wind speeds at 6-hourly synoptic times (00/06/12/18 UTC)
+    for times when storm was at tropical storm strength or higher (>=34 kt).
+    """
+    wind_readings = []
 
     try:
-        print(f"Downloading HURDAT2 database from NOAA...")
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=30) as response:
-            data = response.read().decode('utf-8')
+        # Get time series data
+        times = storm_obj.time
+        winds = storm_obj.vmax
+
+        # Filter for synoptic times only
+        for i, time in enumerate(times):
+            # Check if this is a synoptic time (hour must be 0, 6, 12, or 18)
+            if time.hour in [0, 6, 12, 18]:
+                wind = winds[i]
+                # Only count if wind >= 34 knots (tropical storm strength)
+                if wind >= MIN_NAMED_STORM_WIND:
+                    wind_readings.append(int(wind))
+    except Exception as e:
+        logger.warning(f"Error extracting synoptic winds: {e}")
+
+    return wind_readings
+
+
+def parse_hurdat2(basin_key):
+    """Fetch historical storm data using Tropycal TrackDataset.
+
+    Replaces manual HURDAT2 parsing with Tropycal library.
+    Returns list of storm dicts matching the existing data structure.
+    """
+    tropycal_basin = _tropycal_basin_name(basin_key)
+
+    try:
+        logger.info(f"Loading {tropycal_basin} data from Tropycal TrackDataset...")
+        print(f"Loading historical data via Tropycal (basin: {tropycal_basin})...")
+
+        # Create TrackDataset with include_btk=True to get latest seasons
+        dataset = tracks.TrackDataset(
+            basin=tropycal_basin,
+            source='hurdat',
+            include_btk=True
+        )
 
         storms = []
-        current_storm = None
 
-        for line in data.strip().split('\n'):
-            line = line.strip()
-            if not line:
-                continue
+        # Iterate through all years from START_YEAR to current
+        current_year = datetime.now().year
+        for year in range(START_YEAR, current_year + 1):
+            try:
+                season = dataset.get_season(year)
 
-            # Header line
-            if line.startswith(prefix) and ',' in line:
-                if current_storm and current_storm['year'] >= START_YEAR:
-                    storms.append(finalize_storm(current_storm))
+                # Process each storm in the season
+                for storm_id in season.dict.keys():
+                    try:
+                        storm_obj = dataset.get_storm(storm_id)
 
-                parts = line.split(',')
-                storm_id = parts[0].strip()
-                name = parts[1].strip()
-                year = int(storm_id[4:8])
+                        # Extract storm attributes
+                        storm_name = storm_obj.name.title() if storm_obj.name else 'UNNAMED'
+                        storm_year = storm_obj.year
 
-                current_storm = {
-                    'id': storm_id,
-                    'name': name if name else 'UNNAMED',
-                    'year': year,
-                    'max_wind': 0,
-                    'wind_readings': [],
-                    'start_date': None,
-                    'end_date': None
-                }
+                        # Get max wind (vmax is an array, we need the max)
+                        max_wind = int(max(storm_obj.vmax)) if len(storm_obj.vmax) > 0 else 0
 
-            # Also handle CP prefix for Central Pacific storms in the Pacific file
-            elif basin_key == 'pacific' and line.startswith('CP') and ',' in line:
-                if current_storm and current_storm['year'] >= START_YEAR:
-                    storms.append(finalize_storm(current_storm))
+                        # Get start and end dates
+                        start_date = storm_obj.time[0] if len(storm_obj.time) > 0 else None
+                        end_date = storm_obj.time[-1] if len(storm_obj.time) > 0 else None
 
-                parts = line.split(',')
-                storm_id = parts[0].strip()
-                name = parts[1].strip()
-                year = int(storm_id[4:8])
+                        # Convert pandas Timestamp to datetime if needed
+                        if start_date and hasattr(start_date, 'to_pydatetime'):
+                            start_date = start_date.to_pydatetime()
+                        if end_date and hasattr(end_date, 'to_pydatetime'):
+                            end_date = end_date.to_pydatetime()
 
-                current_storm = {
-                    'id': storm_id,
-                    'name': name if name else 'UNNAMED',
-                    'year': year,
-                    'max_wind': 0,
-                    'wind_readings': [],
-                    'start_date': None,
-                    'end_date': None
-                }
+                        # Extract synoptic-time wind readings for ACE calculation
+                        wind_readings = _extract_synoptic_winds(storm_obj)
 
-            # Data line
-            elif current_storm and line[0].isdigit():
-                parts = [p.strip() for p in line.split(',')]
-                if len(parts) < 7:
-                    continue
+                        # Build storm record
+                        storm_record = {
+                            'id': storm_id,
+                            'name': storm_name,
+                            'year': storm_year,
+                            'max_wind': max_wind,
+                            'wind_readings': wind_readings,
+                            'start_date': start_date,
+                            'end_date': end_date
+                        }
 
-                try:
-                    date_str = parts[0]
-                    time_str = parts[1]
-                    status = parts[3]
-                    wind = int(parts[6])
+                        # Finalize storm (calculates ACE, category, duration)
+                        storms.append(finalize_storm(storm_record))
 
-                    # Only count synoptic times
-                    if time_str not in SYNOPTIC_TIMES:
-                        # Still track dates and max wind from non-synoptic times
-                        if len(date_str) == 8:
-                            date = datetime.strptime(date_str, '%Y%m%d')
-                            if current_storm['start_date'] is None:
-                                current_storm['start_date'] = date
-                            current_storm['end_date'] = date
-                        if wind > current_storm['max_wind']:
-                            current_storm['max_wind'] = wind
+                    except Exception as e:
+                        logger.warning(f"Error processing storm {storm_id}: {e}")
                         continue
 
-                    if len(date_str) == 8:
-                        date = datetime.strptime(date_str, '%Y%m%d')
-                        if current_storm['start_date'] is None:
-                            current_storm['start_date'] = date
-                        current_storm['end_date'] = date
+            except Exception as e:
+                # Season might not exist or have no data
+                logger.debug(f"No data for {year}: {e}")
+                continue
 
-                    if wind > current_storm['max_wind']:
-                        current_storm['max_wind'] = wind
-
-                    # ACE counts when:
-                    # 1. Status is TS, HU, or SS (Subtropical Storm)
-                    # 2. Wind speed >= 34 knots
-                    # 3. Time is synoptic (already filtered above)
-                    # Does NOT count TD, SD, EX, LO, WV, DB
-                    if status in ACE_STATUSES and wind >= MIN_NAMED_STORM_WIND:
-                        current_storm['wind_readings'].append(wind)
-
-                except (ValueError, IndexError):
-                    continue
-
-        # Don't forget the last storm
-        if current_storm and current_storm['year'] >= START_YEAR:
-            storms.append(finalize_storm(current_storm))
-
-        print(f"  ✓ Parsed {len(storms)} storms from {START_YEAR}-present")
+        logger.info(f"Successfully loaded {len(storms)} storms from Tropycal")
+        print(f"  ✓ Loaded {len(storms)} storms from {START_YEAR}-present via Tropycal")
         return storms
 
     except Exception as e:
-        print(f"  ✗ Error downloading HURDAT2: {e}")
+        logger.error(f"Error loading Tropycal data: {e}")
+        print(f"  ✗ Error loading Tropycal data: {e}")
         print(f"  → Using backup data (yearly totals only)")
         return None
 
 # =============================================================================
-# CURRENT SEASON from climatlas.com
+# CURRENT SEASON from Tropycal
 # =============================================================================
 
-def _parse_section_storms(section_html, storm_pattern, excluded_names):
-    """Parse storms from a section of HTML, returning dict with ACE and max_wind."""
-    storms = {}
-    for match in re.finditer(storm_pattern, section_html):
-        name = match.group(1).strip().title()
-        max_wind = int(match.group(2))
-        ace_str = match.group(3).replace('*', '')
-        ace = float(ace_str)
-
-        if name in excluded_names:
-            continue
-
-        storms[name] = {'ace': ace, 'max_wind': max_wind}
-    return storms
-
-
-def _find_section(html, year, basin_header):
-    """Find and extract a year+basin section from the climatlas HTML."""
-    section_header_pattern = rf'\*?\*?{year}\s+{basin_header}'
-    section_match = re.search(section_header_pattern, html)
-    if not section_match:
-        return None
-
-    section_start = section_match.start()
-    next_section = re.search(
-        r'\*?\*?\d{4}\s+(?:North Atlantic|Eastern North Pacific|Central North Pacific|Western North Pacific|Northern Indian|Southern Hemisphere)',
-        html[section_start + 10:]
-    )
-    section_end = (section_start + 10 + next_section.start()) if next_section else len(html)
-    return html[section_start:section_end]
-
-
 def get_current_season(basin_key):
+    """Fetch current season data using Tropycal.
+
+    Uses TrackDataset with include_btk=True to get the most recent season data
+    including preliminary best track data from NHC.
+
+    Returns dict with: year, storms (name->ACE), storm_details (name->{ace, max_wind}), total
+    """
     basin = BASINS[basin_key]
+    tropycal_basin = _tropycal_basin_name(basin_key)
     current_year = datetime.now().year
 
-    excluded_names = {'Ptc', 'Td', 'Sd', 'One', 'Two', 'Three', 'Four',
-                      'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten',
-                      'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen',
-                      'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen', 'Twenty'}
-
-    basin_headers = {
-        'atlantic': r'North Atlantic Basin',
-        'pacific': r'Eastern North Pacific',
-    }
-    basin_header = basin_headers[basin_key]
-    storm_pattern = basin['climatlas_storm_pattern']
-
     try:
-        print(f"Fetching current season data from climatlas.com...")
-        req = urllib.request.Request(CURRENT_SEASON_URL, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=15) as response:
-            html = response.read().decode('utf-8', errors='replace')
+        logger.info(f"Fetching current season data via Tropycal...")
+        print(f"Fetching current season data via Tropycal...")
 
+        # Create TrackDataset with include_btk=True for latest data
+        dataset = tracks.TrackDataset(
+            basin=tropycal_basin,
+            source='hurdat',
+            include_btk=True
+        )
+
+        # Try current year first, fall back to last year if no data
         for year in [current_year, current_year - 1]:
-            section_html = _find_section(html, year, basin_header)
-            if not section_html:
+            try:
+                season = dataset.get_season(year)
+
+                if not season.dict or len(season.dict) == 0:
+                    continue
+
+                storms = {}
+                storm_details = {}
+
+                # Process each storm in the season
+                for storm_id in season.dict.keys():
+                    try:
+                        storm_obj = dataset.get_storm(storm_id)
+
+                        # Get storm name
+                        storm_name = storm_obj.name.title() if storm_obj.name else 'UNNAMED'
+
+                        # Skip unnamed storms and numbered systems
+                        if storm_name.upper() == 'UNNAMED':
+                            continue
+
+                        # Get ACE directly from Tropycal (if available)
+                        # Tropycal calculates ACE for us
+                        storm_ace = storm_obj.ace if hasattr(storm_obj, 'ace') and storm_obj.ace else 0.0
+
+                        # Get max wind
+                        max_wind = int(max(storm_obj.vmax)) if len(storm_obj.vmax) > 0 else 0
+
+                        # Store storm data
+                        storms[storm_name] = storm_ace
+                        storm_details[storm_name] = {
+                            'ace': storm_ace,
+                            'max_wind': max_wind
+                        }
+
+                    except Exception as e:
+                        logger.warning(f"Error processing storm {storm_id}: {e}")
+                        continue
+
+                if storms:
+                    total = round(sum(storms.values()), 4)
+                    logger.info(f"Found {len(storms)} storms for {year} season (ACE: {total:.2f})")
+                    print(f"  ✓ Found {len(storms)} storms for {year} season")
+                    print(f"  ✓ Total ACE: {total:.2f}")
+
+                    return {
+                        'year': year,
+                        'storms': storms,
+                        'storm_details': storm_details,
+                        'total': total,
+                    }
+
+            except Exception as e:
+                logger.debug(f"No data for {year} season: {e}")
                 continue
 
-            storms = _parse_section_storms(section_html, storm_pattern, excluded_names)
-
-            # For Pacific, also include Central Pacific storms
-            if basin.get('climatlas_central_pattern') and basin.get('climatlas_central_storm_pattern'):
-                central_section = _find_section(html, year, basin['climatlas_central_pattern'])
-                if central_section:
-                    central_storms = _parse_section_storms(
-                        central_section,
-                        basin['climatlas_central_storm_pattern'],
-                        excluded_names
-                    )
-                    if central_storms:
-                        print(f"  ✓ Found {len(central_storms)} Central Pacific storms")
-                        storms.update(central_storms)
-
-            if storms:
-                total = round(sum(s['ace'] for s in storms.values()), 4)
-                print(f"  ✓ Found {len(storms)} storms for {year} season")
-                print(f"  ✓ Total ACE: {total:.2f}")
-
-                ace_dict = {name: data['ace'] for name, data in storms.items()}
-
-                return {
-                    'year': year,
-                    'storms': ace_dict,
-                    'storm_details': storms,  # {name: {ace, max_wind}}
-                    'total': total,
-                }
-            else:
-                print(f"  ℹ {year} {basin['name']} section found but no storms yet")
-
+        # No current season data found
+        logger.info(f"No {current_year} storms found (likely off-season)")
         print(f"  ℹ No {current_year} storms found (likely off-season)")
         print(f"  → Using backup data...")
         return _backup_current(basin_key)
 
     except Exception as e:
-        print(f"  ✗ Error fetching current season: {e}")
+        logger.error(f"Error fetching current season: {e}")
+        print(f"  ✗ Error fetching current season via Tropycal: {e}")
         print(f"  → Using backup data...")
         return _backup_current(basin_key)
 
@@ -428,7 +415,7 @@ def _backup_current(basin_key):
 
 
 def build_current_storm_records(current):
-    """Build storm detail records from climatlas data (like HURDAT2 records but from real-time data).
+    """Build storm detail records from current season data (Tropycal or backup).
     Returns list of dicts compatible with historical_storms format."""
     records = []
     storm_details = current.get('storm_details', {})
