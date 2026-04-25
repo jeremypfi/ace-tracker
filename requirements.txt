@@ -1,1 +1,4 @@
 openpyxl>=3.0.0
+
+# Optional: Alternative data source (not currently used)
+# tropycal>=1.4

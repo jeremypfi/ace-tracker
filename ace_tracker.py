@@ -24,11 +24,20 @@ Author: Built with Claude for JP
 
 import re
 import os
+import logging
 import urllib.request
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger(__name__)
 
 # =============================================================================
 # CONFIGURATION
@@ -83,6 +92,12 @@ BASINS = {
 
 CURRENT_SEASON_URL = "https://climatlas.com/tropical/"
 START_YEAR = 1991
+
+# ACE Calculation Constants
+SYNOPTIC_TIMES = ['0000', '0600', '1200', '1800']
+ACE_STATUSES = ['TS', 'HU', 'SS']  # Tropical Storm, Hurricane, Subtropical Storm
+MIN_NAMED_STORM_WIND = 34  # knots
+MAX_STORMS_DISCORD = 10  # Maximum storms shown in Discord update before summarizing
 
 # =============================================================================
 # BACKUP DATA (used when network is unavailable)
@@ -254,8 +269,8 @@ def parse_hurdat2(basin_key):
                     status = parts[3]
                     wind = int(parts[6])
 
-                    # Only count synoptic times (0000, 0600, 1200, 1800)
-                    if time_str not in ['0000', '0600', '1200', '1800']:
+                    # Only count synoptic times
+                    if time_str not in SYNOPTIC_TIMES:
                         # Still track dates and max wind from non-synoptic times
                         if len(date_str) == 8:
                             date = datetime.strptime(date_str, '%Y%m%d')
@@ -280,8 +295,7 @@ def parse_hurdat2(basin_key):
                     # 2. Wind speed >= 34 knots
                     # 3. Time is synoptic (already filtered above)
                     # Does NOT count TD, SD, EX, LO, WV, DB
-                    ace_statuses = ['TS', 'HU', 'SS']
-                    if status in ace_statuses and wind >= 34:
+                    if status in ACE_STATUSES and wind >= MIN_NAMED_STORM_WIND:
                         current_storm['wind_readings'].append(wind)
 
                 except (ValueError, IndexError):
@@ -496,22 +510,6 @@ def find_similar_seasons(target_ace, yearly_totals, exclude_year=None):
     return candidates[:3]
 
 
-def get_ace_through_date(storms, target_date, year):
-    """Calculate ACE accumulated through a specific calendar date for a given year."""
-    ace = 0.0
-    target_month = target_date.month
-    target_day = target_date.day
-    for storm in storms:
-        if storm['year'] != year:
-            continue
-        for i, wind in enumerate(storm['wind_readings']):
-            # We don't have per-reading timestamps stored, so use the storm's
-            # date range as an approximation. For historical comparison we use
-            # the full-season total as a simpler and more reliable approach.
-            pass
-    # Fallback: return full season total (most reliable for historical data)
-    return None
-
 # =============================================================================
 # GENERATE SEASON INSIGHTS
 # =============================================================================
@@ -618,8 +616,6 @@ def generate_discord_text(basin_key, current, yearly_totals, insights):
     storms = current['storms']
     now = datetime.now()
 
-    MAX_STORMS_SHOWN = 10  # Show top 10 storms, summarize the rest
-
     lines = []
     lines.append(f"🌀 **{basin['name']} ACE Update** — {now.strftime('%B %d, %Y')}")
     lines.append("")
@@ -629,8 +625,8 @@ def generate_discord_text(basin_key, current, yearly_totals, insights):
         sorted_storms = sorted(storms.items(), key=lambda x: x[1], reverse=True)
 
         # Show top storms
-        shown = sorted_storms[:MAX_STORMS_SHOWN]
-        remaining = sorted_storms[MAX_STORMS_SHOWN:]
+        shown = sorted_storms[:MAX_STORMS_DISCORD]
+        remaining = sorted_storms[MAX_STORMS_DISCORD:]
 
         for name, ace in shown:
             lines.append(f"{name} = {ace:.1f}")
@@ -1093,12 +1089,23 @@ def process_basin(basin_key):
     wb = create_spreadsheet(basin_key, historical_storms, current, yearly_totals, yearly_stats, insights, discord_text)
 
     if wb:
-        if not os.path.exists(OUTPUT_FOLDER):
-            os.makedirs(OUTPUT_FOLDER)
+        try:
+            if not os.path.exists(OUTPUT_FOLDER):
+                os.makedirs(OUTPUT_FOLDER)
+                logger.info(f"Created output directory: {OUTPUT_FOLDER}")
+        except OSError as e:
+            logger.error(f"Failed to create directory {OUTPUT_FOLDER}: {e}")
+            print(f"  ✗ Error: Could not create output folder")
+            return None
 
         output_path = os.path.join(OUTPUT_FOLDER, basin['output_file'])
-        wb.save(output_path)
-        print(f"  ✓ Saved to: {output_path}")
+        try:
+            wb.save(output_path)
+            print(f"  ✓ Saved to: {output_path}")
+        except (OSError, PermissionError) as e:
+            logger.error(f"Failed to save {output_path}: {e}")
+            print(f"  ✗ Error: Could not save {output_path}")
+            return None
 
         if historical_storms:
             print(f"  ✓ {len(historical_storms)} storms in Historical Storms sheet")
@@ -1316,10 +1323,14 @@ def main():
     if basin_results:
         dashboard_html = generate_dashboard_html(basin_results)
         dashboard_path = os.path.join(OUTPUT_FOLDER, 'ACE_Dashboard.html')
-        with open(dashboard_path, 'w', encoding='utf-8') as f:
-            f.write(dashboard_html)
-        output_files.append(dashboard_path)
-        print(f"\n  ✓ Dashboard saved to: {dashboard_path}")
+        try:
+            with open(dashboard_path, 'w', encoding='utf-8') as f:
+                f.write(dashboard_html)
+            output_files.append(dashboard_path)
+            print(f"\n  ✓ Dashboard saved to: {dashboard_path}")
+        except (OSError, PermissionError) as e:
+            logger.error(f"Failed to save dashboard {dashboard_path}: {e}")
+            print(f"\n  ✗ Error: Could not save dashboard")
 
     print("\n" + "=" * 50)
     print("All done! Spreadsheets and dashboard updated.")
