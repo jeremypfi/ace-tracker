@@ -209,3 +209,24 @@ __marimo__/
 # ACE Tracker generated files
 data/*.xlsx
 data/*.html
+
+# Security: Never commit these
+*.env
+.env.*
+*_secret*
+*_password*
+*.pem
+*.key
+credentials.json
+config.ini
+
+# Local development
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# Backup files
+*.bak
+*.backup
+*~
