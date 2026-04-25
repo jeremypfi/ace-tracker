@@ -1,0 +1,14 @@
+# Code Owners for ACE Tracker
+#
+# This file defines who must review pull requests before they can be merged.
+# All PRs must be approved by @jeremypfi before merging.
+
+# Require @jeremypfi review for ALL files
+* @jeremypfi
+
+# Specific file protections
+ace_tracker.py @jeremypfi
+test_*.py @jeremypfi
+requirements.txt @jeremypfi
+.github/ @jeremypfi
+*.md @jeremypfi
