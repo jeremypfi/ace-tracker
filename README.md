@@ -29,6 +29,32 @@ A Python-based tool that tracks Accumulated Cyclone Energy (ACE) for Atlantic an
 
 ---
 
+## 📸 Screenshots
+
+### Dashboard
+The mobile-friendly HTML dashboard provides an at-a-glance view of the current hurricane season:
+
+![Dashboard Preview](images/dashboard-preview.png)
+*Interactive dashboard with season stats, storm breakdown, and historical rankings*
+
+### Excel Spreadsheet
+Comprehensive Excel workbooks with 5 tabs of detailed data:
+
+![Excel Summary Tab](images/excel-summary.png)
+*Summary tab showing season overview and key statistics*
+
+![Excel Storms Tab](images/excel-storms.png)
+*Current season storms with ACE breakdown and categories*
+
+> **Note:** To add screenshots to this README:
+> 1. Run the tracker: `python3 ace_tracker.py`
+> 2. Open `data/ACE_Dashboard.html` in your browser and take a screenshot
+> 3. Open one of the Excel files and take screenshots of the tabs
+> 4. Save images to the `images/` folder with the filenames shown above
+> 5. Commit and push the images to GitHub
+
+---
+
 ## 🚀 Quick Start
 
 ### Prerequisites
