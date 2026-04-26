@@ -1,0 +1,76 @@
+name: Publish Dashboard
+
+on:
+  # Runs every 6 hours during hurricane season
+  # Eastern Pacific: May 15 – Nov 30 | Atlantic: Jun 1 – Nov 30
+  # Date-gating is handled inside the job steps, not here, so the
+  # workflow can also be triggered manually year-round for testing.
+  schedule:
+    - cron: '0 0,6,12,18 * * *'
+
+  # Manual trigger for testing outside of season
+  workflow_dispatch:
+
+# Cancel any in-progress publish run — only latest data matters
+concurrency:
+  group: publish
+  cancel-in-progress: true
+
+# Scoped permissions: read code, write pages deployment only
+permissions:
+  contents: write   # needed to commit generated HTML to gh-pages branch
+  pages: write      # needed for GitHub Pages deployment
+  id-token: write   # needed for OIDC token (GitHub Pages)
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+    - uses: actions/checkout@v5
+
+    - name: Check if within hurricane season
+      id: season_check
+      run: |
+        MONTH=$(date +%-m)
+        DAY=$(date +%-d)
+        # Eastern Pacific: May 15 (5/15) through November 30 (11/30)
+        # Atlantic:        June 1  (6/1)  through November 30 (11/30)
+        IN_SEASON=false
+        if [ "$MONTH" -gt 5 ] && [ "$MONTH" -lt 12 ]; then
+          IN_SEASON=true
+        elif [ "$MONTH" -eq 5 ] && [ "$DAY" -ge 15 ]; then
+          IN_SEASON=true
+        fi
+        echo "in_season=$IN_SEASON" >> $GITHUB_OUTPUT
+        if [ "$IN_SEASON" = "false" ]; then
+          echo "Outside hurricane season — skipping realtime fetch."
+        fi
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Generate dashboard
+      env:
+        IN_SEASON: ${{ steps.season_check.outputs.in_season }}
+        # Discord webhooks stored as repo secrets — added when Discord feature is built
+        # DISCORD_WEBHOOK_ATLANTIC: ${{ secrets.DISCORD_WEBHOOK_ATLANTIC }}
+        # DISCORD_WEBHOOK_PACIFIC: ${{ secrets.DISCORD_WEBHOOK_PACIFIC }}
+      run: |
+        python ace_tracker.py
+
+    # TODO (Session 1): configure gh-pages branch and uncomment deployment steps
+    # - name: Deploy to GitHub Pages
+    #   uses: peaceiris/actions-gh-pages@v4
+    #   with:
+    #     github_token: ${{ secrets.GITHUB_TOKEN }}
+    #     publish_dir: ./data
+    #     publish_branch: gh-pages
