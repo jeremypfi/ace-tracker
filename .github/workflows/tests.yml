@@ -12,7 +12,9 @@ jobs:
 
     strategy:
       matrix:
-        python-version: ['3.10', '3.11', '3.12']
+        # 3.12 excluded: tropycal>=1.4 _version.py uses pkg_resources which
+        # is not bundled in 3.12+. Re-add when tropycal ships a fix.
+        python-version: ['3.10', '3.11']
 
     steps:
     - uses: actions/checkout@v5
