@@ -209,6 +209,11 @@ __marimo__/
 # ACE Tracker generated files
 data/*.xlsx
 data/*.html
+docs/html/
+docs/pdf/
+
+# OS files
+.DS_Store
 
 # Security: Never commit these
 *.env
