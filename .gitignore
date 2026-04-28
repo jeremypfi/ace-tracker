@@ -231,6 +231,9 @@ config.ini
 *.swp
 *.swo
 
+# Claude Code — local settings only (skills are intentionally tracked)
+.claude/settings.local.json
+
 # Backup files
 *.bak
 *.backup
