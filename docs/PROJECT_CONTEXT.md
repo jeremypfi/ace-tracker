@@ -119,10 +119,9 @@ ace-tracker/
 - No Jinja2 templates yet (Session 3)
 - No realtime data failover chain yet (Session 2)
 - Branch protection rules not enabled in GitHub Settings (CODEOWNERS exists but not enforced — Jeremy must enable in UI)
-- Local Python is 3.9 (EOL) — upgrade to 3.11 before Session 2
 
 ### Known Issues / Risks
-- Tropycal `pkg_resources` bug on Python 3.12 — unpatched 18+ months. Python 3.12 excluded from CI with inline comment explaining why.
+- Tropycal `_version.py` uses `pkg_resources`, which was removed from setuptools 81+. Worked around by pinning `setuptools<81` in `requirements.txt`. CI tests 3.10/3.11/3.12. Revisit when tropycal ships a fix or replaces setuptools_scm version detection.
 - HURDAT2 lag: 2025 season data won't be in HURDAT2 until spring 2026. Historical comparison will show 2025 as incomplete until then — needs disclosure on site.
 - No rollback plan for gh-pages yet — a bad cron run could push broken HTML. Add validation step before deploy (check HTML file exists and is >1kb) when activating publish.yml.
 
@@ -172,8 +171,7 @@ ace-tracker/
 2. **Activate publish.yml** — uncomment deploy steps, enable GitHub Pages in repo Settings
 3. **Register `aceofcanes.com`** on Namecheap (~$12/yr, free WHOIS privacy)
 4. **Add Cloudflare proxy** in front of GitHub Pages after domain is live
-5. **Upgrade local Python 3.9 → 3.11** before Session 2 (`brew install python@3.11`)
-6. **Session 2:** Build realtime data failover chain
+5. **Session 2:** Build realtime data failover chain
 
 ---
 
