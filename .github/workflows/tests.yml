@@ -23,7 +23,7 @@ jobs:
     strategy:
       matrix:
         # 3.13+ excluded: tropycal>=1.4 _version.py uses pkg_resources, which
-        # was removed from setuptools 81+. We pin setuptools<81 in
+        # was removed from setuptools 82+. We pin setuptools<82 in
         # requirements.txt as a workaround. Re-evaluate when tropycal ships a fix.
         python-version: ['3.10', '3.11', '3.12']
 
