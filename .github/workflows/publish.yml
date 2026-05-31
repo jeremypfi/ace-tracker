@@ -67,6 +67,9 @@ jobs:
       run: |
         python ace_tracker.py
 
+    - name: Prepare for deployment
+      run: cp data/ACE_Dashboard.html data/index.html
+
     - name: Deploy to GitHub Pages
       uses: peaceiris/actions-gh-pages@v4
       with:
