@@ -1292,6 +1292,7 @@ def generate_dashboard_html(basin_data):
   .sources li {{ color:var(--muted); font-size:0.78em; margin:4px 0; padding-left:12px; position:relative; }}
   .sources li::before {{ content:"•"; position:absolute; left:0; color:var(--accent); }}
   .sources code {{ font-size:0.9em; background:var(--box); padding:1px 4px; border-radius:3px; }}
+  .disclaimer {{ margin-top:12px; padding:10px 12px; border-radius:6px; border-left:3px solid var(--muted); font-size:0.75em; color:var(--muted); line-height:1.5; }}
   @media(min-width:768px) {{ body {{ max-width:900px; margin:0 auto; padding:24px; }} .stats-grid {{ grid-template-columns:repeat(6,1fr); }} .stat-box.ace-total {{ grid-column:span 6; }} }}
   @media(min-width:1100px) {{ body {{ max-width:1100px; }} }}
 </style>
@@ -1320,6 +1321,7 @@ def generate_dashboard_html(basin_data):
     <li><a href="https://www.cpc.ncep.noaa.gov/products/outlooks/background_information.shtml" target="_blank">NOAA CPC</a> — Season classification thresholds and 1991–2020 climatological normals</li>
   </ul>
   <p>ACE (Accumulated Cyclone Energy) is calculated at 6-hourly synoptic times (0000/0600/1200/1800 UTC) for systems at tropical storm strength or higher (≥34 kt), including subtropical storms. Formula: ACE = Σ(V²<sub>max</sub>) × 10⁻⁴. Categories use the Saffir-Simpson scale in knots.</p>
+  <p class="disclaimer">⚠️ This site is maintained by a hurricane data enthusiast — not a meteorologist, forecaster, or weather professional of any kind. I just love the data. All information is sourced directly from official NOAA/NHC databases. For official forecasts, watches, warnings, and life-safety information, always refer to the <a href="https://www.nhc.noaa.gov/" target="_blank">National Hurricane Center</a>.</p>
 </div>
 <script>
 document.querySelectorAll('.basin-card')[0]?.classList.add('active');
@@ -1609,6 +1611,7 @@ def generate_history_html(basin_data):
   .sources li {{ color:var(--muted); font-size:0.78em; margin:4px 0; padding-left:12px; position:relative; }}
   .sources li::before {{ content:"•"; position:absolute; left:0; color:var(--accent); }}
   .sources code {{ font-size:0.9em; background:var(--box); padding:1px 4px; border-radius:3px; }}
+  .disclaimer {{ margin-top:12px; padding:10px 12px; border-radius:6px; border-left:3px solid var(--muted); font-size:0.75em; color:var(--muted); line-height:1.5; }}
   @media(min-width:768px) {{ body {{ max-width:960px; margin:0 auto; padding:24px; }} }}
   @media(min-width:1100px) {{ body {{ max-width:1280px; }} }}
 </style>
@@ -1643,6 +1646,7 @@ def generate_history_html(basin_data):
     <li><a href="https://www.cpc.ncep.noaa.gov/products/outlooks/background_information.shtml" target="_blank">NOAA CPC</a> — Season classification thresholds and 1991–2020 climatological normals</li>
   </ul>
   <p>ACE (Accumulated Cyclone Energy) is calculated at 6-hourly synoptic times (0000/0600/1200/1800 UTC) for systems at tropical storm strength or higher (≥34 kt), including subtropical storms. Formula: ACE = Σ(V²<sub>max</sub>) × 10⁻⁴. Categories use the Saffir-Simpson scale in knots.</p>
+  <p class="disclaimer">⚠️ This site is maintained by a hurricane data enthusiast — not a meteorologist, forecaster, or weather professional of any kind. I just love the data. All information is sourced directly from official NOAA/NHC databases. For official forecasts, watches, warnings, and life-safety information, always refer to the <a href="https://www.nhc.noaa.gov/" target="_blank">National Hurricane Center</a>.</p>
 </div>
 <script>
 document.querySelectorAll('.basin-card')[0]?.classList.add('active');
