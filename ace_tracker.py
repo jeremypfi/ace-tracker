@@ -1136,7 +1136,15 @@ def generate_dashboard_html(basin_data):
             cat = get_category(wind) if wind > 0 else '—'
             is_major = wind >= 96
             row_class = ' class="major"' if is_major else ''
-            rows.append(f'<tr{row_class}><td>{name}</td><td>{ace:.1f}</td><td>{pct:.1f}%</td><td>{cat}</td><td>{wind if wind > 0 else "—"}</td></tr>')
+            rows.append(
+                f'<tr{row_class}>'
+                f'<td data-v="{name}">{name}</td>'
+                f'<td data-v="{ace:.6f}">{ace:.1f}</td>'
+                f'<td data-v="{pct:.4f}">{pct:.1f}%</td>'
+                f'<td data-v="{wind}">{cat}</td>'
+                f'<td data-v="{wind}">{wind if wind > 0 else "—"}</td>'
+                f'</tr>'
+            )
         return '\n'.join(rows)
 
     def insight_items_html(insights):
@@ -1188,11 +1196,19 @@ def generate_dashboard_html(basin_data):
       <h3>Storm Breakdown</h3>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Storm</th><th>ACE</th><th>%</th><th>Category</th><th>Wind (kt)</th></tr></thead>
-          <tbody>
+          <thead><tr>
+            <th class="sort-th" onclick="sortDash(this,0,'s')">Storm <span class="sa"></span></th>
+            <th class="sort-th" onclick="sortDash(this,1,'n')">ACE <span class="sa">▼</span></th>
+            <th class="sort-th" onclick="sortDash(this,2,'n')">% <span class="sa"></span></th>
+            <th class="sort-th" onclick="sortDash(this,3,'n')">Category <span class="sa"></span></th>
+            <th class="sort-th" onclick="sortDash(this,4,'n')">Wind (kt) <span class="sa"></span></th>
+          </tr></thead>
+          <tbody id="storm-{bd['basin_key']}">
             {storm_rows_html(current)}
-            <tr class="total-row"><td><b>TOTAL</b></td><td><b>{current_ace:.1f}</b></td><td><b>100%</b></td><td></td><td></td></tr>
           </tbody>
+          <tfoot>
+            <tr class="total-row"><td><b>TOTAL</b></td><td><b>{current_ace:.1f}</b></td><td><b>100%</b></td><td></td><td></td></tr>
+          </tfoot>
         </table>
       </div>
 
@@ -1222,13 +1238,19 @@ def generate_dashboard_html(basin_data):
   }}
   * {{ margin:0; padding:0; box-sizing:border-box; }}
   body {{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:var(--bg); color:var(--text); padding:12px; transition:background 0.2s,color 0.2s; }}
-  .header {{ display:flex; align-items:center; justify-content:center; gap:8px; margin:8px 0; position:relative; }}
+  .header {{ display:flex; align-items:center; justify-content:space-between; padding:0 4px; margin:8px 0; }}
   h1 {{ color:var(--accent); font-size:1.4em; }}
-  .theme-btn {{ position:absolute; right:0; background:transparent; border:1px solid var(--accent); color:var(--accent); border-radius:20px; padding:4px 10px; cursor:pointer; font-size:0.9em; }}
+  .theme-btn {{ background:transparent; border:1px solid var(--accent); color:var(--accent); border-radius:20px; padding:4px 10px; cursor:pointer; font-size:0.9em; }}
   .updated {{ text-align:center; color:var(--muted); font-size:0.8em; margin-bottom:8px; }}
   .nav-link {{ text-align:center; margin-bottom:12px; }}
   .nav-link a {{ color:var(--accent); text-decoration:none; font-size:0.85em; border:1px solid var(--accent); border-radius:20px; padding:4px 14px; }}
   .nav-link a:hover {{ background:var(--accent); color:var(--bg); }}
+  .ace-explain {{ background:var(--box); border-radius:8px; padding:10px 14px; margin-bottom:14px; font-size:0.85em; }}
+  .ace-explain summary {{ color:var(--accent); cursor:pointer; list-style:none; display:flex; align-items:center; gap:6px; min-height:44px; }}
+  .ace-explain summary::-webkit-details-marker {{ display:none; }}
+  .ace-explain summary::before {{ content:'ℹ'; font-size:1.1em; }}
+  .ace-explain-hint {{ color:var(--muted); font-size:0.85em; }}
+  .ace-explain p {{ color:var(--text); line-height:1.6; margin-top:8px; padding-top:8px; border-top:1px solid var(--border); }}
   .toggle {{ display:flex; justify-content:center; gap:8px; margin-bottom:16px; }}
   .toggle button {{ padding:8px 20px; border:1px solid var(--accent); background:transparent; color:var(--accent); border-radius:20px; cursor:pointer; font-size:0.9em; }}
   .toggle button.active {{ background:var(--accent); color:var(--bg); font-weight:bold; }}
@@ -1247,9 +1269,12 @@ def generate_dashboard_html(basin_data):
   .major-box .stat-value {{ color:var(--danger); }}
   .gauge {{ height:6px; background:var(--gauge-bg); border-radius:3px; margin-top:6px; }}
   .gauge-fill {{ height:100%; background:linear-gradient(90deg,var(--accent),var(--accent2),var(--danger)); border-radius:3px; transition:width 0.5s; }}
-  .table-wrap {{ overflow-x:auto; }}
+  .table-wrap {{ overflow-x:auto; background: linear-gradient(to right,var(--card) 20px,transparent 20px) left/20px 100%, linear-gradient(to left,var(--card) 20px,transparent 20px) right/20px 100%, linear-gradient(to right,rgba(0,0,0,0.18),transparent) left/16px 100%, linear-gradient(to left,rgba(0,0,0,0.18),transparent) right/16px 100%; background-repeat:no-repeat; background-attachment:local,local,scroll,scroll; }}
   table {{ width:100%; border-collapse:collapse; font-size:0.85em; }}
   th {{ background:var(--box); color:var(--accent); padding:8px 6px; text-align:left; position:sticky; top:0; }}
+  th.sort-th {{ cursor:pointer; user-select:none; padding:10px 6px; }}
+  th.sort-th:hover {{ color:var(--text-strong); }}
+  .sa {{ font-size:0.7em; margin-left:2px; opacity:0.7; }}
   td {{ padding:6px; border-bottom:1px solid var(--border); color:var(--text); }}
   tr.major {{ background:var(--danger-bg); }}
   tr.major td {{ color:var(--danger-text); font-weight:bold; }}
@@ -1274,6 +1299,10 @@ def generate_dashboard_html(basin_data):
 </div>
 <div class="updated">Updated: {now.strftime('%B %d, %Y at %I:%M %p')}</div>
 <div class="nav-link"><a href="history.html">📊 Season History ({START_YEAR}–present)</a></div>
+<details class="ace-explain">
+  <summary>What is ACE? <span class="ace-explain-hint">(tap to expand)</span></summary>
+  <p>Accumulated Cyclone Energy (ACE) measures total hurricane season activity by combining storm intensity and duration. A major hurricane that lasts two weeks contributes far more than a brief tropical storm. NOAA uses seasonal ACE totals to classify years as <b>Below Normal</b> (&lt;73), <b>Near Normal</b> (73–126), <b>Above Normal</b> (126–159), or <b>Extremely Active</b> (159+).</p>
+</details>
 <div class="toggle">
   <button class="active" onclick="show('atlantic',this)">Atlantic</button>
   <button onclick="show('pacific',this)">Eastern Pacific</button>
@@ -1306,6 +1335,25 @@ function toggleTheme() {{
 document.addEventListener('DOMContentLoaded',function() {{
   document.getElementById('themeBtn').textContent=document.documentElement.getAttribute('data-theme')==='light'?'☾':'☀';
 }});
+var _ds={{}};
+function sortDash(th,col,type){{
+  var card=th.closest('.basin-card');
+  var tbody=card.querySelector('tbody');
+  var key=card.id+col;
+  var asc=_ds[key]===undefined?false:!_ds[key];
+  _ds[key]=asc;
+  var rows=Array.from(tbody.querySelectorAll('tr'));
+  rows.sort(function(a,b){{
+    var av=a.cells[col]?a.cells[col].getAttribute('data-v'):'';
+    var bv=b.cells[col]?b.cells[col].getAttribute('data-v'):'';
+    if(type==='n'){{av=parseFloat(av)||0;bv=parseFloat(bv)||0;}}
+    if(av<bv)return asc?-1:1;
+    if(av>bv)return asc?1:-1;
+    return 0;
+  }});
+  rows.forEach(r=>tbody.appendChild(r));
+  card.querySelectorAll('.sort-th .sa').forEach((s,i)=>{{s.textContent=i===col?(asc?'▲':'▼'):'';}});
+}}
 </script>
 </body>
 </html>'''
@@ -1372,12 +1420,25 @@ def generate_history_html(basin_data):
             'active': True,
         }
 
-        # Compute ACE rank for each year
+        # Compute ACE rank and top-5
         ranked = sorted(years_data.items(), key=lambda x: x[1]['ace'], reverse=True)
         ranks = {year: i + 1 for i, (year, _) in enumerate(ranked)}
+        top5_years = {year for year, _ in ranked[:5]}
         total_seasons = len(years_data)
+        max_ace = max(d['ace'] for d in years_data.values()) if years_data else 1
 
-        # Build table rows sorted year descending
+        # Average row values (using official NOAA 1991-2020 normals from BASINS config)
+        avg_ace = normal
+        avg_pct = 100
+        avg_named = basin['avg_named_storms']
+        avg_hurr = basin['avg_hurricanes']
+        avg_major = basin['avg_major_hurricanes']
+
+        # Classification sort key helper
+        def _csort(bc):
+            return {'below': 0, 'near': 1, 'above': 2, 'extreme': 3}.get(bc, 1)
+
+        # Build table rows (year descending default)
         rows = []
         for year in sorted(years_data.keys(), reverse=True):
             d = years_data[year]
@@ -1386,35 +1447,68 @@ def generate_history_html(basin_data):
             bc, classification = _badge_class(ace, bd['basin_key'])
             rank = ranks[year]
             is_active = d.get('active', False)
-            row_cls = f'row-{bc}' + (' row-current' if is_active else '')
+            is_top5 = year in top5_years
+            ace_bar_pct = round(ace / max_ace * 100, 1)
+            row_cls = f'row-{bc}'
+            if is_active:
+                row_cls += ' row-current'
+            if is_top5:
+                row_cls += ' row-top5'
             active_label = ' <span class="active-dot" title="Season in progress">●</span>' if is_active else ''
+            named_v = d['named'] if d['named'] != '—' else 0
+            hurr_v = d['hurricanes'] if d['hurricanes'] != '—' else 0
+            major_v = d['majors'] if d['majors'] != '—' else 0
             rows.append(
                 f'<tr class="{row_cls}">'
-                f'<td><b>{year}</b>{active_label}</td>'
-                f'<td><b>{ace:.1f}</b></td>'
-                f'<td>{pct}%</td>'
-                f'<td><span class="badge badge-{bc}">{classification}</span></td>'
-                f'<td>{d["named"]}</td>'
-                f'<td>{d["hurricanes"]}</td>'
-                f'<td>{d["majors"]}</td>'
-                f'<td>{d["leader"]}</td>'
-                f'<td>#{rank}&nbsp;/&nbsp;{total_seasons}</td>'
+                f'<td data-v="{year}"><b>{year}</b>{active_label}</td>'
+                f'<td data-v="{ace:.4f}"><b>{ace:.1f}</b><div class="ace-bar"><div class="ace-bar-fill" style="width:{ace_bar_pct}%"></div></div></td>'
+                f'<td data-v="{pct}">{pct}%</td>'
+                f'<td data-v="{_csort(bc)}"><span class="badge badge-{bc}">{classification}</span></td>'
+                f'<td data-v="{named_v}">{d["named"]}</td>'
+                f'<td data-v="{hurr_v}">{d["hurricanes"]}</td>'
+                f'<td data-v="{major_v}">{d["majors"]}</td>'
+                f'<td data-v="{d["leader"]}">{d["leader"]}</td>'
+                f'<td data-v="{rank}">#{rank}&nbsp;/&nbsp;{total_seasons}</td>'
                 f'</tr>'
             )
+
+        # Average row (goes in tfoot, not sorted)
+        avg_bar_pct = round(avg_ace / max_ace * 100, 1)
+        avg_row = (
+            f'<tr class="row-avg">'
+            f'<td>Avg (1991–2020)</td>'
+            f'<td>{avg_ace:.1f}<div class="ace-bar"><div class="ace-bar-fill" style="width:{avg_bar_pct}%"></div></div></td>'
+            f'<td>{avg_pct}%</td>'
+            f'<td><span class="badge badge-near">Near Normal</span></td>'
+            f'<td>{avg_named}</td>'
+            f'<td>{avg_hurr}</td>'
+            f'<td>{avg_major}</td>'
+            f'<td>—</td>'
+            f'<td>—</td>'
+            f'</tr>'
+        )
 
         basin_sections.append(f'''
     <div class="basin-card" id="{bd['basin_key']}">
       <h2>{basin['name']} — All Seasons ({START_YEAR}–{current_year})</h2>
-      <p class="season-note">{total_seasons} seasons &nbsp;·&nbsp; ● = currently active &nbsp;·&nbsp; sorted by year (most recent first)</p>
+      <p class="season-note">{total_seasons} seasons &nbsp;·&nbsp; ● = currently active &nbsp;·&nbsp; <span style="border-left:3px solid #f9a825;padding-left:4px;">gold border</span> = top 5 all-time ACE &nbsp;·&nbsp; click headers to sort</p>
       <div class="table-wrap">
-        <table>
+        <table class="hist-table">
           <thead>
             <tr>
-              <th>Year</th><th>ACE</th><th>% Normal</th><th>Classification</th>
-              <th>Named</th><th>Hurr.</th><th>Major</th><th>ACE Leader</th><th>Rank</th>
+              <th class="sort-th" onclick="sortHist(this,0,'n')">Year <span class="sa">▼</span></th>
+              <th class="sort-th" onclick="sortHist(this,1,'n')">ACE <span class="sa"></span></th>
+              <th class="sort-th" onclick="sortHist(this,2,'n')">% Normal <span class="sa"></span></th>
+              <th class="sort-th" onclick="sortHist(this,3,'n')">Classification <span class="sa"></span></th>
+              <th class="sort-th" onclick="sortHist(this,4,'n')">Named <span class="sa"></span></th>
+              <th class="sort-th" onclick="sortHist(this,5,'n')">Hurr. <span class="sa"></span></th>
+              <th class="sort-th" onclick="sortHist(this,6,'n')">Major <span class="sa"></span></th>
+              <th class="sort-th" onclick="sortHist(this,7,'s')">ACE Leader <span class="sa"></span></th>
+              <th class="sort-th" onclick="sortHist(this,8,'n')">Rank <span class="sa"></span></th>
             </tr>
           </thead>
-          <tbody>{''.join(rows)}</tbody>
+          <tbody id="hist-{bd['basin_key']}">{''.join(rows)}</tbody>
+          <tfoot>{avg_row}</tfoot>
         </table>
       </div>
     </div>''')
@@ -1430,7 +1524,7 @@ def generate_history_html(basin_data):
   :root {{
     --bg:#0a1628; --card:#132238; --box:#1a2d4a; --accent:#4fc3f7;
     --text:#e0e6ed; --text-strong:#ffffff; --muted:#78909c; --border:#1e3a5f;
-    --sources-bg:#0d1b2a;
+    --sources-bg:#0d1b2a; --gauge-bg:#1e3a5f;
     --row-extreme:rgba(239,83,80,0.10); --row-above:rgba(255,143,0,0.10);
     --row-below:rgba(66,165,245,0.10); --row-near:transparent;
     --current-border:#4fc3f7; --active-dot:#4fc3f7;
@@ -1439,7 +1533,7 @@ def generate_history_html(basin_data):
   [data-theme="light"] {{
     --bg:#f0f4f8; --card:#ffffff; --box:#e8f0fe; --accent:#0277bd;
     --text:#1a2d4a; --text-strong:#0a1628; --muted:#607d8b; --border:#b0bec5;
-    --sources-bg:#e2ecf7;
+    --sources-bg:#e2ecf7; --gauge-bg:#c9daf8;
     --row-extreme:rgba(198,40,40,0.07); --row-above:rgba(230,81,0,0.07);
     --row-below:rgba(21,101,192,0.07); --row-near:transparent;
     --current-border:#0277bd; --active-dot:#0277bd;
@@ -1447,13 +1541,19 @@ def generate_history_html(basin_data):
   }}
   * {{ margin:0; padding:0; box-sizing:border-box; }}
   body {{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:var(--bg); color:var(--text); padding:12px; transition:background 0.2s,color 0.2s; }}
-  .header {{ display:flex; align-items:center; justify-content:center; gap:8px; margin:8px 0; position:relative; }}
+  .header {{ display:flex; align-items:center; justify-content:space-between; padding:0 4px; margin:8px 0; }}
   h1 {{ color:var(--accent); font-size:1.4em; }}
-  .theme-btn {{ position:absolute; right:0; background:transparent; border:1px solid var(--accent); color:var(--accent); border-radius:20px; padding:4px 10px; cursor:pointer; font-size:0.9em; }}
+  .theme-btn {{ background:transparent; border:1px solid var(--accent); color:var(--accent); border-radius:20px; padding:4px 10px; cursor:pointer; font-size:0.9em; }}
   .updated {{ text-align:center; color:var(--muted); font-size:0.8em; margin-bottom:8px; }}
   .nav-link {{ text-align:center; margin-bottom:12px; }}
   .nav-link a {{ color:var(--accent); text-decoration:none; font-size:0.85em; border:1px solid var(--accent); border-radius:20px; padding:4px 14px; }}
   .nav-link a:hover {{ background:var(--accent); color:var(--bg); }}
+  .ace-explain {{ background:var(--box); border-radius:8px; padding:10px 14px; margin-bottom:14px; font-size:0.85em; }}
+  .ace-explain summary {{ color:var(--accent); cursor:pointer; list-style:none; display:flex; align-items:center; gap:6px; min-height:44px; }}
+  .ace-explain summary::-webkit-details-marker {{ display:none; }}
+  .ace-explain summary::before {{ content:'ℹ'; font-size:1.1em; }}
+  .ace-explain-hint {{ color:var(--muted); font-size:0.85em; }}
+  .ace-explain p {{ color:var(--text); line-height:1.6; margin-top:8px; padding-top:8px; border-top:1px solid var(--border); }}
   .toggle {{ display:flex; justify-content:center; gap:8px; margin-bottom:16px; }}
   .toggle button {{ padding:8px 20px; border:1px solid var(--accent); background:transparent; color:var(--accent); border-radius:20px; cursor:pointer; font-size:0.9em; }}
   .toggle button.active {{ background:var(--accent); color:var(--bg); font-weight:bold; }}
@@ -1461,9 +1561,23 @@ def generate_history_html(basin_data):
   .basin-card.active {{ display:block; }}
   h2 {{ color:var(--accent); font-size:1.2em; margin-bottom:6px; border-bottom:1px solid var(--border); padding-bottom:8px; }}
   .season-note {{ color:var(--muted); font-size:0.78em; margin-bottom:12px; }}
-  .table-wrap {{ overflow-x:auto; }}
+  .table-wrap {{ overflow-x:auto; background: linear-gradient(to right,var(--card) 20px,transparent 20px) left/20px 100%, linear-gradient(to left,var(--card) 20px,transparent 20px) right/20px 100%, linear-gradient(to right,rgba(0,0,0,0.18),transparent) left/16px 100%, linear-gradient(to left,rgba(0,0,0,0.18),transparent) right/16px 100%; background-repeat:no-repeat; background-attachment:local,local,scroll,scroll; }}
   table {{ width:100%; border-collapse:collapse; font-size:0.85em; }}
   th {{ background:var(--box); color:var(--accent); padding:8px 6px; text-align:left; position:sticky; top:0; white-space:nowrap; }}
+  th.sort-th {{ cursor:pointer; user-select:none; padding:10px 6px; white-space:nowrap; }}
+  th.sort-th:hover {{ color:var(--text-strong); }}
+  .sa {{ font-size:0.7em; margin-left:2px; opacity:0.7; }}
+  .hist-table th:first-child, .hist-table td:first-child {{ position:sticky; left:0; z-index:1; background:var(--box); border-right:1px solid var(--border); }}
+  .hist-table tbody td:first-child {{ background:var(--card); }}
+  .row-top5 {{ border-left:3px solid #f9a825; }}
+  .row-top5 td:first-child {{ background:var(--card); }}
+  .row-avg {{ border-top:2px solid var(--border); font-style:italic; }}
+  .row-avg td {{ color:var(--muted); }}
+  .row-avg td:first-child {{ background:var(--box); }}
+  .ace-bar {{ height:3px; background:var(--gauge-bg); border-radius:2px; margin-top:3px; }}
+  .ace-bar-fill {{ height:100%; background:var(--accent); border-radius:2px; }}
+  .legend {{ display:flex; flex-wrap:wrap; gap:6px; justify-content:center; margin-bottom:14px; padding:10px; background:var(--card); border-radius:8px; }}
+  .legend .badge {{ font-size:0.8em; padding:3px 10px; }}
   td {{ padding:7px 6px; border-bottom:1px solid var(--border); color:var(--text); white-space:nowrap; }}
   tr:hover td {{ filter:brightness(1.12); }}
   .row-extreme {{ background:var(--row-extreme); }}
@@ -1487,9 +1601,19 @@ def generate_history_html(basin_data):
 </div>
 <div class="updated">Updated: {now.strftime('%B %d, %Y at %I:%M %p')}</div>
 <div class="nav-link"><a href="index.html">← Current Season</a></div>
+<details class="ace-explain">
+  <summary>What is ACE? <span class="ace-explain-hint">(tap to expand)</span></summary>
+  <p>Accumulated Cyclone Energy (ACE) measures total hurricane season activity by combining storm intensity and duration. A major hurricane that lasts two weeks contributes far more than a brief tropical storm. NOAA uses seasonal ACE totals to classify years as <b>Below Normal</b> (&lt;73), <b>Near Normal</b> (73–126), <b>Above Normal</b> (126–159), or <b>Extremely Active</b> (159+).</p>
+</details>
 <div class="toggle">
   <button class="active" onclick="show('atlantic',this)">Atlantic</button>
   <button onclick="show('pacific',this)">Eastern Pacific</button>
+</div>
+<div class="legend">
+  <span class="badge badge-extreme">Extremely Active ≥159</span>
+  <span class="badge badge-above">Above Normal 126–159</span>
+  <span class="badge badge-near">Near Normal 73–126</span>
+  <span class="badge badge-below">Below Normal &lt;73</span>
 </div>
 {''.join(basin_sections)}
 <script>
@@ -1510,6 +1634,25 @@ function toggleTheme() {{
 document.addEventListener('DOMContentLoaded',function() {{
   document.getElementById('themeBtn').textContent=document.documentElement.getAttribute('data-theme')==='light'?'☾':'☀';
 }});
+var _hs={{}};
+function sortHist(th,col,type){{
+  var card=th.closest('.basin-card');
+  var tbody=card.querySelector('tbody');
+  var key=card.id+col;
+  var asc=_hs[key]===undefined?false:!_hs[key];
+  _hs[key]=asc;
+  var rows=Array.from(tbody.querySelectorAll('tr'));
+  rows.sort(function(a,b){{
+    var av=a.cells[col]?a.cells[col].getAttribute('data-v'):'';
+    var bv=b.cells[col]?b.cells[col].getAttribute('data-v'):'';
+    if(type==='n'){{av=parseFloat(av)||0;bv=parseFloat(bv)||0;}}
+    if(av<bv)return asc?-1:1;
+    if(av>bv)return asc?1:-1;
+    return 0;
+  }});
+  rows.forEach(r=>tbody.appendChild(r));
+  card.querySelectorAll('.sort-th .sa').forEach((s,i)=>{{s.textContent=i===col?(asc?'▲':'▼'):'';}});
+}}
 </script>
 </body>
 </html>'''
