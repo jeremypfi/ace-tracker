@@ -16,9 +16,8 @@ concurrency:
   group: publish
   cancel-in-progress: true
 
-# Scoped permissions: read code, write pages deployment only
+# Scoped permissions: deploy to GitHub Pages via official actions
 permissions:
-  contents: write   # needed to commit generated HTML to gh-pages branch
   pages: write      # needed for GitHub Pages deployment
   id-token: write   # needed for OIDC token (GitHub Pages)
 
@@ -70,9 +69,10 @@ jobs:
     - name: Prepare for deployment
       run: cp data/ACE_Dashboard.html data/index.html
 
-    - name: Deploy to GitHub Pages
-      uses: peaceiris/actions-gh-pages@v4
+    - name: Upload Pages artifact
+      uses: actions/upload-pages-artifact@v3
       with:
-        github_token: ${{ secrets.GITHUB_TOKEN }}
-        publish_dir: ./data
-        publish_branch: gh-pages
+        path: ./data
+
+    - name: Deploy to GitHub Pages
+      uses: actions/deploy-pages@v4
