@@ -67,10 +67,9 @@ jobs:
       run: |
         python ace_tracker.py
 
-    # TODO (Session 1): configure gh-pages branch and uncomment deployment steps
-    # - name: Deploy to GitHub Pages
-    #   uses: peaceiris/actions-gh-pages@v4
-    #   with:
-    #     github_token: ${{ secrets.GITHUB_TOKEN }}
-    #     publish_dir: ./data
-    #     publish_branch: gh-pages
+    - name: Deploy to GitHub Pages
+      uses: peaceiris/actions-gh-pages@v4
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./data
+        publish_branch: gh-pages
