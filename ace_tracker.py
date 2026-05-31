@@ -1109,6 +1109,7 @@ def process_basin(basin_key):
             'basin_key': basin_key,
             'current': current,
             'yearly_totals': yearly_totals,
+            'yearly_stats': yearly_stats,
             'insights': insights,
         }
 
@@ -1123,7 +1124,6 @@ def generate_dashboard_html(basin_data):
     """Generate a mobile-friendly HTML dashboard for both basins."""
     now = datetime.now()
 
-    # Build storm rows for each basin
     def storm_rows_html(current):
         storms = current['storms']
         details = current.get('storm_details', {})
@@ -1156,19 +1156,16 @@ def generate_dashboard_html(basin_data):
         pct_normal = (current_ace / normal * 100) if normal > 0 else 0
         classification = get_noaa_classification(current_ace, bd['basin_key'])
 
-        # Storm counts from details
         details = current.get('storm_details', {})
         named = len(details)
         hurricanes = sum(1 for d in details.values() if d.get('max_wind', 0) >= 64)
         majors = sum(1 for d in details.values() if d.get('max_wind', 0) >= 96)
 
-        # Historical rank
         all_years = list(yearly_totals.items()) + [(current_year, current_ace)]
         all_years.sort(key=lambda x: x[1], reverse=True)
         rank = next(i + 1 for i, (y, _) in enumerate(all_years) if y == current_year)
         total_seasons = len(all_years)
 
-        # ACE gauge percentage (cap at 200% for display)
         gauge_pct = min(pct_normal, 200)
 
         sections.append(f'''
@@ -1209,52 +1206,74 @@ def generate_dashboard_html(basin_data):
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Hurricane ACE Dashboard</title>
+<script>(function(){{var t=localStorage.getItem('ace-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light');}})();</script>
 <style>
+  :root {{
+    --bg:#0a1628; --card:#132238; --box:#1a2d4a; --accent:#4fc3f7; --accent2:#29b6f6;
+    --accent-h3:#81d4fa; --text:#e0e6ed; --text-strong:#ffffff; --muted:#78909c;
+    --muted-dark:#546e7a; --border:#1e3a5f; --danger:#ef5350; --danger-bg:#2a1a1a;
+    --danger-text:#ef8a80; --total-row:#1a2d4a; --sources-bg:#0d1b2a; --gauge-bg:#1e3a5f;
+  }}
+  [data-theme="light"] {{
+    --bg:#f0f4f8; --card:#ffffff; --box:#e8f0fe; --accent:#0277bd; --accent2:#0288d1;
+    --accent-h3:#01579b; --text:#1a2d4a; --text-strong:#0a1628; --muted:#607d8b;
+    --muted-dark:#455a64; --border:#b0bec5; --danger:#d32f2f; --danger-bg:#ffeaea;
+    --danger-text:#c62828; --total-row:#e8f0fe; --sources-bg:#e2ecf7; --gauge-bg:#c9daf8;
+  }}
   * {{ margin:0; padding:0; box-sizing:border-box; }}
-  body {{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:#0a1628; color:#e0e6ed; padding:12px; }}
-  h1 {{ text-align:center; color:#4fc3f7; font-size:1.4em; margin:8px 0; }}
-  .updated {{ text-align:center; color:#78909c; font-size:0.8em; margin-bottom:16px; }}
+  body {{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:var(--bg); color:var(--text); padding:12px; transition:background 0.2s,color 0.2s; }}
+  .header {{ display:flex; align-items:center; justify-content:center; gap:8px; margin:8px 0; position:relative; }}
+  h1 {{ color:var(--accent); font-size:1.4em; }}
+  .theme-btn {{ position:absolute; right:0; background:transparent; border:1px solid var(--accent); color:var(--accent); border-radius:20px; padding:4px 10px; cursor:pointer; font-size:0.9em; }}
+  .updated {{ text-align:center; color:var(--muted); font-size:0.8em; margin-bottom:8px; }}
+  .nav-link {{ text-align:center; margin-bottom:12px; }}
+  .nav-link a {{ color:var(--accent); text-decoration:none; font-size:0.85em; border:1px solid var(--accent); border-radius:20px; padding:4px 14px; }}
+  .nav-link a:hover {{ background:var(--accent); color:var(--bg); }}
   .toggle {{ display:flex; justify-content:center; gap:8px; margin-bottom:16px; }}
-  .toggle button {{ padding:8px 20px; border:1px solid #4fc3f7; background:transparent; color:#4fc3f7; border-radius:20px; cursor:pointer; font-size:0.9em; }}
-  .toggle button.active {{ background:#4fc3f7; color:#0a1628; font-weight:bold; }}
-  .basin-card {{ background:#132238; border-radius:12px; padding:16px; margin-bottom:16px; display:none; }}
+  .toggle button {{ padding:8px 20px; border:1px solid var(--accent); background:transparent; color:var(--accent); border-radius:20px; cursor:pointer; font-size:0.9em; }}
+  .toggle button.active {{ background:var(--accent); color:var(--bg); font-weight:bold; }}
+  .basin-card {{ background:var(--card); border-radius:12px; padding:16px; margin-bottom:16px; display:none; }}
   .basin-card.active {{ display:block; }}
-  h2 {{ color:#4fc3f7; font-size:1.2em; margin-bottom:12px; border-bottom:1px solid #1e3a5f; padding-bottom:8px; }}
-  h3 {{ color:#81d4fa; font-size:1em; margin:16px 0 8px; }}
+  h2 {{ color:var(--accent); font-size:1.2em; margin-bottom:12px; border-bottom:1px solid var(--border); padding-bottom:8px; }}
+  h3 {{ color:var(--accent-h3); font-size:1em; margin:16px 0 8px; }}
   .stats-grid {{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }}
-  .stat-box {{ background:#1a2d4a; border-radius:8px; padding:10px; text-align:center; }}
+  .stat-box {{ background:var(--box); border-radius:8px; padding:10px; text-align:center; }}
   .stat-box.ace-total {{ grid-column:span 3; }}
-  .stat-label {{ color:#78909c; font-size:0.75em; text-transform:uppercase; }}
-  .stat-value {{ color:#fff; font-size:1.5em; font-weight:bold; }}
+  .stat-label {{ color:var(--muted); font-size:0.75em; text-transform:uppercase; }}
+  .stat-value {{ color:var(--text-strong); font-size:1.5em; font-weight:bold; }}
   .stat-value.small {{ font-size:1.1em; }}
-  .stat-sub {{ color:#78909c; font-size:0.75em; }}
-  .major-box {{ border:1px solid #ef5350; }}
-  .major-box .stat-value {{ color:#ef5350; }}
-  .gauge {{ height:6px; background:#1e3a5f; border-radius:3px; margin-top:6px; }}
-  .gauge-fill {{ height:100%; background:linear-gradient(90deg,#4fc3f7,#29b6f6,#ef5350); border-radius:3px; transition:width 0.5s; }}
+  .stat-sub {{ color:var(--muted); font-size:0.75em; }}
+  .major-box {{ border:1px solid var(--danger); }}
+  .major-box .stat-value {{ color:var(--danger); }}
+  .gauge {{ height:6px; background:var(--gauge-bg); border-radius:3px; margin-top:6px; }}
+  .gauge-fill {{ height:100%; background:linear-gradient(90deg,var(--accent),var(--accent2),var(--danger)); border-radius:3px; transition:width 0.5s; }}
   .table-wrap {{ overflow-x:auto; }}
   table {{ width:100%; border-collapse:collapse; font-size:0.85em; }}
-  th {{ background:#1a2d4a; color:#4fc3f7; padding:8px 6px; text-align:left; position:sticky; top:0; }}
-  td {{ padding:6px; border-bottom:1px solid #1e3a5f; }}
-  tr.major {{ background:#2a1a1a; }}
-  tr.major td {{ color:#ef8a80; font-weight:bold; }}
-  tr.total-row {{ background:#1a2d4a; }}
+  th {{ background:var(--box); color:var(--accent); padding:8px 6px; text-align:left; position:sticky; top:0; }}
+  td {{ padding:6px; border-bottom:1px solid var(--border); color:var(--text); }}
+  tr.major {{ background:var(--danger-bg); }}
+  tr.major td {{ color:var(--danger-text); font-weight:bold; }}
+  tr.total-row {{ background:var(--total-row); }}
   .insights {{ list-style:none; padding:0; }}
-  .insights li {{ background:#1a2d4a; padding:8px 10px; margin:4px 0; border-radius:6px; font-size:0.85em; border-left:3px solid #4fc3f7; }}
-  .sources {{ background:#0d1b2a; border-top:1px solid #1e3a5f; margin-top:24px; padding:16px 12px; border-radius:8px; }}
-  .sources h4 {{ color:#78909c; font-size:0.8em; text-transform:uppercase; margin-bottom:8px; }}
-  .sources a {{ color:#4fc3f7; text-decoration:none; font-size:0.78em; }}
+  .insights li {{ background:var(--box); padding:8px 10px; margin:4px 0; border-radius:6px; font-size:0.85em; border-left:3px solid var(--accent); color:var(--text); }}
+  .sources {{ background:var(--sources-bg); border-top:1px solid var(--border); margin-top:24px; padding:16px 12px; border-radius:8px; }}
+  .sources h4 {{ color:var(--muted); font-size:0.8em; text-transform:uppercase; margin-bottom:8px; }}
+  .sources a {{ color:var(--accent); text-decoration:none; font-size:0.78em; }}
   .sources a:hover {{ text-decoration:underline; }}
-  .sources p {{ color:#546e7a; font-size:0.75em; margin-top:8px; line-height:1.5; }}
+  .sources p {{ color:var(--muted-dark); font-size:0.75em; margin-top:8px; line-height:1.5; }}
   .sources ul {{ list-style:none; padding:0; margin:0; }}
-  .sources li {{ color:#78909c; font-size:0.78em; margin:4px 0; padding-left:12px; position:relative; }}
-  .sources li::before {{ content:"•"; position:absolute; left:0; color:#4fc3f7; }}
+  .sources li {{ color:var(--muted); font-size:0.78em; margin:4px 0; padding-left:12px; position:relative; }}
+  .sources li::before {{ content:"•"; position:absolute; left:0; color:var(--accent); }}
   @media(min-width:768px) {{ body {{ max-width:900px; margin:0 auto; padding:24px; }} .stats-grid {{ grid-template-columns:repeat(6,1fr); }} .stat-box.ace-total {{ grid-column:span 6; }} }}
 </style>
 </head>
 <body>
-<h1>🌀 Hurricane ACE Dashboard</h1>
+<div class="header">
+  <h1>🌀 Hurricane ACE Dashboard</h1>
+  <button class="theme-btn" id="themeBtn" onclick="toggleTheme()">☀</button>
+</div>
 <div class="updated">Updated: {now.strftime('%B %d, %Y at %I:%M %p')}</div>
+<div class="nav-link"><a href="history.html">📊 Season History ({START_YEAR}–present)</a></div>
 <div class="toggle">
   <button class="active" onclick="show('atlantic',this)">Atlantic</button>
   <button onclick="show('pacific',this)">Eastern Pacific</button>
@@ -1277,10 +1296,225 @@ function show(id,btn) {{
   document.getElementById(id)?.classList.add('active');
   btn.classList.add('active');
 }}
+function toggleTheme() {{
+  var h=document.documentElement;
+  var light=h.getAttribute('data-theme')==='light';
+  h.setAttribute('data-theme',light?'dark':'light');
+  localStorage.setItem('ace-theme',light?'dark':'light');
+  document.getElementById('themeBtn').textContent=light?'☀':'☾';
+}}
+document.addEventListener('DOMContentLoaded',function() {{
+  document.getElementById('themeBtn').textContent=document.documentElement.getAttribute('data-theme')==='light'?'☾':'☀';
+}});
 </script>
 </body>
 </html>'''
     return html
+
+
+def generate_history_html(basin_data):
+    """Generate a historical seasons summary page (all seasons since START_YEAR)."""
+    now = datetime.now()
+
+    def _badge_class(ace_val, basin_key):
+        c = get_noaa_classification(ace_val, basin_key)
+        if 'Extreme' in c:
+            return 'extreme', c
+        if 'Above' in c:
+            return 'above', c
+        if 'Below' in c:
+            return 'below', c
+        return 'near', c
+
+    basin_sections = []
+    for bd in basin_data:
+        if not bd:
+            continue
+        basin = BASINS[bd['basin_key']]
+        current = bd['current']
+        yearly_totals = bd['yearly_totals']
+        yearly_stats = bd.get('yearly_stats')
+        current_year = current['year']
+        normal = basin['normal_ace']
+
+        # Build per-year data from yearly_stats (HURDAT2 historical)
+        years_data = {}
+        if yearly_stats:
+            for year, stats in yearly_stats.items():
+                years_data[year] = {
+                    'ace': round(stats['ace'], 1),
+                    'named': stats['named_storms'],
+                    'hurricanes': stats['hurricanes'],
+                    'majors': stats['major_hurricanes'],
+                    'leader': stats.get('ace_leader') or '—',
+                }
+        else:
+            for year, ace in yearly_totals.items():
+                years_data[year] = {
+                    'ace': round(ace, 1),
+                    'named': '—', 'hurricanes': '—', 'majors': '—', 'leader': '—',
+                }
+
+        # Override current year with live data (more up-to-date than HURDAT2)
+        details = current.get('storm_details', {})
+        current_storms = current.get('storms', {})
+        current_ace = round(current['total'], 1)
+        named = len(details)
+        hurricanes = sum(1 for d in details.values() if d.get('max_wind', 0) >= 64)
+        majors = sum(1 for d in details.values() if d.get('max_wind', 0) >= 96)
+        leader = max(current_storms, key=current_storms.get) if current_storms else '—'
+        years_data[current_year] = {
+            'ace': current_ace,
+            'named': named,
+            'hurricanes': hurricanes,
+            'majors': majors,
+            'leader': leader,
+            'active': True,
+        }
+
+        # Compute ACE rank for each year
+        ranked = sorted(years_data.items(), key=lambda x: x[1]['ace'], reverse=True)
+        ranks = {year: i + 1 for i, (year, _) in enumerate(ranked)}
+        total_seasons = len(years_data)
+
+        # Build table rows sorted year descending
+        rows = []
+        for year in sorted(years_data.keys(), reverse=True):
+            d = years_data[year]
+            ace = d['ace']
+            pct = round(ace / normal * 100) if normal > 0 else 0
+            bc, classification = _badge_class(ace, bd['basin_key'])
+            rank = ranks[year]
+            is_active = d.get('active', False)
+            row_cls = f'row-{bc}' + (' row-current' if is_active else '')
+            active_label = ' <span class="active-dot" title="Season in progress">●</span>' if is_active else ''
+            rows.append(
+                f'<tr class="{row_cls}">'
+                f'<td><b>{year}</b>{active_label}</td>'
+                f'<td><b>{ace:.1f}</b></td>'
+                f'<td>{pct}%</td>'
+                f'<td><span class="badge badge-{bc}">{classification}</span></td>'
+                f'<td>{d["named"]}</td>'
+                f'<td>{d["hurricanes"]}</td>'
+                f'<td>{d["majors"]}</td>'
+                f'<td>{d["leader"]}</td>'
+                f'<td>#{rank}&nbsp;/&nbsp;{total_seasons}</td>'
+                f'</tr>'
+            )
+
+        basin_sections.append(f'''
+    <div class="basin-card" id="{bd['basin_key']}">
+      <h2>{basin['name']} — All Seasons ({START_YEAR}–{current_year})</h2>
+      <p class="season-note">{total_seasons} seasons &nbsp;·&nbsp; ● = currently active &nbsp;·&nbsp; sorted by year (most recent first)</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Year</th><th>ACE</th><th>% Normal</th><th>Classification</th>
+              <th>Named</th><th>Hurr.</th><th>Major</th><th>ACE Leader</th><th>Rank</th>
+            </tr>
+          </thead>
+          <tbody>{''.join(rows)}</tbody>
+        </table>
+      </div>
+    </div>''')
+
+    html = f'''<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hurricane ACE History</title>
+<script>(function(){{var t=localStorage.getItem('ace-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light');}})();</script>
+<style>
+  :root {{
+    --bg:#0a1628; --card:#132238; --box:#1a2d4a; --accent:#4fc3f7;
+    --text:#e0e6ed; --text-strong:#ffffff; --muted:#78909c; --border:#1e3a5f;
+    --sources-bg:#0d1b2a;
+    --row-extreme:rgba(239,83,80,0.10); --row-above:rgba(255,143,0,0.10);
+    --row-below:rgba(66,165,245,0.10); --row-near:transparent;
+    --current-border:#4fc3f7; --active-dot:#4fc3f7;
+    --badge-extreme:#ef5350; --badge-above:#ff8f00; --badge-near:#546e7a; --badge-below:#1976d2;
+  }}
+  [data-theme="light"] {{
+    --bg:#f0f4f8; --card:#ffffff; --box:#e8f0fe; --accent:#0277bd;
+    --text:#1a2d4a; --text-strong:#0a1628; --muted:#607d8b; --border:#b0bec5;
+    --sources-bg:#e2ecf7;
+    --row-extreme:rgba(198,40,40,0.07); --row-above:rgba(230,81,0,0.07);
+    --row-below:rgba(21,101,192,0.07); --row-near:transparent;
+    --current-border:#0277bd; --active-dot:#0277bd;
+    --badge-extreme:#c62828; --badge-above:#e65100; --badge-near:#546e7a; --badge-below:#1565c0;
+  }}
+  * {{ margin:0; padding:0; box-sizing:border-box; }}
+  body {{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:var(--bg); color:var(--text); padding:12px; transition:background 0.2s,color 0.2s; }}
+  .header {{ display:flex; align-items:center; justify-content:center; gap:8px; margin:8px 0; position:relative; }}
+  h1 {{ color:var(--accent); font-size:1.4em; }}
+  .theme-btn {{ position:absolute; right:0; background:transparent; border:1px solid var(--accent); color:var(--accent); border-radius:20px; padding:4px 10px; cursor:pointer; font-size:0.9em; }}
+  .updated {{ text-align:center; color:var(--muted); font-size:0.8em; margin-bottom:8px; }}
+  .nav-link {{ text-align:center; margin-bottom:12px; }}
+  .nav-link a {{ color:var(--accent); text-decoration:none; font-size:0.85em; border:1px solid var(--accent); border-radius:20px; padding:4px 14px; }}
+  .nav-link a:hover {{ background:var(--accent); color:var(--bg); }}
+  .toggle {{ display:flex; justify-content:center; gap:8px; margin-bottom:16px; }}
+  .toggle button {{ padding:8px 20px; border:1px solid var(--accent); background:transparent; color:var(--accent); border-radius:20px; cursor:pointer; font-size:0.9em; }}
+  .toggle button.active {{ background:var(--accent); color:var(--bg); font-weight:bold; }}
+  .basin-card {{ background:var(--card); border-radius:12px; padding:16px; margin-bottom:16px; display:none; }}
+  .basin-card.active {{ display:block; }}
+  h2 {{ color:var(--accent); font-size:1.2em; margin-bottom:6px; border-bottom:1px solid var(--border); padding-bottom:8px; }}
+  .season-note {{ color:var(--muted); font-size:0.78em; margin-bottom:12px; }}
+  .table-wrap {{ overflow-x:auto; }}
+  table {{ width:100%; border-collapse:collapse; font-size:0.85em; }}
+  th {{ background:var(--box); color:var(--accent); padding:8px 6px; text-align:left; position:sticky; top:0; white-space:nowrap; }}
+  td {{ padding:7px 6px; border-bottom:1px solid var(--border); color:var(--text); white-space:nowrap; }}
+  tr:hover td {{ filter:brightness(1.12); }}
+  .row-extreme {{ background:var(--row-extreme); }}
+  .row-above {{ background:var(--row-above); }}
+  .row-near {{ background:var(--row-near); }}
+  .row-below {{ background:var(--row-below); }}
+  .row-current {{ border-left:3px solid var(--current-border); }}
+  .badge {{ display:inline-block; padding:2px 8px; border-radius:12px; font-size:0.78em; font-weight:600; color:#fff; white-space:nowrap; }}
+  .badge-extreme {{ background:var(--badge-extreme); }}
+  .badge-above {{ background:var(--badge-above); }}
+  .badge-near {{ background:var(--badge-near); }}
+  .badge-below {{ background:var(--badge-below); }}
+  .active-dot {{ color:var(--active-dot); font-size:0.65em; vertical-align:middle; margin-left:3px; }}
+  @media(min-width:768px) {{ body {{ max-width:960px; margin:0 auto; padding:24px; }} }}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>🌀 Hurricane ACE History</h1>
+  <button class="theme-btn" id="themeBtn" onclick="toggleTheme()">☀</button>
+</div>
+<div class="updated">Updated: {now.strftime('%B %d, %Y at %I:%M %p')}</div>
+<div class="nav-link"><a href="index.html">← Current Season</a></div>
+<div class="toggle">
+  <button class="active" onclick="show('atlantic',this)">Atlantic</button>
+  <button onclick="show('pacific',this)">Eastern Pacific</button>
+</div>
+{''.join(basin_sections)}
+<script>
+document.querySelectorAll('.basin-card')[0]?.classList.add('active');
+function show(id,btn) {{
+  document.querySelectorAll('.basin-card').forEach(c=>c.classList.remove('active'));
+  document.querySelectorAll('.toggle button').forEach(b=>b.classList.remove('active'));
+  document.getElementById(id)?.classList.add('active');
+  btn.classList.add('active');
+}}
+function toggleTheme() {{
+  var h=document.documentElement;
+  var light=h.getAttribute('data-theme')==='light';
+  h.setAttribute('data-theme',light?'dark':'light');
+  localStorage.setItem('ace-theme',light?'dark':'light');
+  document.getElementById('themeBtn').textContent=light?'☀':'☾';
+}}
+document.addEventListener('DOMContentLoaded',function() {{
+  document.getElementById('themeBtn').textContent=document.documentElement.getAttribute('data-theme')==='light'?'☾':'☀';
+}});
+</script>
+</body>
+</html>'''
+    return html
+
 
 # =============================================================================
 # MAIN
@@ -1310,7 +1544,7 @@ def main():
         output_files.append(os.path.join(OUTPUT_FOLDER, BASINS['pacific']['output_file']))
         basin_results.append(result)
 
-    # Generate dashboard HTML
+    # Generate HTML pages
     if basin_results:
         dashboard_html = generate_dashboard_html(basin_results)
         dashboard_path = os.path.join(OUTPUT_FOLDER, 'ACE_Dashboard.html')
@@ -1322,6 +1556,17 @@ def main():
         except (OSError, PermissionError) as e:
             logger.error(f"Failed to save dashboard {dashboard_path}: {e}")
             print(f"\n  ✗ Error: Could not save dashboard")
+
+        history_html = generate_history_html(basin_results)
+        history_path = os.path.join(OUTPUT_FOLDER, 'history.html')
+        try:
+            with open(history_path, 'w', encoding='utf-8') as f:
+                f.write(history_html)
+            output_files.append(history_path)
+            print(f"  ✓ History page saved to: {history_path}")
+        except (OSError, PermissionError) as e:
+            logger.error(f"Failed to save history page {history_path}: {e}")
+            print(f"  ✗ Error: Could not save history page")
 
     print("\n" + "=" * 50)
     print("All done! Spreadsheets and dashboard updated.")
