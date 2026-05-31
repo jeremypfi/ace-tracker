@@ -1238,9 +1238,9 @@ def generate_dashboard_html(basin_data):
   }}
   * {{ margin:0; padding:0; box-sizing:border-box; }}
   body {{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:var(--bg); color:var(--text); padding:12px; transition:background 0.2s,color 0.2s; }}
-  .header {{ display:flex; align-items:center; justify-content:space-between; padding:0 4px; margin:8px 0; }}
-  h1 {{ color:var(--accent); font-size:1.4em; }}
-  .theme-btn {{ background:transparent; border:1px solid var(--accent); color:var(--accent); border-radius:20px; padding:4px 10px; cursor:pointer; font-size:0.9em; }}
+  .header {{ display:grid; grid-template-columns:1fr auto 1fr; align-items:center; margin:8px 0; padding:0 4px; }}
+  h1 {{ color:var(--accent); font-size:1.4em; text-align:center; }}
+  .theme-btn {{ justify-self:end; background:transparent; border:1px solid var(--accent); color:var(--accent); border-radius:20px; padding:4px 10px; cursor:pointer; font-size:0.9em; }}
   .updated {{ text-align:center; color:var(--muted); font-size:0.8em; margin-bottom:8px; }}
   .nav-link {{ text-align:center; margin-bottom:12px; }}
   .nav-link a {{ color:var(--accent); text-decoration:none; font-size:0.85em; border:1px solid var(--accent); border-radius:20px; padding:4px 14px; }}
@@ -1541,9 +1541,9 @@ def generate_history_html(basin_data):
   }}
   * {{ margin:0; padding:0; box-sizing:border-box; }}
   body {{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:var(--bg); color:var(--text); padding:12px; transition:background 0.2s,color 0.2s; }}
-  .header {{ display:flex; align-items:center; justify-content:space-between; padding:0 4px; margin:8px 0; }}
-  h1 {{ color:var(--accent); font-size:1.4em; }}
-  .theme-btn {{ background:transparent; border:1px solid var(--accent); color:var(--accent); border-radius:20px; padding:4px 10px; cursor:pointer; font-size:0.9em; }}
+  .header {{ display:grid; grid-template-columns:1fr auto 1fr; align-items:center; margin:8px 0; padding:0 4px; }}
+  h1 {{ color:var(--accent); font-size:1.4em; text-align:center; }}
+  .theme-btn {{ justify-self:end; background:transparent; border:1px solid var(--accent); color:var(--accent); border-radius:20px; padding:4px 10px; cursor:pointer; font-size:0.9em; }}
   .updated {{ text-align:center; color:var(--muted); font-size:0.8em; margin-bottom:8px; }}
   .nav-link {{ text-align:center; margin-bottom:12px; }}
   .nav-link a {{ color:var(--accent); text-decoration:none; font-size:0.85em; border:1px solid var(--accent); border-radius:20px; padding:4px 14px; }}
@@ -1592,6 +1592,7 @@ def generate_history_html(basin_data):
   .badge-below {{ background:var(--badge-below); }}
   .active-dot {{ color:var(--active-dot); font-size:0.65em; vertical-align:middle; margin-left:3px; }}
   @media(min-width:768px) {{ body {{ max-width:960px; margin:0 auto; padding:24px; }} }}
+  @media(min-width:1100px) {{ body {{ max-width:1280px; }} }}
 </style>
 </head>
 <body>
