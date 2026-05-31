@@ -245,8 +245,17 @@ def parse_hurdat2(basin_key):
                         storm_name = storm_obj.name.title() if storm_obj.name else 'UNNAMED'
                         storm_year = storm_obj.year
 
-                        # Get max wind (vmax is an array, we need the max)
-                        max_wind = int(max(storm_obj.vmax)) if len(storm_obj.vmax) > 0 else 0
+                        # Max wind while tropical/subtropical only — extratropical peaks
+                        # don't count toward NHC hurricane classification (e.g. a storm
+                        # peaking at 70kt as EX is not counted as a hurricane).
+                        tropical_types = {'TD', 'TS', 'HU', 'SS', 'SD'}
+                        if hasattr(storm_obj, 'type') and len(storm_obj.type) > 0:
+                            trop_winds = [v for v, t in zip(storm_obj.vmax, storm_obj.type)
+                                          if str(t) in tropical_types]
+                            max_wind = int(max(trop_winds)) if trop_winds else (
+                                int(max(storm_obj.vmax)) if len(storm_obj.vmax) > 0 else 0)
+                        else:
+                            max_wind = int(max(storm_obj.vmax)) if len(storm_obj.vmax) > 0 else 0
 
                         # Get start and end dates
                         start_date = storm_obj.time[0] if len(storm_obj.time) > 0 else None
@@ -348,8 +357,15 @@ def get_current_season(basin_key):
                         # Tropycal calculates ACE for us
                         storm_ace = storm_obj.ace if hasattr(storm_obj, 'ace') and storm_obj.ace else 0.0
 
-                        # Get max wind
-                        max_wind = int(max(storm_obj.vmax)) if len(storm_obj.vmax) > 0 else 0
+                        # Max wind while tropical/subtropical only (same logic as primary path)
+                        tropical_types = {'TD', 'TS', 'HU', 'SS', 'SD'}
+                        if hasattr(storm_obj, 'type') and len(storm_obj.type) > 0:
+                            trop_winds = [v for v, t in zip(storm_obj.vmax, storm_obj.type)
+                                          if str(t) in tropical_types]
+                            max_wind = int(max(trop_winds)) if trop_winds else (
+                                int(max(storm_obj.vmax)) if len(storm_obj.vmax) > 0 else 0)
+                        else:
+                            max_wind = int(max(storm_obj.vmax)) if len(storm_obj.vmax) > 0 else 0
 
                         # Store storm data
                         storms[storm_name] = storm_ace
