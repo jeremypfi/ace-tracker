@@ -52,6 +52,12 @@ pip3 install -r requirements.txt
 - **Only @jeremypfi can approve and merge PRs** (CODEOWNERS + branch protection)
 - All 25 tests must pass before committing — run `/pre-commit` skill
 - Never commit `data/*.xlsx` or `data/*.html` — gitignored
+- **Before opening any PR:** fetch origin and merge main into the branch first:
+  ```bash
+  git fetch origin
+  git merge origin/main --no-edit
+  git push
+  ```
 
 ## Known Issue
 
