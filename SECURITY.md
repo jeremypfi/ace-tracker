@@ -10,32 +10,35 @@
 
 This project is a hurricane tracking tool that:
 - ✅ Uses **public data** from NOAA (no authentication required)
-- ✅ Generates **local files** only (no external uploads)
 - ✅ Has **no user authentication** system
 - ✅ Contains **no sensitive data**
-- ✅ Runs **locally** on your machine
+- ✅ Publishes only **public hurricane data** to GitHub Pages
+- ✅ **No API keys or credentials** anywhere in the codebase
 
 ## Data Privacy
 
 **What this tool does:**
-- Downloads public hurricane data from NOAA
-- Generates Excel spreadsheets locally
-- Creates HTML dashboards locally
-- All files stored in `data/` folder on your computer
+- Downloads public hurricane data from NOAA via the Tropycal library
+- Generates Excel spreadsheets locally in `data/`
+- Generates HTML dashboards locally in `data/`
+- Publishes HTML dashboards to a public GitHub Pages site (https://jeremypfi.github.io/ace-tracker/) via GitHub Actions every 6 hours during hurricane season
 
 **What this tool does NOT do:**
 - ❌ Collect personal information
-- ❌ Send data to external servers (except downloading NOAA public data)
 - ❌ Require API keys or credentials
 - ❌ Store passwords or tokens
 - ❌ Track user behavior
+- ❌ Upload anything beyond the generated HTML/PNG files to GitHub Pages
 
 ## Dependencies
 
-This project relies on third-party Python packages:
-- `tropycal` - Hurricane data library
-- `openpyxl` - Excel file generation
-- `matplotlib`, `cartopy`, `shapely` - Mapping/visualization (via Tropycal)
+This project relies on third-party Python packages (see `requirements.txt`):
+- `tropycal` — hurricane data library (HURDAT2 + NHC best track)
+- `openpyxl` — Excel file generation
+- `shapely`, `cartopy` — geographic calculations (via Tropycal)
+- `setuptools<82` — pinned due to Tropycal dependency on `pkg_resources`
+
+Dependency updates are automated via Dependabot (weekly, grouped minor/patch PRs).
 
 **Security best practice:** Always install from official sources:
 ```bash
@@ -78,4 +81,4 @@ The license provides the software "as is" without warranty.
 
 ---
 
-**Last Updated:** April 24, 2026
+**Last Updated:** May 31, 2026
