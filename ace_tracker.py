@@ -33,7 +33,6 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 import tropycal.tracks as tracks
-import tropycal.realtime as realtime
 
 # Configure logging
 logging.basicConfig(
@@ -1221,8 +1220,10 @@ def generate_dashboard_html(basin_data):
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Track the current Atlantic and Eastern Pacific hurricane season ACE (Accumulated Cyclone Energy) in real time. Updated every 6 hours during hurricane season.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌀</text></svg>">
 <title>Hurricane ACE Dashboard</title>
-<script>(function(){{var t=localStorage.getItem('ace-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light');}})();</script>
+<script>(function(){{try{{var t=localStorage.getItem('ace-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light');}}catch(e){{}}}})();</script>
 <style>
   :root {{
     --bg:#0a1628; --card:#132238; --box:#1a2d4a; --accent:#4fc3f7; --accent2:#29b6f6;
@@ -1239,8 +1240,8 @@ def generate_dashboard_html(basin_data):
   * {{ margin:0; padding:0; box-sizing:border-box; }}
   body {{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:var(--bg); color:var(--text); padding:12px; transition:background 0.2s,color 0.2s; }}
   .header {{ display:grid; grid-template-columns:1fr auto 1fr; align-items:center; margin:8px 0; padding:0 4px; }}
-  h1 {{ color:var(--accent); font-size:1.4em; text-align:center; }}
-  .theme-btn {{ justify-self:end; background:transparent; border:1px solid var(--accent); color:var(--accent); border-radius:20px; padding:4px 10px; cursor:pointer; font-size:0.9em; }}
+  h1 {{ grid-column:2; color:var(--accent); font-size:1.4em; text-align:center; }}
+  .theme-btn {{ grid-column:3; justify-self:end; background:transparent; border:1px solid var(--accent); color:var(--accent); border-radius:20px; padding:4px 10px; cursor:pointer; font-size:0.9em; }}
   .updated {{ text-align:center; color:var(--muted); font-size:0.8em; margin-bottom:8px; }}
   .nav-link {{ text-align:center; margin-bottom:12px; }}
   .nav-link a {{ color:var(--accent); text-decoration:none; font-size:0.85em; border:1px solid var(--accent); border-radius:20px; padding:4px 14px; }}
@@ -1289,7 +1290,9 @@ def generate_dashboard_html(basin_data):
   .sources ul {{ list-style:none; padding:0; margin:0; }}
   .sources li {{ color:var(--muted); font-size:0.78em; margin:4px 0; padding-left:12px; position:relative; }}
   .sources li::before {{ content:"•"; position:absolute; left:0; color:var(--accent); }}
+  .sources code {{ font-size:0.9em; background:var(--box); padding:1px 4px; border-radius:3px; }}
   @media(min-width:768px) {{ body {{ max-width:900px; margin:0 auto; padding:24px; }} .stats-grid {{ grid-template-columns:repeat(6,1fr); }} .stat-box.ace-total {{ grid-column:span 6; }} }}
+  @media(min-width:1100px) {{ body {{ max-width:1100px; }} }}
 </style>
 </head>
 <body>
@@ -1312,7 +1315,7 @@ def generate_dashboard_html(basin_data):
   <h4>Data Sources</h4>
   <ul>
     <li><a href="https://www.nhc.noaa.gov/data/#hurdat" target="_blank">NOAA HURDAT2</a> — Historical best-track data (1991–present) for storm tracks, wind speeds, and ACE calculations</li>
-    <li><a href="https://climatlas.com/tropical/" target="_blank">Climatlas.com (Dr. Ryan Maue)</a> — Current season real-time storm data, max intensity, and ACE values from ATCF advisories</li>
+    <li><a href="https://www.nhc.noaa.gov/data/#hurdat" target="_blank">NHC Real-time Best Track</a> — Current season preliminary storm data fetched via Tropycal (<code>include_btk=True</code>); updated continuously during active storms</li>
     <li><a href="https://www.cpc.ncep.noaa.gov/products/outlooks/background_information.shtml" target="_blank">NOAA CPC</a> — Season classification thresholds and 1991–2020 climatological normals</li>
   </ul>
   <p>ACE (Accumulated Cyclone Energy) is calculated at 6-hourly synoptic times (0000/0600/1200/1800 UTC) for systems at tropical storm strength or higher (≥34 kt), including subtropical storms. Formula: ACE = Σ(V²<sub>max</sub>) × 10⁻⁴. Categories use the Saffir-Simpson scale in knots.</p>
@@ -1329,7 +1332,7 @@ function toggleTheme() {{
   var h=document.documentElement;
   var light=h.getAttribute('data-theme')==='light';
   h.setAttribute('data-theme',light?'dark':'light');
-  localStorage.setItem('ace-theme',light?'dark':'light');
+  try{{localStorage.setItem('ace-theme',light?'dark':'light');}}catch(e){{}}
   document.getElementById('themeBtn').textContent=light?'☀':'☾';
 }}
 document.addEventListener('DOMContentLoaded',function() {{
@@ -1411,14 +1414,16 @@ def generate_history_html(basin_data):
         hurricanes = sum(1 for d in details.values() if d.get('max_wind', 0) >= 64)
         majors = sum(1 for d in details.values() if d.get('max_wind', 0) >= 96)
         leader = max(current_storms, key=current_storms.get) if current_storms else '—'
-        years_data[current_year] = {
-            'ace': current_ace,
-            'named': named,
-            'hurricanes': hurricanes,
-            'majors': majors,
-            'leader': leader,
-            'active': True,
-        }
+        # Only add current year row once the season has actual storm activity
+        if current_ace > 0 or named > 0:
+            years_data[current_year] = {
+                'ace': current_ace,
+                'named': named,
+                'hurricanes': hurricanes,
+                'majors': majors,
+                'leader': leader,
+                'active': True,
+            }
 
         # Compute ACE rank and top-5
         ranked = sorted(years_data.items(), key=lambda x: x[1]['ace'], reverse=True)
@@ -1518,8 +1523,10 @@ def generate_history_html(basin_data):
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Compare every Atlantic and Eastern Pacific hurricane season from 1991 to present by ACE, storm counts, and NOAA activity classifications.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌀</text></svg>">
 <title>Hurricane ACE History</title>
-<script>(function(){{var t=localStorage.getItem('ace-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light');}})();</script>
+<script>(function(){{try{{var t=localStorage.getItem('ace-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light');}}catch(e){{}}}})();</script>
 <style>
   :root {{
     --bg:#0a1628; --card:#132238; --box:#1a2d4a; --accent:#4fc3f7;
@@ -1542,8 +1549,8 @@ def generate_history_html(basin_data):
   * {{ margin:0; padding:0; box-sizing:border-box; }}
   body {{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:var(--bg); color:var(--text); padding:12px; transition:background 0.2s,color 0.2s; }}
   .header {{ display:grid; grid-template-columns:1fr auto 1fr; align-items:center; margin:8px 0; padding:0 4px; }}
-  h1 {{ color:var(--accent); font-size:1.4em; text-align:center; }}
-  .theme-btn {{ justify-self:end; background:transparent; border:1px solid var(--accent); color:var(--accent); border-radius:20px; padding:4px 10px; cursor:pointer; font-size:0.9em; }}
+  h1 {{ grid-column:2; color:var(--accent); font-size:1.4em; text-align:center; }}
+  .theme-btn {{ grid-column:3; justify-self:end; background:transparent; border:1px solid var(--accent); color:var(--accent); border-radius:20px; padding:4px 10px; cursor:pointer; font-size:0.9em; }}
   .updated {{ text-align:center; color:var(--muted); font-size:0.8em; margin-bottom:8px; }}
   .nav-link {{ text-align:center; margin-bottom:12px; }}
   .nav-link a {{ color:var(--accent); text-decoration:none; font-size:0.85em; border:1px solid var(--accent); border-radius:20px; padding:4px 14px; }}
@@ -1591,6 +1598,15 @@ def generate_history_html(basin_data):
   .badge-near {{ background:var(--badge-near); }}
   .badge-below {{ background:var(--badge-below); }}
   .active-dot {{ color:var(--active-dot); font-size:0.65em; vertical-align:middle; margin-left:3px; }}
+  .sources {{ background:var(--sources-bg); border-top:1px solid var(--border); margin-top:24px; padding:16px 12px; border-radius:8px; }}
+  .sources h4 {{ color:var(--muted); font-size:0.8em; text-transform:uppercase; margin-bottom:8px; }}
+  .sources a {{ color:var(--accent); text-decoration:none; font-size:0.78em; }}
+  .sources a:hover {{ text-decoration:underline; }}
+  .sources p {{ color:var(--muted-dark,#546e7a); font-size:0.75em; margin-top:8px; line-height:1.5; }}
+  .sources ul {{ list-style:none; padding:0; margin:0; }}
+  .sources li {{ color:var(--muted); font-size:0.78em; margin:4px 0; padding-left:12px; position:relative; }}
+  .sources li::before {{ content:"•"; position:absolute; left:0; color:var(--accent); }}
+  .sources code {{ font-size:0.9em; background:var(--box); padding:1px 4px; border-radius:3px; }}
   @media(min-width:768px) {{ body {{ max-width:960px; margin:0 auto; padding:24px; }} }}
   @media(min-width:1100px) {{ body {{ max-width:1280px; }} }}
 </style>
@@ -1617,6 +1633,15 @@ def generate_history_html(basin_data):
   <span class="badge badge-below">Below Normal &lt;73</span>
 </div>
 {''.join(basin_sections)}
+<div class="sources">
+  <h4>Data Sources</h4>
+  <ul>
+    <li><a href="https://www.nhc.noaa.gov/data/#hurdat" target="_blank">NOAA HURDAT2</a> — Official historical best-track database (1991–present) for all storm tracks, wind speeds, and ACE calculations</li>
+    <li><a href="https://www.nhc.noaa.gov/data/#hurdat" target="_blank">NHC Real-time Best Track</a> — Current season preliminary storm data fetched via Tropycal (<code>include_btk=True</code>); updated continuously during active storms</li>
+    <li><a href="https://www.cpc.ncep.noaa.gov/products/outlooks/background_information.shtml" target="_blank">NOAA CPC</a> — Season classification thresholds and 1991–2020 climatological normals</li>
+  </ul>
+  <p>ACE (Accumulated Cyclone Energy) is calculated at 6-hourly synoptic times (0000/0600/1200/1800 UTC) for systems at tropical storm strength or higher (≥34 kt), including subtropical storms. Formula: ACE = Σ(V²<sub>max</sub>) × 10⁻⁴. Categories use the Saffir-Simpson scale in knots.</p>
+</div>
 <script>
 document.querySelectorAll('.basin-card')[0]?.classList.add('active');
 function show(id,btn) {{
@@ -1629,7 +1654,7 @@ function toggleTheme() {{
   var h=document.documentElement;
   var light=h.getAttribute('data-theme')==='light';
   h.setAttribute('data-theme',light?'dark':'light');
-  localStorage.setItem('ace-theme',light?'dark':'light');
+  try{{localStorage.setItem('ace-theme',light?'dark':'light');}}catch(e){{}}
   document.getElementById('themeBtn').textContent=light?'☀':'☾';
 }}
 document.addEventListener('DOMContentLoaded',function() {{
