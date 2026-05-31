@@ -1,229 +1,168 @@
-# 🌀 ACE Tracker
+# ACE Tracker
 
 **Atlantic & Eastern Pacific Hurricane ACE Tracker**
 
-A Python-based tool that tracks Accumulated Cyclone Energy (ACE) for Atlantic and Eastern Pacific hurricane seasons with comprehensive storm-by-storm historical data from 1991 onward.
+Tracks Accumulated Cyclone Energy (ACE) for Atlantic and Eastern Pacific hurricane seasons with storm-by-storm data from 1991 onward. Publishes a live web dashboard updated every 6 hours during hurricane season.
 
-[![Python](https://img.shields.io/badge/python-3.7+-blue.svg)](https://www.python.org/downloads/)
+[![Tests](https://github.com/jeremypfi/ace-tracker/actions/workflows/tests.yml/badge.svg)](https://github.com/jeremypfi/ace-tracker/actions/workflows/tests.yml)
+[![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 ---
 
-## 📊 Features
+## Live Site
 
-- **Automated Data Collection**: Fetches real-time storm data from climatlas.com and historical data from NOAA HURDAT2
-- **Dual Basin Tracking**: Tracks both Atlantic and Eastern Pacific hurricane seasons
-- **Excel Spreadsheets**: Generates detailed Excel files with 5 tabs each:
-  - Summary (season overview, stats, and similar years)
-  - Current Season Storms (individual storm breakdown)
+| Page | URL |
+|---|---|
+| Current Season Dashboard | https://jeremypfi.github.io/ace-tracker/ |
+| Season History (1991–present) | https://jeremypfi.github.io/ace-tracker/history.html |
+
+Updated every 6 hours during hurricane season (Eastern Pacific: May 15 – Nov 30 · Atlantic: Jun 1 – Nov 30).
+
+---
+
+## Features
+
+- **Real-time tracking** — current season ACE updated every 6 hours via NHC best track data
+- **Dual basin** — Atlantic and Eastern Pacific, toggle between them on each page
+- **Live web dashboard** — published to GitHub Pages automatically; dark/light mode toggle
+- **Season history page** — all seasons 1991–present in a sortable table with classification badges, top-5 highlights, and a long-term average row
+- **Excel spreadsheets** — two workbooks generated each run with 5 tabs each:
+  - Summary (season overview, stats, similar years)
+  - Current Season Storms (storm-by-storm ACE breakdown)
   - Historical Storms (all storms since 1991)
   - Yearly Totals (ranked historical seasons)
-  - Discord Update (copy/paste ready for Discord)
-- **Mobile-Friendly Dashboard**: Interactive HTML dashboard with stats, rankings, and insights
-- **Discord Integration**: Formatted updates ready to copy and paste into Discord
-- **Historical Analysis**:
-  - Season rankings back to 1991
-  - Similar season comparisons
-  - NOAA classification (Below Normal, Near Normal, Above Normal, Extremely Active)
-  - Storm intensity breakdowns (Tropical Depressions, Tropical Storms, Hurricanes, Major Hurricanes)
+  - Discord Update (copy/paste ready)
+- **Offline fallback** — backup data for the current season if NOAA is unreachable
+- **NOAA classifications** — Below Normal / Near Normal / Above Normal / Extremely Active
 
 ---
 
-## 📸 Screenshots
+## What is ACE?
 
-### Dashboard
-The mobile-friendly HTML dashboard provides an at-a-glance view of the current hurricane season:
+**Accumulated Cyclone Energy (ACE)** measures total hurricane season activity by combining storm intensity and duration. It's calculated by squaring the maximum sustained wind speed (in knots) at each 6-hour synoptic time when the system is at tropical storm strength or higher, then summing across all storms.
 
-![Dashboard Preview](images/dashboard-preview.png)
-*Interactive dashboard with season stats, storm breakdown, and historical rankings*
+**Formula:** ACE = Σ(V²max) × 10⁻⁴
 
-### Excel Spreadsheet
-Comprehensive Excel workbooks with 5 tabs of detailed data:
+A long-lived major hurricane contributes far more ACE than a brief tropical storm. NOAA uses seasonal ACE totals to classify activity levels.
 
-![Excel Summary Tab](images/excel-summary.png)
-*Summary tab showing season overview and key statistics*
+### NOAA Season Classifications (both basins)
 
-![Excel Storms Tab](images/excel-storms.png)
-*Current season storms with ACE breakdown and categories*
-
-> **Note:** To add screenshots to this README:
-> 1. Run the tracker: `python3 ace_tracker.py`
-> 2. Open `data/ACE_Dashboard.html` in your browser and take a screenshot
-> 3. Open one of the Excel files and take screenshots of the tabs
-> 4. Save images to the `images/` folder with the filenames shown above
-> 5. Commit and push the images to GitHub
+| Classification | ACE |
+|---|---|
+| Extremely Active | ≥ 159 |
+| Above Normal | 126 – 159 |
+| Near Normal | 73 – 126 |
+| Below Normal | < 73 |
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
-### Prerequisites
+### Requirements
 
-- Python 3.7 or higher
+- Python 3.10 or higher
 - Internet connection (for fetching live data)
 
 ### Installation
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/jeremypfi/ace-tracker.git
-   cd ace-tracker
-   ```
+```bash
+git clone https://github.com/jeremypfi/ace-tracker.git
+cd ace-tracker
+pip3 install -r requirements.txt
+```
 
-2. **Install dependencies**
-   ```bash
-   pip3 install -r requirements.txt
-   ```
+### Run
 
-### Usage
-
-Run the tracker:
 ```bash
 python3 ace_tracker.py
 ```
 
-The script will:
-1. Download the latest storm data from climatlas.com
-2. Download historical data from NOAA HURDAT2
-3. Generate two Excel spreadsheets in the `data/` folder:
-   - `ACE_Tracker_Atlantic.xlsx`
-   - `ACE_Tracker_Pacific.xlsx`
-4. Create an HTML dashboard: `ACE_Dashboard.html`
-5. Print a console report with the latest stats
+Generates in `data/`:
+- `ACE_Tracker_Atlantic.xlsx`
+- `ACE_Tracker_Pacific.xlsx`
+- `ACE_Dashboard.html` — open in any browser
+- `history.html` — all-seasons history page
+
+### Run tests
+
+```bash
+python3 test_ace_tracker.py
+```
+
+All 25 tests must pass before committing.
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 ace-tracker/
-├── README.md              # This file
-├── ace_tracker.py         # Main Python script
-├── requirements.txt       # Python dependencies
-├── .gitignore            # Git ignore rules
-└── data/                 # Generated files (not committed)
+├── ace_tracker.py          # Main script — data fetch, ACE calc, HTML/Excel generation
+├── test_ace_tracker.py     # 25 unit tests
+├── requirements.txt        # Python dependencies
+├── ace.png                 # Site logo (favicon + header)
+├── .github/
+│   ├── workflows/
+│   │   ├── tests.yml       # CI: runs tests on push/PR (Python 3.10, 3.11, 3.12)
+│   │   └── publish.yml     # Scheduled: generates and deploys dashboard every 6 hours
+│   ├── dependabot.yml      # Automated dependency updates
+│   └── CODEOWNERS          # @jeremypfi must approve all PRs
+├── SECURITY.md
+└── data/                   # Generated output (xlsx/html gitignored, ace.png committed)
+    ├── ace.png
     ├── ACE_Tracker_Atlantic.xlsx
     ├── ACE_Tracker_Pacific.xlsx
-    └── ACE_Dashboard.html
+    ├── ACE_Dashboard.html
+    └── history.html
 ```
 
 ---
 
-## 📖 What is ACE?
+## Data Sources
 
-**Accumulated Cyclone Energy (ACE)** is a metric used by NOAA to measure the total energy of a tropical cyclone season. It's calculated by squaring the maximum sustained wind speed (in knots) every 6 hours when the system is at tropical storm strength or higher, then summing those values.
-
-**Formula:** ACE = Σ(V²max) × 10⁻⁴
-
-ACE provides a better measure of season activity than just counting named storms, since it accounts for both intensity and duration.
+- **[NOAA HURDAT2](https://www.nhc.noaa.gov/data/#hurdat)** — official historical best-track database (1991–present) via the [Tropycal](https://tropycal.github.io/tropycal/) library
+- **[NHC Real-time Best Track](https://www.nhc.noaa.gov/data/#hurdat)** — current season preliminary data (`include_btk=True` in Tropycal), updated continuously during active storms
+- **[NOAA CPC](https://www.cpc.ncep.noaa.gov/products/outlooks/background_information.shtml)** — season classification thresholds and 1991–2020 climatological normals
 
 ---
 
-## 🎯 Understanding the Data
+## Configuration
 
-### Spreadsheet Tabs
+Key constants at the top of `ace_tracker.py`:
 
-1. **Summary** - Quick overview with:
-   - Total ACE for the season
-   - Percentage of "normal" season
-   - Historical ranking (since 1991)
-   - Similar past seasons
-   - Key season statistics
-
-2. **Current Season Storms** - Individual storm details:
-   - Storm name, ACE value, percentage contribution
-   - Category, max wind speed, duration
-   - Major hurricanes highlighted in red
-
-3. **Historical Storms** - Complete storm database:
-   - All storms since 1991 with ACE calculations
-   - Category, max wind, duration
-   - Current year storms highlighted in yellow
-
-4. **Yearly Totals** - Historical season rankings:
-   - All seasons ranked by ACE
-   - NOAA classification for each year
-   - Storm counts (named storms, hurricanes, major hurricanes)
-
-5. **Discord Update** - Formatted text ready to copy/paste into Discord
-
-### NOAA Season Classifications
-
-- **Below Normal**: < 73 ACE
-- **Near Normal**: 73-126 ACE (Atlantic) / 73-159 ACE (Pacific)
-- **Above Normal**: 126-159 ACE (Atlantic) / 159+ ACE (Pacific)
-- **Extremely Active**: 159+ ACE (Atlantic)
+| Constant | Purpose |
+|---|---|
+| `START_YEAR` | Earliest year included in historical data (default: 1991) |
+| `OUTPUT_FOLDER` | Where Excel and HTML files are saved (default: `data/`) |
+| `BASINS` | Normal ACE values and average storm counts per basin |
+| `BACKUP_DATA` | Fallback season data used if NOAA is unreachable |
 
 ---
 
-## 🔧 Configuration
+## Troubleshooting
 
-Edit the `CONFIGURATION` section in `ace_tracker.py` to customize:
-
-- **Output folder**: Change where files are saved
-- **Start year**: Adjust the historical range
-- **Normal ACE values**: Update baseline comparisons
-- **Backup data**: Fallback values if network fails
-
----
-
-## 🐛 Troubleshooting
-
-### "No module named openpyxl"
+**`No module named openpyxl`**
 ```bash
-pip3 install openpyxl
+pip3 install -r requirements.txt
 ```
 
-### "Permission denied" error
-```bash
-chmod +x ace_tracker.py
+**Script can't fetch data**
+The tracker falls back to `BACKUP_DATA` automatically. You'll see:
+```
+✗ Error loading Tropycal data → Using backup data (yearly totals only)
 ```
 
-### Script can't download data
-- Check your internet connection
-- The script will automatically fall back to backup data if downloads fail
-- You'll see a message: `✗ Error fetching current season: ... → Using backup data instead`
-
-### Spreadsheet won't open
-- Ensure you have Excel, LibreOffice, or OpenOffice installed
-- The `.xlsx` format is compatible with all modern spreadsheet applications
+**`pkg_resources` deprecation warning**
+Tropycal 1.4 uses `pkg_resources` which is deprecated in setuptools 81+. `requirements.txt` pins `setuptools<82` as a workaround. Monitor [Tropycal releases](https://github.com/tropycal/tropycal/releases) for a fix.
 
 ---
 
-## 📊 Data Sources
+## Credits
 
-- **[NOAA HURDAT2](https://www.nhc.noaa.gov/data/#hurdat)** - Historical best-track data (1851-present) for storm tracks, wind speeds, and ACE calculations
-- **[Climatlas.com](https://climatlas.com/tropical/)** (Dr. Ryan Maue) - Current season real-time storm data and ACE values from ATCF advisories
-- **[NOAA CPC](https://www.cpc.ncep.noaa.gov/products/outlooks/background_information.shtml)** - Season classification thresholds and 1991-2020 climatological normals
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Feel free to:
-- Report bugs
-- Suggest new features
-- Submit pull requests
-
----
-
-## 📝 License
-
-This project is open source and available under the MIT License.
-
----
-
-## 🙏 Credits
-
-- Built with Claude (Anthropic)
-- Data from NOAA National Hurricane Center and Climatlas.com
-- Inspired by hurricane tracking communities on Discord
-
----
-
-## 🌊 2026 Hurricane Season
-
-Good luck tracking the storms! 🌀
+- Built with [Claude Code](https://claude.ai/claude-code) (Anthropic)
+- Data from [NOAA National Hurricane Center](https://www.nhc.noaa.gov/) via [Tropycal](https://tropycal.github.io/tropycal/)
+- Inspired by hurricane tracking communities
 
 ---
 
