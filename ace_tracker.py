@@ -1240,7 +1240,8 @@ def generate_dashboard_html(basin_data):
   * {{ margin:0; padding:0; box-sizing:border-box; }}
   body {{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:var(--bg); color:var(--text); padding:12px; transition:background 0.2s,color 0.2s; }}
   .header {{ display:grid; grid-template-columns:1fr auto 1fr; align-items:center; margin:8px 0; padding:0 4px; }}
-  h1 {{ grid-column:2; color:var(--accent); font-size:1.4em; text-align:center; }}
+  h1 {{ grid-column:2; color:var(--accent); font-size:1.4em; text-align:center; display:flex; align-items:center; justify-content:center; gap:8px; }}
+  .logo {{ height:1.5em; width:auto; vertical-align:middle; }}
   .theme-btn {{ grid-column:3; justify-self:end; background:transparent; border:1px solid var(--accent); color:var(--accent); border-radius:20px; padding:4px 10px; cursor:pointer; font-size:0.9em; }}
   .updated {{ text-align:center; color:var(--muted); font-size:0.8em; margin-bottom:8px; }}
   .nav-link {{ text-align:center; margin-bottom:12px; }}
@@ -1297,7 +1298,7 @@ def generate_dashboard_html(basin_data):
 </head>
 <body>
 <div class="header">
-  <h1>🌀 Hurricane ACE Dashboard</h1>
+  <h1><img src="ace.png" class="logo" alt="ACE"> Hurricane ACE Dashboard</h1>
   <button class="theme-btn" id="themeBtn" onclick="toggleTheme()">☀</button>
 </div>
 <div class="updated">Updated: {now.strftime('%B %d, %Y at %I:%M %p')}</div>
@@ -1549,7 +1550,8 @@ def generate_history_html(basin_data):
   * {{ margin:0; padding:0; box-sizing:border-box; }}
   body {{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:var(--bg); color:var(--text); padding:12px; transition:background 0.2s,color 0.2s; }}
   .header {{ display:grid; grid-template-columns:1fr auto 1fr; align-items:center; margin:8px 0; padding:0 4px; }}
-  h1 {{ grid-column:2; color:var(--accent); font-size:1.4em; text-align:center; }}
+  h1 {{ grid-column:2; color:var(--accent); font-size:1.4em; text-align:center; display:flex; align-items:center; justify-content:center; gap:8px; }}
+  .logo {{ height:1.5em; width:auto; vertical-align:middle; }}
   .theme-btn {{ grid-column:3; justify-self:end; background:transparent; border:1px solid var(--accent); color:var(--accent); border-radius:20px; padding:4px 10px; cursor:pointer; font-size:0.9em; }}
   .updated {{ text-align:center; color:var(--muted); font-size:0.8em; margin-bottom:8px; }}
   .nav-link {{ text-align:center; margin-bottom:12px; }}
@@ -1613,7 +1615,7 @@ def generate_history_html(basin_data):
 </head>
 <body>
 <div class="header">
-  <h1>🌀 Hurricane ACE History</h1>
+  <h1><img src="ace.png" class="logo" alt="ACE"> Hurricane ACE History</h1>
   <button class="theme-btn" id="themeBtn" onclick="toggleTheme()">☀</button>
 </div>
 <div class="updated">Updated: {now.strftime('%B %d, %Y at %I:%M %p')}</div>
