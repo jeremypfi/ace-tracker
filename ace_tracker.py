@@ -1322,6 +1322,9 @@ def generate_dashboard_html(basin_data):
   .sources li::before {{ content:"•"; position:absolute; left:0; color:var(--accent); }}
   .sources code {{ font-size:0.9em; background:var(--box); padding:1px 4px; border-radius:3px; }}
   .disclaimer {{ margin-top:12px; padding:10px 12px; border-radius:6px; border-left:3px solid var(--muted); font-size:0.75em; color:var(--muted); line-height:1.5; }}
+  .kofi-link {{ text-align:center; margin-top:14px; font-size:0.78em; }}
+  .kofi-link a {{ color:var(--muted); text-decoration:none; }}
+  .kofi-link a:hover {{ color:var(--accent); }}
   .season-prog {{ margin:-4px 0 14px; }}
   .season-prog-label {{ color:var(--muted); font-size:0.8em; margin-bottom:5px; text-align:center; }}
   .season-prog-track {{ height:6px; background:var(--gauge-bg); border-radius:3px; }}
@@ -1358,6 +1361,7 @@ def generate_dashboard_html(basin_data):
   </ul>
   <p>ACE (Accumulated Cyclone Energy) is calculated at 6-hourly synoptic times (0000/0600/1200/1800 UTC) for systems at tropical storm strength or higher (≥34 kt), including subtropical storms. Formula: ACE = Σ(V²<sub>max</sub>) × 10⁻⁴. Categories use the Saffir-Simpson scale in knots.</p>
   <p class="disclaimer">⚠️ This site is maintained by a hurricane data enthusiast — not a meteorologist, forecaster, or weather professional of any kind. I just love the data. All information is sourced directly from official NOAA/NHC databases. For official forecasts, watches, warnings, and life-safety information, always refer to the <a href="https://www.nhc.noaa.gov/" target="_blank">National Hurricane Center</a>.</p>
+  <p class="kofi-link"><a href="https://ko-fi.com/aceofcanes" target="_blank" rel="noopener noreferrer">☕ Support this project on Ko-fi</a></p>
 </div>
 <script>
 document.querySelectorAll('.basin-card')[0]?.classList.add('active');
@@ -1648,6 +1652,9 @@ def generate_history_html(basin_data):
   .sources li::before {{ content:"•"; position:absolute; left:0; color:var(--accent); }}
   .sources code {{ font-size:0.9em; background:var(--box); padding:1px 4px; border-radius:3px; }}
   .disclaimer {{ margin-top:12px; padding:10px 12px; border-radius:6px; border-left:3px solid var(--muted); font-size:0.75em; color:var(--muted); line-height:1.5; }}
+  .kofi-link {{ text-align:center; margin-top:14px; font-size:0.78em; }}
+  .kofi-link a {{ color:var(--muted); text-decoration:none; }}
+  .kofi-link a:hover {{ color:var(--accent); }}
   @media(min-width:768px) {{ body {{ max-width:960px; margin:0 auto; padding:24px; }} }}
   @media(min-width:1100px) {{ body {{ max-width:1280px; }} }}
 </style>
@@ -1683,6 +1690,7 @@ def generate_history_html(basin_data):
   </ul>
   <p>ACE (Accumulated Cyclone Energy) is calculated at 6-hourly synoptic times (0000/0600/1200/1800 UTC) for systems at tropical storm strength or higher (≥34 kt), including subtropical storms. Formula: ACE = Σ(V²<sub>max</sub>) × 10⁻⁴. Categories use the Saffir-Simpson scale in knots.</p>
   <p class="disclaimer">⚠️ This site is maintained by a hurricane data enthusiast — not a meteorologist, forecaster, or weather professional of any kind. I just love the data. All information is sourced directly from official NOAA/NHC databases. For official forecasts, watches, warnings, and life-safety information, always refer to the <a href="https://www.nhc.noaa.gov/" target="_blank">National Hurricane Center</a>.</p>
+  <p class="kofi-link"><a href="https://ko-fi.com/aceofcanes" target="_blank" rel="noopener noreferrer">☕ Support this project on Ko-fi</a></p>
 </div>
 <script>
 document.querySelectorAll('.basin-card')[0]?.classList.add('active');
