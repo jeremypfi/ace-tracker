@@ -67,7 +67,9 @@ jobs:
         python ace_tracker.py
 
     - name: Prepare for deployment
-      run: cp data/ACE_Dashboard.html data/index.html
+      run: |
+        cp data/ACE_Dashboard.html data/index.html
+        cp CNAME data/CNAME
 
     - name: Upload Pages artifact
       uses: actions/upload-pages-artifact@v5
