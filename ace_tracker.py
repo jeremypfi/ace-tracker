@@ -1121,22 +1121,27 @@ def process_basin(basin_key):
 # DASHBOARD HTML
 # =============================================================================
 
-def _season_progress_html(basin_key):
+def _season_progress_html(basin_key, season_year):
     today = datetime.now().date()
-    year = today.year
     if basin_key == 'atlantic':
-        start = datetime(year, 6, 1).date()
-        end = datetime(year, 11, 30).date()
+        start = datetime(season_year, 6, 1).date()
+        end = datetime(season_year, 11, 30).date()
     else:
-        start = datetime(year, 5, 15).date()
-        end = datetime(year, 11, 30).date()
+        start = datetime(season_year, 5, 15).date()
+        end = datetime(season_year, 11, 30).date()
     total_days = (end - start).days + 1
+    # Past season or after Nov 30 — show full completed bar
+    if today > end:
+        return (
+            f'<div class="season-prog">'
+            f'<div class="season-prog-label">Day {total_days} of {total_days} &middot; Season complete</div>'
+            f'<div class="season-prog-track"><div class="season-prog-fill" style="width:100%"></div></div>'
+            f'</div>'
+        )
     if today < start:
         days_until = (start - today).days
         label = f'Season begins {start.strftime("%B")} {start.day} — {days_until} day{"s" if days_until != 1 else ""} away'
         return f'<div class="season-prog offseason">{label}</div>'
-    if today > end:
-        return '<div class="season-prog offseason">Season complete — Off-season</div>'
     day_num = (today - start).days + 1
     pct = day_num / total_days * 100
     return (
@@ -1206,7 +1211,7 @@ def generate_dashboard_html(basin_data):
         sections.append(f'''
     <div class="basin-card" id="{bd['basin_key']}">
       <h2>{basin['name']} — {current_year} Season</h2>
-      {_season_progress_html(bd['basin_key'])}
+      {_season_progress_html(bd['basin_key'], current_year)}
       <div class="stats-grid">
         <div class="stat-box ace-total">
           <div class="stat-label">Season ACE</div>
