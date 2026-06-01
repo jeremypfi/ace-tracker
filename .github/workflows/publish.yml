@@ -70,6 +70,8 @@ jobs:
       run: |
         cp data/ACE_Dashboard.html data/index.html
         cp CNAME data/CNAME
+        cp robots.txt data/robots.txt
+        cp sitemap.xml data/sitemap.xml
 
     - name: Upload Pages artifact
       uses: actions/upload-pages-artifact@v5

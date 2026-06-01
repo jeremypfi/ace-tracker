@@ -1255,8 +1255,18 @@ def generate_dashboard_html(basin_data):
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="description" content="Track the current Atlantic and Eastern Pacific hurricane season ACE (Accumulated Cyclone Energy) in real time. Updated every 6 hours during hurricane season.">
+<meta name="theme-color" content="#4fc3f7">
+<link rel="canonical" href="https://aceofcanes.com/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="ACE Tracker">
+<meta property="og:url" content="https://aceofcanes.com/">
+<meta property="og:title" content="Hurricane ACE Dashboard | aceofcanes.com">
+<meta property="og:description" content="Track Accumulated Cyclone Energy (ACE) for the Atlantic and Eastern Pacific hurricane seasons in real time. Updated every 6 hours from official NOAA data.">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Hurricane ACE Dashboard | aceofcanes.com">
+<meta name="twitter:description" content="Track Accumulated Cyclone Energy (ACE) for the Atlantic and Eastern Pacific hurricane seasons in real time. Updated every 6 hours from official NOAA data.">
 <link rel="icon" type="image/png" href="ace.png">
-<title>Hurricane ACE Dashboard</title>
+<title>Hurricane ACE Dashboard | aceofcanes.com</title>
 <script>(function(){{try{{var t=localStorage.getItem('ace-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light');}}catch(e){{}}}})();</script>
 <style>
   :root {{
@@ -1360,12 +1370,12 @@ def generate_dashboard_html(basin_data):
 <div class="sources">
   <h4>Data Sources</h4>
   <ul>
-    <li><a href="https://www.nhc.noaa.gov/data/#hurdat" target="_blank">NOAA HURDAT2</a> — Historical best-track data (1991–present) for storm tracks, wind speeds, and ACE calculations</li>
-    <li><a href="https://www.nhc.noaa.gov/data/#hurdat" target="_blank">NHC Real-time Best Track</a> — Current season preliminary storm data fetched via Tropycal (<code>include_btk=True</code>); updated continuously during active storms</li>
-    <li><a href="https://www.cpc.ncep.noaa.gov/products/outlooks/background_information.shtml" target="_blank">NOAA CPC</a> — Season classification thresholds and 1991–2020 climatological normals</li>
+    <li><a href="https://www.nhc.noaa.gov/data/#hurdat" target="_blank" rel="noopener noreferrer">NOAA HURDAT2</a> — Historical best-track data (1991–present) for storm tracks, wind speeds, and ACE calculations</li>
+    <li><a href="https://www.nhc.noaa.gov/data/#hurdat" target="_blank" rel="noopener noreferrer">NHC Real-time Best Track</a> — Current season preliminary storm data fetched via Tropycal (<code>include_btk=True</code>); updated continuously during active storms</li>
+    <li><a href="https://www.cpc.ncep.noaa.gov/products/outlooks/background_information.shtml" target="_blank" rel="noopener noreferrer">NOAA CPC</a> — Season classification thresholds and 1991–2020 climatological normals</li>
   </ul>
   <p>ACE (Accumulated Cyclone Energy) is calculated at 6-hourly synoptic times (0000/0600/1200/1800 UTC) for systems at tropical storm strength or higher (≥34 kt), including subtropical storms. Formula: ACE = Σ(V²<sub>max</sub>) × 10⁻⁴. Categories use the Saffir-Simpson scale in knots.</p>
-  <p class="disclaimer">⚠️ This site is maintained by a hurricane data enthusiast — not a meteorologist, forecaster, or weather professional of any kind. I just love the data. All information is sourced directly from official NOAA/NHC databases. For official forecasts, watches, warnings, and life-safety information, always refer to the <a href="https://www.nhc.noaa.gov/" target="_blank">National Hurricane Center</a>.</p>
+  <p class="disclaimer">⚠️ This site is maintained by a hurricane data enthusiast — not a meteorologist, forecaster, or weather professional of any kind. I just love the data. All information is sourced directly from official NOAA/NHC databases. For official forecasts, watches, warnings, and life-safety information, always refer to the <a href="https://www.nhc.noaa.gov/" target="_blank" rel="noopener noreferrer">National Hurricane Center</a>.</p>
   <p class="kofi-link"><a href="https://ko-fi.com/aceofcanes" target="_blank" rel="noopener noreferrer">☕ Support this project on Ko-fi</a></p>
 </div>
 <script>
@@ -1572,8 +1582,18 @@ def generate_history_html(basin_data):
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="description" content="Compare every Atlantic and Eastern Pacific hurricane season from 1991 to present by ACE, storm counts, and NOAA activity classifications.">
+<meta name="theme-color" content="#4fc3f7">
+<link rel="canonical" href="https://aceofcanes.com/history.html">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="ACE Tracker">
+<meta property="og:url" content="https://aceofcanes.com/history.html">
+<meta property="og:title" content="Season History (1991–present) | aceofcanes.com">
+<meta property="og:description" content="Compare every Atlantic and Eastern Pacific hurricane season from 1991 to present by ACE, storm counts, and NOAA activity classifications.">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Season History (1991–present) | aceofcanes.com">
+<meta name="twitter:description" content="Compare every Atlantic and Eastern Pacific hurricane season from 1991 to present by ACE, storm counts, and NOAA activity classifications.">
 <link rel="icon" type="image/png" href="ace.png">
-<title>Hurricane ACE History</title>
+<title>Season History (1991–present) | aceofcanes.com</title>
 <script>(function(){{try{{var t=localStorage.getItem('ace-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light');}}catch(e){{}}}})();</script>
 <style>
   :root {{
@@ -1689,12 +1709,12 @@ def generate_history_html(basin_data):
 <div class="sources">
   <h4>Data Sources</h4>
   <ul>
-    <li><a href="https://www.nhc.noaa.gov/data/#hurdat" target="_blank">NOAA HURDAT2</a> — Official historical best-track database (1991–present) for all storm tracks, wind speeds, and ACE calculations</li>
-    <li><a href="https://www.nhc.noaa.gov/data/#hurdat" target="_blank">NHC Real-time Best Track</a> — Current season preliminary storm data fetched via Tropycal (<code>include_btk=True</code>); updated continuously during active storms</li>
-    <li><a href="https://www.cpc.ncep.noaa.gov/products/outlooks/background_information.shtml" target="_blank">NOAA CPC</a> — Season classification thresholds and 1991–2020 climatological normals</li>
+    <li><a href="https://www.nhc.noaa.gov/data/#hurdat" target="_blank" rel="noopener noreferrer">NOAA HURDAT2</a> — Official historical best-track database (1991–present) for all storm tracks, wind speeds, and ACE calculations</li>
+    <li><a href="https://www.nhc.noaa.gov/data/#hurdat" target="_blank" rel="noopener noreferrer">NHC Real-time Best Track</a> — Current season preliminary storm data fetched via Tropycal (<code>include_btk=True</code>); updated continuously during active storms</li>
+    <li><a href="https://www.cpc.ncep.noaa.gov/products/outlooks/background_information.shtml" target="_blank" rel="noopener noreferrer">NOAA CPC</a> — Season classification thresholds and 1991–2020 climatological normals</li>
   </ul>
   <p>ACE (Accumulated Cyclone Energy) is calculated at 6-hourly synoptic times (0000/0600/1200/1800 UTC) for systems at tropical storm strength or higher (≥34 kt), including subtropical storms. Formula: ACE = Σ(V²<sub>max</sub>) × 10⁻⁴. Categories use the Saffir-Simpson scale in knots.</p>
-  <p class="disclaimer">⚠️ This site is maintained by a hurricane data enthusiast — not a meteorologist, forecaster, or weather professional of any kind. I just love the data. All information is sourced directly from official NOAA/NHC databases. For official forecasts, watches, warnings, and life-safety information, always refer to the <a href="https://www.nhc.noaa.gov/" target="_blank">National Hurricane Center</a>.</p>
+  <p class="disclaimer">⚠️ This site is maintained by a hurricane data enthusiast — not a meteorologist, forecaster, or weather professional of any kind. I just love the data. All information is sourced directly from official NOAA/NHC databases. For official forecasts, watches, warnings, and life-safety information, always refer to the <a href="https://www.nhc.noaa.gov/" target="_blank" rel="noopener noreferrer">National Hurricane Center</a>.</p>
   <p class="kofi-link"><a href="https://ko-fi.com/aceofcanes" target="_blank" rel="noopener noreferrer">☕ Support this project on Ko-fi</a></p>
 </div>
 <script>
