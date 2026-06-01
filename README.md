@@ -14,8 +14,8 @@ Tracks Accumulated Cyclone Energy (ACE) for Atlantic and Eastern Pacific hurrica
 
 | Page | URL |
 |---|---|
-| Current Season Dashboard | https://jeremypfi.github.io/ace-tracker/ |
-| Season History (1991–present) | https://jeremypfi.github.io/ace-tracker/history.html |
+| Current Season Dashboard | https://aceofcanes.com |
+| Season History (1991–present) | https://aceofcanes.com/history.html |
 
 Updated every 6 hours during hurricane season (Eastern Pacific: May 15 – Nov 30 · Atlantic: Jun 1 – Nov 30).
 
