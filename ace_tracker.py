@@ -606,7 +606,7 @@ def generate_discord_text(basin_key, current, yearly_totals, insights):
     current_year = current['year']
     current_ace = current['total']
     storms = current['storms']
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
 
     lines = []
     lines.append(f"🌀 **{basin['name']} ACE Update** — {now.strftime('%B %d, %Y')}")
@@ -723,7 +723,7 @@ def create_spreadsheet(basin_key, historical_storms, current, yearly_totals, yea
     ws_summary['A1'].font = Font(name='Arial', bold=True, size=16, color='1a2d4a')
     ws_summary.merge_cells('A1:D1')
 
-    ws_summary['A2'] = f"Generated: {datetime.now().strftime('%B %d, %Y at %I:%M %p')}"
+    ws_summary['A2'] = f"Generated: {datetime.now(timezone.utc).strftime('%B %d, %Y at %H:%M UTC')}"
     ws_summary['A2'].font = Font(name='Arial', italic=True, size=9, color='666666')
 
     # Key stats section
@@ -1154,7 +1154,7 @@ def _season_progress_html(basin_key, season_year):
 
 def generate_dashboard_html(basin_data):
     """Generate a mobile-friendly HTML dashboard for both basins."""
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
 
     def storm_rows_html(current):
         storms = current['storms']
@@ -1346,7 +1346,7 @@ def generate_dashboard_html(basin_data):
   <h1><img src="ace.png" class="logo" alt="ACE"> Hurricane ACE Dashboard</h1>
   <button class="theme-btn" id="themeBtn" onclick="toggleTheme()">☀</button>
 </div>
-<div class="updated">Updated: {now.strftime('%B %d, %Y at %I:%M %p')}</div>
+<div class="updated">Updated: {now.strftime('%B %d, %Y at %H:%M UTC')}</div>
 <div class="nav-link"><a href="history.html">📊 Season History ({START_YEAR}–present)</a></div>
 <details class="ace-explain">
   <summary>What is ACE? <span class="ace-explain-hint">(tap to expand)</span></summary>
@@ -1413,7 +1413,7 @@ function sortDash(th,col,type){{
 
 def generate_history_html(basin_data):
     """Generate a historical seasons summary page (all seasons since START_YEAR)."""
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
 
     def _badge_class(ace_val, basin_key):
         c = get_noaa_classification(ace_val, basin_key)
@@ -1669,7 +1669,7 @@ def generate_history_html(basin_data):
   <h1><img src="ace.png" class="logo" alt="ACE"> Hurricane ACE History</h1>
   <button class="theme-btn" id="themeBtn" onclick="toggleTheme()">☀</button>
 </div>
-<div class="updated">Updated: {now.strftime('%B %d, %Y at %I:%M %p')}</div>
+<div class="updated">Updated: {now.strftime('%B %d, %Y at %H:%M UTC')}</div>
 <div class="nav-link"><a href="index.html">← Current Season</a></div>
 <details class="ace-explain">
   <summary>What is ACE? <span class="ace-explain-hint">(tap to expand)</span></summary>
