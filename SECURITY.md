@@ -21,7 +21,7 @@ This project is a hurricane tracking tool that:
 - Downloads public hurricane data from NOAA via the Tropycal library
 - Generates Excel spreadsheets locally in `data/`
 - Generates HTML dashboards locally in `data/`
-- Publishes HTML dashboards to a public GitHub Pages site (https://jeremypfi.github.io/ace-tracker/) via GitHub Actions every 6 hours during hurricane season
+- Publishes HTML dashboards to a public GitHub Pages site (https://aceofcanes.com) via GitHub Actions every 6 hours during hurricane season
 
 **What this tool does NOT do:**
 - ❌ Collect personal information
