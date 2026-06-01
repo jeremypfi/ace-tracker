@@ -7,6 +7,7 @@ Tracks Accumulated Cyclone Energy (ACE) for Atlantic and Eastern Pacific hurrica
 [![Tests](https://github.com/jeremypfi/ace-tracker/actions/workflows/tests.yml/badge.svg)](https://github.com/jeremypfi/ace-tracker/actions/workflows/tests.yml)
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Ko-fi](https://img.shields.io/badge/Support-Ko--fi-ff5e5b?logo=ko-fi)](https://ko-fi.com/aceofcanes)
 
 ---
 
@@ -25,8 +26,9 @@ Updated every 6 hours during hurricane season (Eastern Pacific: May 15 – Nov 3
 
 - **Real-time tracking** — current season ACE updated every 6 hours via NHC best track data
 - **Dual basin** — Atlantic and Eastern Pacific, toggle between them on each page
-- **Live web dashboard** — published to GitHub Pages automatically; dark/light mode toggle
-- **Season history page** — all seasons 1991–present in a sortable table with classification badges, top-5 highlights, and a long-term average row
+- **Live web dashboard** — published to [aceofcanes.com](https://aceofcanes.com) automatically; dark/light mode toggle
+- **Season progress bar** — shows current day of season and percent complete; marks past seasons as complete
+- **Season history page** — all seasons 1991–present in a sortable table with classification badges, top-5 highlights, and a long-term average row; similar seasons link directly to matching history rows
 - **Excel spreadsheets** — two workbooks generated each run with 5 tabs each:
   - Summary (season overview, stats, similar years)
   - Current Season Storms (storm-by-storm ACE breakdown)
@@ -102,6 +104,9 @@ ace-tracker/
 ├── test_ace_tracker.py     # 25 unit tests
 ├── requirements.txt        # Python dependencies
 ├── ace.png                 # Site logo (favicon + header)
+├── CNAME                   # Custom domain for GitHub Pages (aceofcanes.com)
+├── robots.txt              # Search engine crawl rules
+├── sitemap.xml             # Sitemap for search engine indexing
 ├── .github/
 │   ├── workflows/
 │   │   ├── tests.yml       # CI: runs tests on push/PR (Python 3.10, 3.11, 3.12)
