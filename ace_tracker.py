@@ -526,8 +526,10 @@ def generate_insights(basin_key, current, yearly_totals, historical_storms, year
     # 3. Similar historical seasons
     similar = find_similar_seasons(current_ace, yearly_totals, exclude_year=current_year)
     if similar:
-        similar_str = ", ".join([f"{y} ({ace:.1f})" for y, ace in similar])
-        insights.append(f"📈 Most Similar Seasons: {similar_str}")
+        similar_links = ", ".join(
+            [f'<a href="history.html#{basin_key}-yr-{y}" class="sim-link">{y}</a> ({ace:.1f})' for y, ace in similar]
+        )
+        insights.append(f"📈 Most Similar Seasons: {similar_links}")
 
     # 4. Historical ranking
     all_years = list(yearly_totals.items())
@@ -1119,6 +1121,32 @@ def process_basin(basin_key):
 # DASHBOARD HTML
 # =============================================================================
 
+def _season_progress_html(basin_key):
+    today = datetime.now().date()
+    year = today.year
+    if basin_key == 'atlantic':
+        start = datetime(year, 6, 1).date()
+        end = datetime(year, 11, 30).date()
+    else:
+        start = datetime(year, 5, 15).date()
+        end = datetime(year, 11, 30).date()
+    total_days = (end - start).days + 1
+    if today < start:
+        days_until = (start - today).days
+        label = f'Season begins {start.strftime("%B")} {start.day} — {days_until} day{"s" if days_until != 1 else ""} away'
+        return f'<div class="season-prog offseason">{label}</div>'
+    if today > end:
+        return '<div class="season-prog offseason">Season complete — Off-season</div>'
+    day_num = (today - start).days + 1
+    pct = day_num / total_days * 100
+    return (
+        f'<div class="season-prog">'
+        f'<div class="season-prog-label">Day {day_num} of {total_days} &middot; {pct:.0f}% complete</div>'
+        f'<div class="season-prog-track"><div class="season-prog-fill" style="width:{pct:.1f}%"></div></div>'
+        f'</div>'
+    )
+
+
 def generate_dashboard_html(basin_data):
     """Generate a mobile-friendly HTML dashboard for both basins."""
     now = datetime.now()
@@ -1178,6 +1206,7 @@ def generate_dashboard_html(basin_data):
         sections.append(f'''
     <div class="basin-card" id="{bd['basin_key']}">
       <h2>{basin['name']} — {current_year} Season</h2>
+      {_season_progress_html(bd['basin_key'])}
       <div class="stats-grid">
         <div class="stat-box ace-total">
           <div class="stat-label">Season ACE</div>
@@ -1293,6 +1322,13 @@ def generate_dashboard_html(basin_data):
   .sources li::before {{ content:"•"; position:absolute; left:0; color:var(--accent); }}
   .sources code {{ font-size:0.9em; background:var(--box); padding:1px 4px; border-radius:3px; }}
   .disclaimer {{ margin-top:12px; padding:10px 12px; border-radius:6px; border-left:3px solid var(--muted); font-size:0.75em; color:var(--muted); line-height:1.5; }}
+  .season-prog {{ margin:-4px 0 14px; }}
+  .season-prog-label {{ color:var(--muted); font-size:0.8em; margin-bottom:5px; text-align:center; }}
+  .season-prog-track {{ height:6px; background:var(--gauge-bg); border-radius:3px; }}
+  .season-prog-fill {{ height:100%; background:linear-gradient(90deg,var(--accent),var(--accent2)); border-radius:3px; transition:width 0.5s; }}
+  .season-prog.offseason {{ color:var(--muted); font-size:0.8em; text-align:center; margin:-4px 0 14px; }}
+  .sim-link {{ color:var(--accent); text-decoration:none; }}
+  .sim-link:hover {{ text-decoration:underline; }}
   @media(min-width:768px) {{ body {{ max-width:900px; margin:0 auto; padding:24px; }} .stats-grid {{ grid-template-columns:repeat(6,1fr); }} .stat-box.ace-total {{ grid-column:span 6; }} }}
   @media(min-width:1100px) {{ body {{ max-width:1100px; }} }}
 </style>
@@ -1467,7 +1503,7 @@ def generate_history_html(basin_data):
             hurr_v = d['hurricanes'] if d['hurricanes'] != '—' else 0
             major_v = d['majors'] if d['majors'] != '—' else 0
             rows.append(
-                f'<tr class="{row_cls}">'
+                f'<tr class="{row_cls}" id="{bd["basin_key"]}-yr-{year}">'
                 f'<td data-v="{year}"><b>{year}</b>{active_label}</td>'
                 f'<td data-v="{ace:.4f}"><b>{ace:.1f}</b><div class="ace-bar"><div class="ace-bar-fill" style="width:{ace_bar_pct}%"></div></div></td>'
                 f'<td data-v="{pct}">{pct}%</td>'
