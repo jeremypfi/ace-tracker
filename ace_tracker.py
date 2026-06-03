@@ -1470,6 +1470,7 @@ function show(id,btn) {{
   document.querySelectorAll('.toggle button').forEach(b=>b.classList.remove('active'));
   document.getElementById(id)?.classList.add('active');
   btn.classList.add('active');
+  try{{history.replaceState(null,'','#'+id);}}catch(e){{}}
 }}
 function toggleTheme() {{
   var h=document.documentElement;
@@ -1480,6 +1481,9 @@ function toggleTheme() {{
 }}
 document.addEventListener('DOMContentLoaded',function() {{
   document.getElementById('themeBtn').textContent=document.documentElement.getAttribute('data-theme')==='light'?'☾':'☀';
+  var hash=location.hash.replace('#','');
+  var match=[].slice.call(document.querySelectorAll('.toggle button')).filter(function(b){{return(b.getAttribute('onclick')||'').indexOf("'"+hash+"'")>=0;}})[0];
+  if(match)match.click();
 }});
 var _ds={{}};
 function sortDash(th,col,type){{
@@ -1816,6 +1820,7 @@ function show(id,btn) {{
   document.querySelectorAll('.toggle button').forEach(b=>b.classList.remove('active'));
   document.getElementById(id)?.classList.add('active');
   btn.classList.add('active');
+  try{{history.replaceState(null,'','#'+id);}}catch(e){{}}
 }}
 function toggleTheme() {{
   var h=document.documentElement;
@@ -1826,6 +1831,9 @@ function toggleTheme() {{
 }}
 document.addEventListener('DOMContentLoaded',function() {{
   document.getElementById('themeBtn').textContent=document.documentElement.getAttribute('data-theme')==='light'?'☾':'☀';
+  var hash=location.hash.replace('#','');
+  var match=[].slice.call(document.querySelectorAll('.toggle button')).filter(function(b){{return(b.getAttribute('onclick')||'').indexOf("'"+hash+"'")>=0;}})[0];
+  if(match)match.click();
 }});
 var _hs={{}};
 function sortHist(th,col,type){{
