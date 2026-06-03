@@ -317,6 +317,14 @@ def get_current_season(basin_key):
     basin = BASINS[basin_key]
     tropycal_basin = _tropycal_basin_name(basin_key)
     current_year = datetime.now().year
+    today = datetime.now().date()
+    if basin_key == 'atlantic':
+        season_start = datetime(current_year, 6, 1).date()
+    else:
+        season_start = datetime(current_year, 5, 15).date()
+    season_end = datetime(current_year, 11, 30).date()
+    in_active_season = season_start <= today <= season_end
+    years_to_try = [current_year] if in_active_season else [current_year, current_year - 1]
 
     try:
         logger.info(f"Fetching current season data via Tropycal...")
@@ -329,8 +337,8 @@ def get_current_season(basin_key):
             include_btk=True
         )
 
-        # Try current year first, fall back to last year if no data
-        for year in [current_year, current_year - 1]:
+        # During active season only try current year; off-season also checks prior year
+        for year in years_to_try:
             try:
                 season = dataset.get_season(year)
 
@@ -366,6 +374,10 @@ def get_current_season(basin_key):
                         else:
                             max_wind = int(max(storm_obj.vmax)) if len(storm_obj.vmax) > 0 else 0
 
+                        # Skip TDs that never reached named-storm strength (e.g. Tropycal "One", "Two")
+                        if max_wind < MIN_NAMED_STORM_WIND:
+                            continue
+
                         # Store storm data
                         storms[storm_name] = storm_ace
                         storm_details[storm_name] = {
@@ -394,7 +406,11 @@ def get_current_season(basin_key):
                 logger.debug(f"No data for {year} season: {e}")
                 continue
 
-        # No current season data found
+        # No named storms found
+        if in_active_season:
+            logger.info(f"No storms yet for {current_year} season")
+            print(f"  ℹ No storms yet for {current_year} season — returning empty season")
+            return {'year': current_year, 'storms': {}, 'storm_details': {}, 'total': 0.0}
         logger.info(f"No {current_year} storms found (likely off-season)")
         print(f"  ℹ No {current_year} storms found (likely off-season)")
         print(f"  → Using backup data...")
@@ -403,6 +419,9 @@ def get_current_season(basin_key):
     except Exception as e:
         logger.error(f"Error fetching current season: {e}")
         print(f"  ✗ Error fetching current season via Tropycal: {e}")
+        if in_active_season:
+            print(f"  → Returning empty {current_year} season")
+            return {'year': current_year, 'storms': {}, 'storm_details': {}, 'total': 0.0}
         print(f"  → Using backup data...")
         return _backup_current(basin_key)
 
@@ -1152,6 +1171,44 @@ def _season_progress_html(basin_key, season_year):
     )
 
 
+def _preseason_html(basin_key, yearly_totals, current_year):
+    """HTML block for the no-storms-yet state: replaces storm table + insights."""
+    basin = BASINS[basin_key]
+    normal = basin['normal_ace']
+
+    totals = list(yearly_totals.values())
+    avg_ace = sum(totals) / len(totals) if totals else 0
+    max_year = max(yearly_totals, key=yearly_totals.get)
+    min_year = min(yearly_totals, key=yearly_totals.get)
+    above_count = sum(1 for v in totals if v >= 127)
+    total_seasons = len(totals)
+    last_year = current_year - 1
+    last_ace = yearly_totals.get(last_year, 0)
+    last_class = get_noaa_classification(last_ace, basin_key) if last_ace else 'N/A'
+
+    if basin_key == 'atlantic':
+        peak_note = "Activity typically peaks in August–September when Atlantic sea surface temperatures reach their annual high."
+    else:
+        peak_note = "The Eastern Pacific is often active earlier in the season, with storms possible as soon as May."
+
+    facts = [
+        f"📅 Last season ({last_year}): {last_ace:.1f} ACE — {last_class}",
+        f"📊 Historical average: {avg_ace:.1f} ACE/season (NOAA normal: {normal})",
+        f"🏆 Most active since {START_YEAR}: {max_year} ({yearly_totals[max_year]:.1f} ACE)",
+        f"📉 Quietest since {START_YEAR}: {min_year} ({yearly_totals[min_year]:.1f} ACE)",
+        f"🌀 {above_count} of {total_seasons} seasons since {START_YEAR} were Above Normal or stronger",
+        f"☀️ {peak_note}",
+    ]
+    fact_items = '\n'.join(f'<li>{f}</li>' for f in facts)
+
+    return f'''
+      <div class="preseason-notice">
+        <p>No named storms yet — the {current_year} season is underway but quiet so far.</p>
+      </div>
+      <h3>Did You Know?</h3>
+      <ul class="insights">{fact_items}</ul>'''
+
+
 def generate_dashboard_html(basin_data):
     """Generate a mobile-friendly HTML dashboard for both basins."""
     now = datetime.now(timezone.utc)
@@ -1201,31 +1258,16 @@ def generate_dashboard_html(basin_data):
         hurricanes = sum(1 for d in details.values() if d.get('max_wind', 0) >= 64)
         majors = sum(1 for d in details.values() if d.get('max_wind', 0) >= 96)
 
-        all_years = list(yearly_totals.items()) + [(current_year, current_ace)]
-        all_years.sort(key=lambda x: x[1], reverse=True)
-        rank = next(i + 1 for i, (y, _) in enumerate(all_years) if y == current_year)
-        total_seasons = len(all_years)
+        preseason = not current['storms'] and current_year == datetime.now().year
 
-        gauge_pct = min(pct_normal, 200)
-
-        sections.append(f'''
-    <div class="basin-card" id="{bd['basin_key']}">
-      <h2>{basin['name']} — {current_year} Season</h2>
-      {_season_progress_html(bd['basin_key'], current_year)}
-      <div class="stats-grid">
-        <div class="stat-box ace-total">
-          <div class="stat-label">Season ACE</div>
-          <div class="stat-value">{current_ace:.1f}</div>
-          <div class="stat-sub">{pct_normal:.0f}% of normal ({normal})</div>
-          <div class="gauge"><div class="gauge-fill" style="width:{gauge_pct/2}%"></div></div>
-        </div>
-        <div class="stat-box"><div class="stat-label">Classification</div><div class="stat-value small">{classification}</div></div>
-        <div class="stat-box"><div class="stat-label">Named Storms</div><div class="stat-value">{named}</div></div>
-        <div class="stat-box"><div class="stat-label">Hurricanes</div><div class="stat-value">{hurricanes}</div></div>
-        <div class="stat-box major-box"><div class="stat-label">Major Hurricanes</div><div class="stat-value">{majors}</div></div>
-        <div class="stat-box"><div class="stat-label">Rank (since {START_YEAR})</div><div class="stat-value">#{rank}<span class="stat-sub"> of {total_seasons}</span></div></div>
-      </div>
-
+        if preseason:
+            lower_section = _preseason_html(bd['basin_key'], yearly_totals, current_year)
+        else:
+            all_years = list(yearly_totals.items()) + [(current_year, current_ace)]
+            all_years.sort(key=lambda x: x[1], reverse=True)
+            rank = next(i + 1 for i, (y, _) in enumerate(all_years) if y == current_year)
+            total_seasons = len(all_years)
+            lower_section = f'''
       <h3>Storm Breakdown</h3>
       <div class="table-wrap">
         <table>
@@ -1246,7 +1288,49 @@ def generate_dashboard_html(basin_data):
       </div>
 
       <h3>Season Insights</h3>
-      <ul class="insights">{insight_items_html(insights)}</ul>
+      <ul class="insights">{insight_items_html(insights)}</ul>'''
+
+        gauge_pct = min(pct_normal, 200)
+
+        if preseason:
+            stats_grid = f'''
+      <div class="stats-grid">
+        <div class="stat-box ace-total">
+          <div class="stat-label">Season ACE</div>
+          <div class="stat-value">0.0</div>
+          <div class="stat-sub">Season underway — no storms yet</div>
+          <div class="gauge"><div class="gauge-fill" style="width:0%"></div></div>
+        </div>
+        <div class="stat-box"><div class="stat-label">Named Storms</div><div class="stat-value">0</div></div>
+        <div class="stat-box"><div class="stat-label">Hurricanes</div><div class="stat-value">0</div></div>
+        <div class="stat-box major-box"><div class="stat-label">Major Hurricanes</div><div class="stat-value">0</div></div>
+      </div>'''
+        else:
+            all_years = list(yearly_totals.items()) + [(current_year, current_ace)]
+            all_years.sort(key=lambda x: x[1], reverse=True)
+            rank = next(i + 1 for i, (y, _) in enumerate(all_years) if y == current_year)
+            total_seasons = len(all_years)
+            stats_grid = f'''
+      <div class="stats-grid">
+        <div class="stat-box ace-total">
+          <div class="stat-label">Season ACE</div>
+          <div class="stat-value">{current_ace:.1f}</div>
+          <div class="stat-sub">{pct_normal:.0f}% of normal ({normal})</div>
+          <div class="gauge"><div class="gauge-fill" style="width:{gauge_pct/2}%"></div></div>
+        </div>
+        <div class="stat-box"><div class="stat-label">Classification</div><div class="stat-value small">{classification}</div></div>
+        <div class="stat-box"><div class="stat-label">Named Storms</div><div class="stat-value">{named}</div></div>
+        <div class="stat-box"><div class="stat-label">Hurricanes</div><div class="stat-value">{hurricanes}</div></div>
+        <div class="stat-box major-box"><div class="stat-label">Major Hurricanes</div><div class="stat-value">{majors}</div></div>
+        <div class="stat-box"><div class="stat-label">Rank (since {START_YEAR})</div><div class="stat-value">#{rank}<span class="stat-sub"> of {total_seasons}</span></div></div>
+      </div>'''
+
+        sections.append(f'''
+    <div class="basin-card" id="{bd['basin_key']}">
+      <h2>{basin['name']} — {current_year} Season</h2>
+      {_season_progress_html(bd['basin_key'], current_year)}
+      {stats_grid}
+      {lower_section}
     </div>''')
 
     html = f'''<!DOCTYPE html>
@@ -1345,6 +1429,7 @@ def generate_dashboard_html(basin_data):
   .season-prog-track {{ height:6px; background:var(--gauge-bg); border-radius:3px; }}
   .season-prog-fill {{ height:100%; background:linear-gradient(90deg,var(--accent),var(--accent2)); border-radius:3px; transition:width 0.5s; }}
   .season-prog.offseason {{ color:var(--muted); font-size:0.8em; text-align:center; margin:-4px 0 14px; }}
+  .preseason-notice {{ background:var(--box); border-radius:8px; padding:14px 16px; margin:12px 0; border-left:4px solid var(--accent); font-size:0.9em; color:var(--text); text-align:center; line-height:1.5; }}
   .sim-link {{ color:var(--accent); text-decoration:none; }}
   .sim-link:hover {{ text-decoration:underline; }}
   @media(min-width:768px) {{ body {{ max-width:900px; margin:0 auto; padding:24px; }} .stats-grid {{ grid-template-columns:repeat(6,1fr); }} .stat-box.ace-total {{ grid-column:span 6; }} }}
