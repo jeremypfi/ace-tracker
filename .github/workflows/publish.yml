@@ -1,12 +1,12 @@
 name: Publish Dashboard
 
 on:
-  # Runs every 6 hours during hurricane season
+  # Runs every 3 hours during hurricane season
   # Eastern Pacific: May 15 – Nov 30 | Atlantic: Jun 1 – Nov 30
   # Date-gating is handled inside the job steps, not here, so the
   # workflow can also be triggered manually year-round for testing.
   schedule:
-    - cron: '0 0,6,12,18 * * *'
+    - cron: '0 0,3,6,9,12,15,18,21 * * *'
 
   # Manual trigger for testing outside of season
   workflow_dispatch:
