@@ -1557,8 +1557,15 @@ def generate_history_html(basin_data):
         hurricanes = sum(1 for d in details.values() if d.get('max_wind', 0) >= 64)
         majors = sum(1 for d in details.values() if d.get('max_wind', 0) >= 96)
         leader = max(current_storms, key=current_storms.get) if current_storms else '—'
-        # Only add current year row once the season has actual storm activity
-        if current_ace > 0 or named > 0:
+        # Add current year row if season is active or has storm activity
+        today = datetime.now().date()
+        if bd['basin_key'] == 'atlantic':
+            _season_start = datetime(current_year, 6, 1).date()
+        else:
+            _season_start = datetime(current_year, 5, 15).date()
+        _season_end = datetime(current_year, 11, 30).date()
+        _in_active_season = _season_start <= today <= _season_end and current_year == datetime.now().year
+        if current_ace > 0 or named > 0 or _in_active_season:
             years_data[current_year] = {
                 'ace': current_ace,
                 'named': named,
