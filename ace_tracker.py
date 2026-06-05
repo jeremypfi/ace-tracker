@@ -1505,6 +1505,7 @@ function sortDash(th,col,type){{
   card.querySelectorAll('.sort-th .sa').forEach((s,i)=>{{s.textContent=i===col?(asc?'▲':'▼'):'';}});
 }}
 </script>
+<!-- Cloudflare Web Analytics --><script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{{"token": "775dfcf117b94ff59e3c118c330d02aa"}}'></script><!-- End Cloudflare Web Analytics -->
 </body>
 </html>'''
     return html
@@ -1855,6 +1856,7 @@ function sortHist(th,col,type){{
   card.querySelectorAll('.sort-th .sa').forEach((s,i)=>{{s.textContent=i===col?(asc?'▲':'▼'):'';}});
 }}
 </script>
+<!-- Cloudflare Web Analytics --><script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{{"token": "775dfcf117b94ff59e3c118c330d02aa"}}'></script><!-- End Cloudflare Web Analytics -->
 </body>
 </html>'''
     return html
