@@ -595,12 +595,13 @@ def calculate_yearly_stats(storms):
         if storm['duration_days'] > s['longest_days']:
             s['longest_storm'] = storm['name']
             s['longest_days'] = storm['duration_days']
-        s['storms_list'].append({
-            'name': storm['name'],
-            'ace': round(storm['ace'], 2),
-            'category': storm['category'],
-            'max_wind': storm['max_wind'],
-        })
+        if storm['category'] != 'TD':
+            s['storms_list'].append({
+                'name': storm['name'],
+                'ace': round(storm['ace'], 2),
+                'category': storm['category'],
+                'max_wind': storm['max_wind'],
+            })
 
     for year in stats:
         stats[year]['ace'] = round(stats[year]['ace'], 2)
@@ -1322,7 +1323,7 @@ function sortDash(th,col,type){{
     var tr=document.getElementById('track-row-'+slug);
     if(tr)tbody.appendChild(tr);
   }});
-  card.querySelectorAll('.sort-th .sa').forEach(function(s,i){{s.textContent=i===col?(asc?'&#9650;':'&#9660;'):''}});
+  card.querySelectorAll('.sort-th .sa').forEach(function(s,i){{s.innerHTML=i===col?(asc?'&#9650;':'&#9660;'):''}});
 }}
 var ACE_TRACKS={json.dumps(all_track_data)};
 var _trMaps={{}};
@@ -1352,7 +1353,7 @@ function _buildMap(slug){{
   }}).addTo(map);
   var pts=d.points,lls=pts.map(function(p){{return[p.lat,p.lon];}});
   for(var i=0;i<pts.length-1;i++){{
-    L.polyline([[pts[i].lat,pts[i].lon],[pts[i+1].lat,pts[i+1].lon]],{{color:_tc(pts[i].status,pts[i].wind),weight:3,opacity:0.9}}).addTo(map);
+    L.polyline([[pts[i].lat,pts[i].lon],[pts[i+1].lat,pts[i+1].lon]],{{color:_tc(pts[i].status,pts[i].wind),weight:5,opacity:1}}).addTo(map);
   }}
   pts.forEach(function(p,i){{
     var c=_tc(p.status,p.wind),last=(i===pts.length-1);
@@ -1435,7 +1436,8 @@ def generate_history_html(basin_data):
             current_storms_list = sorted(
                 [{'name': n, 'ace': round(d.get('ace', 0), 2),
                   'category': get_category(d.get('max_wind', 0)), 'max_wind': d.get('max_wind', 0)}
-                 for n, d in details.items()],
+                 for n, d in details.items()
+                 if get_category(d.get('max_wind', 0)) != 'TD'],
                 key=lambda x: x['ace'], reverse=True
             )
             years_data[current_year] = {
@@ -1664,7 +1666,7 @@ def generate_history_html(basin_data):
   .yr-expand-btn.open .yr-chevron {{ transform:rotate(90deg); }}
   .yr-expand-row td {{ padding:0; border-bottom:1px solid var(--border); }}
   .yr-panel {{ overflow:hidden; max-height:0; transition:max-height 0.3s ease; background:var(--sources-bg); }}
-  .yr-panel.open {{ max-height:800px; }}
+  .yr-panel.open {{ max-height:2000px; }}
   .yr-panel-inner {{ padding:8px 12px 10px; }}
   .ys-row {{ display:grid; grid-template-columns:110px 48px 46px 1fr; align-items:center; gap:6px; padding:3px 0; font-size:0.82em; border-bottom:1px solid var(--border); }}
   .ys-row:last-child {{ border-bottom:none; }}
@@ -1752,7 +1754,7 @@ function sortHist(th,col,type){{
     var xrow=document.getElementById('yr-xrow-'+r.id);
     if(xrow)tbody.appendChild(xrow);
   }});
-  card.querySelectorAll('.sort-th .sa').forEach(function(s,i){{s.textContent=i===col?(asc?'&#9650;':'&#9660;'):''}});
+  card.querySelectorAll('.sort-th .sa').forEach(function(s,i){{s.innerHTML=i===col?(asc?'&#9650;':'&#9660;'):''}});
 }}
 function toggleYear(key){{
   var panel=document.getElementById('yrpanel-'+key);
