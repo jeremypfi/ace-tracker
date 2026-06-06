@@ -1232,9 +1232,9 @@ def generate_dashboard_html(basin_data):
   tr.active-storm-row {{ border-left:3px solid #4caf50; }}
   .track-row td {{ padding:0; border-bottom:2px solid var(--border); }}
   .track-panel {{ overflow:hidden; max-height:0; transition:max-height 0.35s ease; background:var(--card); }}
-  .track-panel.open {{ max-height:620px; }}
+  .track-panel.open {{ max-height:720px; }}
   .track-inner {{ padding:12px 14px 14px; }}
-  .track-map {{ height:255px; border-radius:8px; border:1px solid var(--border); margin-bottom:10px; }}
+  .track-map {{ height:320px; border-radius:8px; border:1px solid var(--border); margin-bottom:10px; }}
   .storm-meta {{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:10px; }}
   .meta-box {{ background:var(--box); border-radius:6px; padding:8px 10px; }}
   .meta-label {{ color:var(--muted); font-size:0.72em; text-transform:uppercase; }}
@@ -1361,7 +1361,7 @@ function _buildMap(slug){{
     mk.bindTooltip('<b>'+d.name+'</b><br>'+p.time+'<br>'+p.status+' \xb7 '+p.wind+'kt',{{direction:'top',offset:[0,-6]}});
     if(last&&d.active)mk.bindPopup('<b>Current Position</b><br>'+p.time+'<br>'+p.status+' \xb7 '+p.wind+'kt',{{maxWidth:160}}).openPopup();
   }});
-  if(lls.length)map.fitBounds(L.latLngBounds(lls),{{padding:[25,25]}});
+  if(lls.length)map.fitBounds(L.latLngBounds(lls),{{padding:[50,50],maxZoom:6}});
 }}
 </script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
