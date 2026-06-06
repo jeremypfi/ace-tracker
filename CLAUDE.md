@@ -4,9 +4,7 @@ This file provides guidance to Claude Code when working with code in this reposi
 
 ## Project Overview
 
-ACE Tracker tracks **Accumulated Cyclone Energy (ACE)** for Atlantic and Eastern Pacific hurricane seasons, generating Excel spreadsheets and an HTML dashboard from NOAA HURDAT2 data (1991–present) via the Tropycal library.
-
-**Critical constraint:** Excel output must always keep working. Verify both Excel files generate after every `ace_tracker.py` change.
+ACE Tracker tracks **Accumulated Cyclone Energy (ACE)** for Atlantic and East & Central Pacific hurricane seasons, generating an HTML dashboard and history page from NOAA HURDAT2 data (1991–present) via the Tropycal library.
 
 ## ACE Domain Knowledge
 
@@ -36,14 +34,14 @@ Same thresholds for both Atlantic and Eastern Pacific:
 ## Development Commands
 
 ```bash
-python3 ace_tracker.py        # generates Excel + HTML in data/
+python3 ace_tracker.py        # generates HTML files in data/
 python3 test_ace_tracker.py   # 25 tests — ALL must pass before committing
 pip3 install -r requirements.txt
 ```
 
 ## Architecture
 
-`ace_tracker.py` (~1,300 lines): fetches via Tropycal → calculates ACE at synoptic times → generates 5-tab Excel workbooks (Summary, Storms, Historical, Yearly, Discord) + HTML dashboard in `data/`.
+`ace_tracker.py` (~1,900 lines): fetches via Tropycal → calculates ACE at synoptic times → generates HTML dashboard + history page in `data/`.
 
 `test_ace_tracker.py`: 25 tests across 7 classes — categorization, ACE formula, NOAA classification, storm finalization, yearly totals, similar-season matching.
 
@@ -51,7 +49,7 @@ pip3 install -r requirements.txt
 
 - **Only @jeremypfi can approve and merge PRs** (CODEOWNERS + branch protection)
 - All 25 tests must pass before committing — run `/pre-commit` skill
-- Never commit `data/*.xlsx` or `data/*.html` — gitignored
+- Never commit `data/*.html` — gitignored
 - **Before opening any PR:** fetch origin and merge main into the branch first:
   ```bash
   git fetch origin
