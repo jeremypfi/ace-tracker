@@ -1346,9 +1346,13 @@ def generate_dashboard_html(basin_data):
 <meta property="og:url" content="https://aceofcanes.com/">
 <meta property="og:title" content="Hurricane ACE Dashboard | aceofcanes.com">
 <meta property="og:description" content="Track Accumulated Cyclone Energy (ACE) for the Atlantic and Eastern Pacific hurricane seasons in real time. Updated every 6 hours from official NOAA data.">
-<meta name="twitter:card" content="summary">
+<meta property="og:image" content="https://aceofcanes.com/ace_preview.png">
+<meta property="og:image:width" content="766">
+<meta property="og:image:height" content="976">
+<meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Hurricane ACE Dashboard | aceofcanes.com">
 <meta name="twitter:description" content="Track Accumulated Cyclone Energy (ACE) for the Atlantic and Eastern Pacific hurricane seasons in real time. Updated every 6 hours from official NOAA data.">
+<meta name="twitter:image" content="https://aceofcanes.com/ace_preview.png">
 <link rel="icon" type="image/png" href="ace.png">
 <title>Hurricane ACE Dashboard | aceofcanes.com</title>
 <script>(function(){{try{{var t=localStorage.getItem('ace-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light');}}catch(e){{}}}})();</script>
@@ -1686,9 +1690,13 @@ def generate_history_html(basin_data):
 <meta property="og:url" content="https://aceofcanes.com/history.html">
 <meta property="og:title" content="Season History (1991–present) | aceofcanes.com">
 <meta property="og:description" content="Compare every Atlantic and Eastern Pacific hurricane season from 1991 to present by ACE, storm counts, and NOAA activity classifications.">
-<meta name="twitter:card" content="summary">
+<meta property="og:image" content="https://aceofcanes.com/ace_preview.png">
+<meta property="og:image:width" content="766">
+<meta property="og:image:height" content="976">
+<meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Season History (1991–present) | aceofcanes.com">
 <meta name="twitter:description" content="Compare every Atlantic and Eastern Pacific hurricane season from 1991 to present by ACE, storm counts, and NOAA activity classifications.">
+<meta name="twitter:image" content="https://aceofcanes.com/ace_preview.png">
 <link rel="icon" type="image/png" href="ace.png">
 <title>Season History (1991–present) | aceofcanes.com</title>
 <script>(function(){{try{{var t=localStorage.getItem('ace-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light');}}catch(e){{}}}})();</script>
