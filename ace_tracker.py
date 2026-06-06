@@ -27,11 +27,9 @@ Author: Built with Claude for JP
 """
 
 import os
+import json
 import logging
 from datetime import datetime, timedelta, timezone
-from openpyxl import Workbook
-from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-from openpyxl.utils import get_column_letter
 import tropycal.tracks as tracks
 
 # Configure logging
@@ -51,7 +49,6 @@ OUTPUT_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 BASINS = {
     'atlantic': {
         'name': 'Atlantic',
-        'output_file': 'ACE_Tracker_Atlantic.xlsx',
         'tropycal_basin': 'north_atlantic',  # Tropycal basin name
         'normal_ace': 122.5,
         'noaa_thresholds': {
@@ -65,9 +62,8 @@ BASINS = {
         'all_time_single_storm_ace': {'name': 'San Ciriaco (1899)', 'ace': 73.6},
     },
     'pacific': {
-        'name': 'Eastern Pacific',
-        'output_file': 'ACE_Tracker_Pacific.xlsx',
-        'tropycal_basin': 'east_pacific',  # Tropycal basin name
+        'name': 'East &amp; Central Pacific',
+        'tropycal_basin': 'east_pacific',  # Tropycal basin name — includes both EP and CP storms
         'normal_ace': 132.0,
         'noaa_thresholds': {
             'below_normal': 73,
@@ -173,6 +169,53 @@ def finalize_storm(storm):
     return storm
 
 # =============================================================================
+# TRACK / STORM-LIST HTML HELPERS
+# =============================================================================
+
+def _track_status_color(status, wind):
+    """Return a hex color for a track point based on storm status and wind speed."""
+    if status in ('HU',):
+        if wind >= 137: return '#b71c1c'
+        if wind >= 113: return '#ef5350'
+        if wind >= 96:  return '#ff8a65'
+        if wind >= 83:  return '#ffb74d'
+        return '#ffe082'
+    if status in ('TS', 'SS'): return '#81d4fa'
+    return '#9e9e9e'  # TD / other
+
+
+def _intensity_bar_html(track_points):
+    """Horizontal color bar showing intensity progression across all track points."""
+    if not track_points:
+        return ''
+    segs = ''.join(
+        f'<div class="intensity-seg" style="flex:1;background:{_track_status_color(p["status"],p["wind"])}" '
+        f'title="{p["status"]} {p["wind"]}kt {p["time"]}"></div>'
+        for p in track_points
+    )
+    return f'<div class="intensity-bar">{segs}</div>'
+
+
+def _year_storm_list_html(storms_list):
+    """Inline HTML list of storms for the history page accordion."""
+    if not storms_list:
+        return '<p style="color:var(--muted);font-size:0.82em;padding:4px 0 2px">No named storms on record</p>'
+    max_ace = storms_list[0]['ace'] if storms_list[0]['ace'] > 0 else 1
+    rows = []
+    for s in storms_list:
+        bar_pct = round(s['ace'] / max_ace * 100)
+        rows.append(
+            f'<div class="ys-row">'
+            f'<span class="ys-name">{s["name"]}</span>'
+            f'<span class="ys-cat">{s["category"]}</span>'
+            f'<span class="ys-ace">{s["ace"]:.1f}</span>'
+            f'<div class="ys-bar"><div class="ys-bar-fill" style="width:{bar_pct}%"></div></div>'
+            f'</div>'
+        )
+    return '\n'.join(rows)
+
+
+# =============================================================================
 # TROPYCAL DATA FETCHING
 # =============================================================================
 
@@ -185,22 +228,21 @@ def _extract_synoptic_winds(storm_obj):
     """Extract synoptic-time wind readings from a Tropycal Storm object.
 
     Returns list of wind speeds at 6-hourly synoptic times (00/06/12/18 UTC)
-    for times when storm was at tropical storm strength or higher (>=34 kt).
+    for times when storm status is TS/HU/SS and wind >= 34 kt.
+    Extratropical (EX) and other non-tropical phases are excluded per NHC methodology.
     """
     wind_readings = []
 
     try:
-        # Get time series data
         times = storm_obj.time
         winds = storm_obj.vmax
+        types = storm_obj.type if hasattr(storm_obj, 'type') and len(storm_obj.type) > 0 else []
 
-        # Filter for synoptic times only
         for i, time in enumerate(times):
-            # Check if this is a synoptic time (hour must be 0, 6, 12, or 18)
             if time.hour in [0, 6, 12, 18]:
                 wind = winds[i]
-                # Only count if wind >= 34 knots (tropical storm strength)
-                if wind >= MIN_NAMED_STORM_WIND:
+                status = str(types[i]) if i < len(types) else 'TS'
+                if wind >= MIN_NAMED_STORM_WIND and status in ACE_STATUSES:
                     wind_readings.append(int(wind))
     except Exception as e:
         logger.warning(f"Error extracting synoptic winds: {e}")
@@ -378,11 +420,57 @@ def get_current_season(basin_key):
                         if max_wind < MIN_NAMED_STORM_WIND:
                             continue
 
+                        # Extract synoptic-time track points for map visualization
+                        track_points = []
+                        try:
+                            t_times = storm_obj.time
+                            t_lats = storm_obj.lat
+                            t_lons = storm_obj.lon
+                            t_winds = storm_obj.vmax
+                            t_types = storm_obj.type if hasattr(storm_obj, 'type') and len(storm_obj.type) > 0 else []
+                            for ti in range(len(t_times)):
+                                t = t_times[ti]
+                                if hasattr(t, 'hour') and t.hour in [0, 6, 12, 18]:
+                                    track_points.append({
+                                        'lat': round(float(t_lats[ti]), 1),
+                                        'lon': round(float(t_lons[ti]), 1),
+                                        'wind': int(t_winds[ti]),
+                                        'status': str(t_types[ti]) if ti < len(t_types) else 'TS',
+                                        'time': t.strftime('%-m/%-d %HZ') if hasattr(t, 'strftime') else str(t),
+                                    })
+                        except Exception as _te:
+                            logger.warning(f"Could not extract track for {storm_name}: {_te}")
+
+                        # Detect if storm is currently active (last point within 48h)
+                        is_active = False
+                        try:
+                            last_t = storm_obj.time[-1]
+                            if hasattr(last_t, 'to_pydatetime'):
+                                last_t = last_t.to_pydatetime()
+                            if last_t.tzinfo is None:
+                                last_t = last_t.replace(tzinfo=timezone.utc)
+                            is_active = (datetime.now(timezone.utc) - last_t).total_seconds() < 48 * 3600
+                        except Exception:
+                            pass
+
+                        # Start date string
+                        start_date_str = '—'
+                        try:
+                            st = storm_obj.time[0]
+                            if hasattr(st, 'to_pydatetime'):
+                                st = st.to_pydatetime()
+                            start_date_str = st.strftime('%-m/%-d')
+                        except Exception:
+                            pass
+
                         # Store storm data
                         storms[storm_name] = storm_ace
                         storm_details[storm_name] = {
                             'ace': storm_ace,
-                            'max_wind': max_wind
+                            'max_wind': max_wind,
+                            'track_points': track_points,
+                            'is_active': is_active,
+                            'start_date': start_date_str,
                         }
 
                     except Exception as e:
@@ -492,6 +580,7 @@ def calculate_yearly_stats(storms):
                 'ace_leader_value': 0.0,
                 'longest_storm': None,
                 'longest_days': 0,
+                'storms_list': [],
             }
         s = stats[year]
         s['named_storms'] += 1
@@ -506,9 +595,16 @@ def calculate_yearly_stats(storms):
         if storm['duration_days'] > s['longest_days']:
             s['longest_storm'] = storm['name']
             s['longest_days'] = storm['duration_days']
+        s['storms_list'].append({
+            'name': storm['name'],
+            'ace': round(storm['ace'], 2),
+            'category': storm['category'],
+            'max_wind': storm['max_wind'],
+        })
 
     for year in stats:
         stats[year]['ace'] = round(stats[year]['ace'], 2)
+        stats[year]['storms_list'].sort(key=lambda x: x['ace'], reverse=True)
     return stats
 
 
@@ -686,344 +782,6 @@ def generate_discord_text(basin_key, current, yearly_totals, insights):
     return "\n".join(lines)
 
 # =============================================================================
-# CREATE SPREADSHEET
-# =============================================================================
-
-def create_spreadsheet(basin_key, historical_storms, current, yearly_totals, yearly_stats, insights, discord_text):
-    basin = BASINS[basin_key]
-    current_year = current['year']
-    current_ace = current['total']
-    storms = current['storms']
-
-    wb = Workbook()
-
-    # --- Colors and styles ---
-    header_font = Font(name='Arial', bold=True, color='FFFFFF', size=11)
-    header_fill = PatternFill('solid', fgColor='1a2d4a')
-    subheader_font = Font(name='Arial', bold=True, size=10)
-    subheader_fill = PatternFill('solid', fgColor='d6e4f0')
-    data_font = Font(name='Arial', size=10)
-    highlight_fill = PatternFill('solid', fgColor='FFF2CC')
-    major_fill = PatternFill('solid', fgColor='FFD7D7')
-    insight_fill = PatternFill('solid', fgColor='E8F5E9')
-    discord_fill = PatternFill('solid', fgColor='5865F2')
-    discord_header_font = Font(name='Arial', bold=True, color='FFFFFF', size=12)
-    discord_text_font = Font(name='Consolas', size=11)
-    thin_border = Border(
-        left=Side(style='thin'), right=Side(style='thin'),
-        top=Side(style='thin'), bottom=Side(style='thin')
-    )
-
-    def style_header_row(ws, row, max_col):
-        for col in range(1, max_col + 1):
-            cell = ws.cell(row=row, column=col)
-            cell.font = header_font
-            cell.fill = header_fill
-            cell.alignment = Alignment(horizontal='center', wrap_text=True)
-            cell.border = thin_border
-
-    def style_data_cell(ws, row, col, value, fmt=None):
-        cell = ws.cell(row=row, column=col, value=value)
-        cell.font = data_font
-        cell.border = thin_border
-        if fmt:
-            cell.number_format = fmt
-        return cell
-
-    # =========================================================================
-    # TAB 1: SUMMARY
-    # =========================================================================
-    ws_summary = wb.active
-    ws_summary.title = "Summary"
-    ws_summary.sheet_properties.tabColor = "1a2d4a"
-
-    # Title
-    ws_summary['A1'] = f"{basin['name']} Hurricane Season {current_year}"
-    ws_summary['A1'].font = Font(name='Arial', bold=True, size=16, color='1a2d4a')
-    ws_summary.merge_cells('A1:D1')
-
-    ws_summary['A2'] = f"Generated: {datetime.now(timezone.utc).strftime('%B %d, %Y at %H:%M UTC')}"
-    ws_summary['A2'].font = Font(name='Arial', italic=True, size=9, color='666666')
-
-    # Key stats section
-    row = 4
-    stats_headers = ['Metric', 'Value']
-    for col, header in enumerate(stats_headers, 1):
-        ws_summary.cell(row=row, column=col, value=header)
-    style_header_row(ws_summary, row, 2)
-
-    normal = basin['normal_ace']
-    pct_normal = (current_ace / normal * 100) if normal > 0 else 0
-    classification = get_noaa_classification(current_ace, basin_key)
-
-    # Rankings
-    all_years = list(yearly_totals.items())
-    all_years.append((current_year, current_ace))
-    all_years.sort(key=lambda x: x[1], reverse=True)
-    rank = next(i + 1 for i, (y, _) in enumerate(all_years) if y == current_year)
-    total_seasons = len(all_years)
-
-    stats_data = [
-        ("Season ACE Total", round(current_ace, 1)),
-        ("Named Storms", len(storms)),
-        ("Normal Season ACE (1991-2020)", normal),
-        ("% of Normal", f"{pct_normal:.0f}%"),
-        ("NOAA Classification", classification),
-        (f"Historical Rank (since {START_YEAR})", f"#{rank} of {total_seasons}"),
-    ]
-
-    # Add major hurricane count — use climatlas storm_details if HURDAT2 doesn't have current year
-    current_detail = [s for s in historical_storms if s['year'] == current_year] if historical_storms else []
-    if not current_detail:
-        # Build from climatlas data
-        current_detail = build_current_storm_records(current)
-
-    if current_detail:
-        major_count = sum(1 for s in current_detail if s['is_major'])
-        hurricane_count = sum(1 for s in current_detail if s['max_wind'] >= 64)
-        stats_data.append(("Hurricanes", hurricane_count))
-        stats_data.append(("Major Hurricanes (Cat 3+)", major_count))
-
-    # Last year comparison
-    last_year = current_year - 1
-    if last_year in yearly_totals:
-        stats_data.append((f"{last_year} Season Total (Final)", yearly_totals[last_year]))
-
-    for i, (metric, value) in enumerate(stats_data):
-        r = row + 1 + i
-        style_data_cell(ws_summary, r, 1, metric)
-        style_data_cell(ws_summary, r, 2, value)
-
-    # Similar seasons
-    row_after_stats = row + 1 + len(stats_data) + 2
-    ws_summary.cell(row=row_after_stats, column=1, value="Similar Historical Seasons")
-    ws_summary.cell(row=row_after_stats, column=1).font = Font(name='Arial', bold=True, size=12, color='1a2d4a')
-
-    similar = find_similar_seasons(current_ace, yearly_totals, exclude_year=current_year)
-    for col, header in enumerate(['Year', 'ACE', 'Difference'], 1):
-        ws_summary.cell(row=row_after_stats + 1, column=col, value=header)
-    style_header_row(ws_summary, row_after_stats + 1, 3)
-
-    for i, (year, ace) in enumerate(similar):
-        r = row_after_stats + 2 + i
-        style_data_cell(ws_summary, r, 1, year, '0')
-        style_data_cell(ws_summary, r, 2, round(ace, 1), '0.0')
-        style_data_cell(ws_summary, r, 3, round(abs(ace - current_ace), 1), '0.0')
-
-    # Season Insights section
-    insight_row = row_after_stats + 2 + len(similar) + 2
-    ws_summary.cell(row=insight_row, column=1, value="Season Insights")
-    ws_summary.cell(row=insight_row, column=1).font = Font(name='Arial', bold=True, size=12, color='1a2d4a')
-
-    for i, insight in enumerate(insights):
-        r = insight_row + 1 + i
-        cell = ws_summary.cell(row=r, column=1, value=insight)
-        cell.font = data_font
-        cell.fill = insight_fill
-        ws_summary.merge_cells(start_row=r, start_column=1, end_row=r, end_column=4)
-
-    # Column widths
-    ws_summary.column_dimensions['A'].width = 35
-    ws_summary.column_dimensions['B'].width = 20
-    ws_summary.column_dimensions['C'].width = 15
-    ws_summary.column_dimensions['D'].width = 15
-
-    # =========================================================================
-    # TAB 2: CURRENT SEASON STORMS
-    # =========================================================================
-    ws_storms = wb.create_sheet(f"{current_year} Storms")
-    ws_storms.sheet_properties.tabColor = "ff6b35"
-
-    headers = ['Storm', 'ACE', '% of Total', 'Category', 'Max Wind (kt)', 'Duration (days)']
-    for col, header in enumerate(headers, 1):
-        ws_storms.cell(row=1, column=col, value=header)
-    style_header_row(ws_storms, 1, len(headers))
-
-    sorted_storms = sorted(storms.items(), key=lambda x: x[1], reverse=True)
-
-    # Try to match with historical_storms for extra detail, or use climatlas details
-    storm_details = {}
-    if historical_storms:
-        for s in historical_storms:
-            if s['year'] == current_year:
-                storm_details[s['name'].title()] = s
-
-    # If HURDAT2 doesn't have current year, build from climatlas data
-    if not storm_details:
-        for rec in build_current_storm_records(current):
-            storm_details[rec['name']] = rec
-
-    for i, (name, ace) in enumerate(sorted_storms):
-        row = 2 + i
-        pct = (ace / current_ace * 100) if current_ace > 0 else 0
-        detail = storm_details.get(name, None)
-
-        style_data_cell(ws_storms, row, 1, name)
-        style_data_cell(ws_storms, row, 2, round(ace, 2), '0.00')
-        style_data_cell(ws_storms, row, 3, round(pct, 1), '0.0"%"')
-
-        if detail:
-            cat_cell = style_data_cell(ws_storms, row, 4, detail['category'])
-            style_data_cell(ws_storms, row, 5, detail['max_wind'], '0')
-            # Duration: show N/A for current season storms from climatlas (no date data)
-            dur = detail['duration_days']
-            style_data_cell(ws_storms, row, 6, dur if dur > 0 else "N/A")
-            if detail['is_major']:
-                for c in range(1, len(headers) + 1):
-                    ws_storms.cell(row=row, column=c).fill = major_fill
-        else:
-            style_data_cell(ws_storms, row, 4, "—")
-            style_data_cell(ws_storms, row, 5, "—")
-            style_data_cell(ws_storms, row, 6, "—")
-
-    # Totals row
-    total_row = 2 + len(sorted_storms)
-    ws_storms.cell(row=total_row, column=1, value="TOTAL").font = Font(name='Arial', bold=True, size=10)
-    ws_storms.cell(row=total_row, column=2, value=round(current_ace, 2))
-    ws_storms.cell(row=total_row, column=2).font = Font(name='Arial', bold=True, size=10)
-    ws_storms.cell(row=total_row, column=2).number_format = '0.00'
-    ws_storms.cell(row=total_row, column=3, value="100%").font = Font(name='Arial', bold=True, size=10)
-
-    for col in range(1, len(headers) + 1):
-        ws_storms.cell(row=total_row, column=col).fill = PatternFill('solid', fgColor='D9E2F3')
-        ws_storms.cell(row=total_row, column=col).border = thin_border
-
-    ws_storms.column_dimensions['A'].width = 18
-    ws_storms.column_dimensions['B'].width = 12
-    ws_storms.column_dimensions['C'].width = 12
-    ws_storms.column_dimensions['D'].width = 12
-    ws_storms.column_dimensions['E'].width = 15
-    ws_storms.column_dimensions['F'].width = 15
-
-    # =========================================================================
-    # TAB 3: HISTORICAL STORMS
-    # =========================================================================
-    ws_hist = wb.create_sheet("Historical Storms")
-    ws_hist.sheet_properties.tabColor = "2ed573"
-
-    if historical_storms:
-        # Include current year storms from climatlas if not in HURDAT2
-        has_current_year = any(s['year'] == current_year for s in historical_storms)
-        all_storms = list(historical_storms)
-        if not has_current_year:
-            all_storms.extend(build_current_storm_records(current))
-
-        hist_headers = ['Year', 'Name', 'Category', 'Max Wind (kt)', 'ACE', 'Duration (days)', 'Major?']
-        for col, header in enumerate(hist_headers, 1):
-            ws_hist.cell(row=1, column=col, value=header)
-        style_header_row(ws_hist, 1, len(hist_headers))
-
-        sorted_historical = sorted(all_storms, key=lambda s: (-s['year'], -s['ace']))
-        for i, storm in enumerate(sorted_historical):
-            row = 2 + i
-            style_data_cell(ws_hist, row, 1, storm['year'], '0')
-            style_data_cell(ws_hist, row, 2, storm['name'].title())
-            style_data_cell(ws_hist, row, 3, storm['category'])
-            style_data_cell(ws_hist, row, 4, storm['max_wind'], '0')
-            style_data_cell(ws_hist, row, 5, round(storm['ace'], 2), '0.00')
-            # Duration: show N/A for current season storms sourced from climatlas
-            dur = storm['duration_days']
-            style_data_cell(ws_hist, row, 6, dur if dur > 0 else "N/A")
-            style_data_cell(ws_hist, row, 7, "Yes" if storm['is_major'] else "No")
-
-            if storm['year'] == current_year:
-                for c in range(1, len(hist_headers) + 1):
-                    ws_hist.cell(row=row, column=c).fill = highlight_fill
-
-        ws_hist.column_dimensions['A'].width = 10
-        ws_hist.column_dimensions['B'].width = 18
-        ws_hist.column_dimensions['C'].width = 12
-        ws_hist.column_dimensions['D'].width = 15
-        ws_hist.column_dimensions['E'].width = 12
-        ws_hist.column_dimensions['F'].width = 15
-        ws_hist.column_dimensions['G'].width = 10
-    else:
-        ws_hist.cell(row=1, column=1, value="Historical storm data unavailable (HURDAT2 download failed)")
-
-    # =========================================================================
-    # TAB 4: YEARLY TOTALS
-    # =========================================================================
-    ws_yearly = wb.create_sheet("Yearly Totals")
-    ws_yearly.sheet_properties.tabColor = "ffc107"
-
-    yearly_headers = ['Rank', 'Year', 'ACE', '% of Normal', 'Classification',
-                      'Named Storms', 'Hurricanes', 'Major Hurricanes']
-    for col, header in enumerate(yearly_headers, 1):
-        ws_yearly.cell(row=1, column=col, value=header)
-    style_header_row(ws_yearly, 1, len(yearly_headers))
-
-    all_years_data = list(yearly_totals.items())
-    all_years_data.append((current_year, current_ace))
-    all_years_data.sort(key=lambda x: x[1], reverse=True)
-
-    for i, (year, ace) in enumerate(all_years_data):
-        row = 2 + i
-        pct = (ace / basin['normal_ace'] * 100) if basin['normal_ace'] > 0 else 0
-        classification = get_noaa_classification(ace, basin_key)
-
-        style_data_cell(ws_yearly, row, 1, i + 1, '0')
-        style_data_cell(ws_yearly, row, 2, year, '0')
-        style_data_cell(ws_yearly, row, 3, round(ace, 1), '0.0')
-        style_data_cell(ws_yearly, row, 4, f"{pct:.0f}%")
-        style_data_cell(ws_yearly, row, 5, classification)
-
-        # Add storm counts if we have stats
-        if yearly_stats and year in yearly_stats:
-            ys = yearly_stats[year]
-            style_data_cell(ws_yearly, row, 6, ys['named_storms'], '0')
-            style_data_cell(ws_yearly, row, 7, ys['hurricanes'], '0')
-            style_data_cell(ws_yearly, row, 8, ys['major_hurricanes'], '0')
-        elif year == current_year:
-            # Use climatlas storm_details for current year
-            cur_records = build_current_storm_records(current)
-            style_data_cell(ws_yearly, row, 6, len(cur_records), '0')
-            style_data_cell(ws_yearly, row, 7, sum(1 for s in cur_records if s['max_wind'] >= 64), '0')
-            style_data_cell(ws_yearly, row, 8, sum(1 for s in cur_records if s['is_major']), '0')
-        else:
-            style_data_cell(ws_yearly, row, 6, "—")
-            style_data_cell(ws_yearly, row, 7, "—")
-            style_data_cell(ws_yearly, row, 8, "—")
-
-        if year == current_year:
-            for c in range(1, len(yearly_headers) + 1):
-                ws_yearly.cell(row=row, column=c).fill = highlight_fill
-
-    ws_yearly.column_dimensions['A'].width = 8
-    ws_yearly.column_dimensions['B'].width = 10
-    ws_yearly.column_dimensions['C'].width = 10
-    ws_yearly.column_dimensions['D'].width = 12
-    ws_yearly.column_dimensions['E'].width = 18
-    ws_yearly.column_dimensions['F'].width = 14
-    ws_yearly.column_dimensions['G'].width = 12
-    ws_yearly.column_dimensions['H'].width = 16
-
-    # =========================================================================
-    # TAB 5: DISCORD UPDATE
-    # =========================================================================
-    ws_discord = wb.create_sheet("Discord Update")
-    ws_discord.sheet_properties.tabColor = "5865F2"
-
-    # Header
-    ws_discord['A1'] = "Discord Update — Copy Everything Below"
-    ws_discord['A1'].font = discord_header_font
-    ws_discord['A1'].fill = discord_fill
-    ws_discord.merge_cells('A1:D1')
-
-    ws_discord['A2'] = "Select cells A4 through the end, then copy and paste into Discord"
-    ws_discord['A2'].font = Font(name='Arial', italic=True, size=9, color='666666')
-
-    # Discord text content — one line per row for easy copy/paste
-    discord_lines = discord_text.split('\n')
-    for i, line in enumerate(discord_lines):
-        row = 4 + i
-        cell = ws_discord.cell(row=row, column=1, value=line)
-        cell.font = discord_text_font
-
-    ws_discord.column_dimensions['A'].width = 80
-
-    return wb
-
-# =============================================================================
 # CONSOLE REPORT
 # =============================================================================
 
@@ -1093,47 +851,13 @@ def process_basin(basin_key):
     print(f"{'─' * 50}")
     print(discord_text)
 
-    # Create spreadsheet
-    print(f"\n{'─' * 50}")
-    print("Creating spreadsheet...")
-
-    wb = create_spreadsheet(basin_key, historical_storms, current, yearly_totals, yearly_stats, insights, discord_text)
-
-    if wb:
-        try:
-            if not os.path.exists(OUTPUT_FOLDER):
-                os.makedirs(OUTPUT_FOLDER)
-                logger.info(f"Created output directory: {OUTPUT_FOLDER}")
-        except OSError as e:
-            logger.error(f"Failed to create directory {OUTPUT_FOLDER}: {e}")
-            print(f"  ✗ Error: Could not create output folder")
-            return None
-
-        output_path = os.path.join(OUTPUT_FOLDER, basin['output_file'])
-        try:
-            wb.save(output_path)
-            print(f"  ✓ Saved to: {output_path}")
-        except (OSError, PermissionError) as e:
-            logger.error(f"Failed to save {output_path}: {e}")
-            print(f"  ✗ Error: Could not save {output_path}")
-            return None
-
-        if historical_storms:
-            print(f"  ✓ {len(historical_storms)} storms in Historical Storms sheet")
-            print(f"  ✓ {len(yearly_totals)} seasons in Yearly Totals sheet")
-
-        print(f"  ✓ Discord Update tab ready for copy/paste")
-
-        # Return data for dashboard
-        return {
-            'basin_key': basin_key,
-            'current': current,
-            'yearly_totals': yearly_totals,
-            'yearly_stats': yearly_stats,
-            'insights': insights,
-        }
-
-    return None
+    return {
+        'basin_key': basin_key,
+        'current': current,
+        'yearly_totals': yearly_totals,
+        'yearly_stats': yearly_stats,
+        'insights': insights,
+    }
 
 
 # =============================================================================
@@ -1219,27 +943,84 @@ def generate_dashboard_html(basin_data):
         total = current['total']
         sorted_storms = sorted(storms.items(), key=lambda x: x[1], reverse=True)
         rows = []
+        track_data = {}
         for name, ace in sorted_storms:
+            d = details.get(name, {})
             pct = (ace / total * 100) if total > 0 else 0
-            wind = details.get(name, {}).get('max_wind', 0)
+            wind = d.get('max_wind', 0)
             cat = get_category(wind) if wind > 0 else '—'
             is_major = wind >= 96
-            row_class = ' class="major"' if is_major else ''
+            is_active = d.get('is_active', False)
+            track_points = d.get('track_points', [])
+            start_date = d.get('start_date', '—')
+            slug = name.lower().replace(' ', '-')
+
+            track_data[slug] = {
+                'name': name,
+                'active': is_active,
+                'start': start_date,
+                'ace': round(ace, 1),
+                'max_wind': wind,
+                'category': cat,
+                'points': track_points,
+            }
+
+            row_classes = 'storm-row'
+            if is_major:
+                row_classes += ' major'
+            if is_active:
+                row_classes += ' active-storm-row'
+
+            active_dot = '<span class="active-pulse"></span> ' if is_active else ''
+            active_badge = '<div class="active-badge"><span class="active-pulse"></span> Active Storm</div>' if is_active else ''
+            nhc_link = ('<div class="nhc-link"><a href="https://www.nhc.noaa.gov/" target="_blank" rel="noopener">'
+                        'View NHC Active Storms →</a></div>') if is_active else ''
+
+            ibar = _intensity_bar_html(track_points)
+            legend = (
+                '<div class="track-legend">'
+                '<div class="legend-item"><div class="legend-dot" style="background:#9e9e9e"></div>TD</div>'
+                '<div class="legend-item"><div class="legend-dot" style="background:#81d4fa"></div>TS/SS</div>'
+                '<div class="legend-item"><div class="legend-dot" style="background:#ffe082"></div>Cat 1</div>'
+                '<div class="legend-item"><div class="legend-dot" style="background:#ffb74d"></div>Cat 2</div>'
+                '<div class="legend-item"><div class="legend-dot" style="background:#ff8a65"></div>Cat 3</div>'
+                '<div class="legend-item"><div class="legend-dot" style="background:#ef5350"></div>Cat 4/5</div>'
+                '</div>'
+            ) if track_points else ''
+
+            meta = (
+                f'<div class="storm-meta">'
+                f'<div class="meta-box"><div class="meta-label">Started</div><div class="meta-value">{start_date}</div></div>'
+                f'<div class="meta-box"><div class="meta-label">Peak Intensity</div><div class="meta-value">{wind} kt</div><div class="meta-sub">{cat}</div></div>'
+                f'<div class="meta-box"><div class="meta-label">ACE</div><div class="meta-value">{ace:.1f}</div><div class="meta-sub">{pct:.0f}% of season</div></div>'
+                f'</div>'
+            )
+
+            map_div = f'<div class="track-map" id="trmap-{slug}"></div>' if track_points else (
+                '<p style="color:var(--muted);font-size:0.82em;text-align:center;padding:8px 0">No track data available</p>')
+
+            panel_inner = f'{active_badge}{meta}{ibar}{legend}{map_div}{nhc_link}'
+
             rows.append(
-                f'<tr{row_class}>'
-                f'<td data-v="{name}">{name}</td>'
+                f'<tr class="{row_classes}" id="storm-row-{slug}">'
+                f'<td data-v="{name}"><button class="storm-name-btn" id="trbtn-{slug}" onclick="toggleTrack(\'{slug}\')">'
+                f'{active_dot}{name}<span class="storm-chevron">&#9658;</span></button></td>'
                 f'<td data-v="{ace:.6f}">{ace:.1f}</td>'
                 f'<td data-v="{pct:.4f}">{pct:.1f}%</td>'
                 f'<td data-v="{wind}">{cat}</td>'
                 f'<td data-v="{wind}">{wind if wind > 0 else "—"}</td>'
                 f'</tr>'
+                f'<tr class="track-row" id="track-row-{slug}">'
+                f'<td colspan="5"><div class="track-panel" id="trpanel-{slug}"><div class="track-inner">{panel_inner}</div></div></td>'
+                f'</tr>'
             )
-        return '\n'.join(rows)
+        return '\n'.join(rows), track_data
 
     def insight_items_html(insights):
         return '\n'.join(f'<li>{i}</li>' for i in insights)
 
     sections = []
+    all_track_data = {}
     for bd in basin_data:
         if not bd:
             continue
@@ -1267,19 +1048,21 @@ def generate_dashboard_html(basin_data):
             all_years.sort(key=lambda x: x[1], reverse=True)
             rank = next(i + 1 for i, (y, _) in enumerate(all_years) if y == current_year)
             total_seasons = len(all_years)
+            storm_html, track_data = storm_rows_html(current)
+            all_track_data.update(track_data)
             lower_section = f'''
       <h3>Storm Breakdown</h3>
       <div class="table-wrap">
         <table>
           <thead><tr>
             <th class="sort-th" onclick="sortDash(this,0,'s')">Storm <span class="sa"></span></th>
-            <th class="sort-th" onclick="sortDash(this,1,'n')">ACE <span class="sa">▼</span></th>
+            <th class="sort-th" onclick="sortDash(this,1,'n')">ACE <span class="sa">&#9660;</span></th>
             <th class="sort-th" onclick="sortDash(this,2,'n')">% <span class="sa"></span></th>
             <th class="sort-th" onclick="sortDash(this,3,'n')">Category <span class="sa"></span></th>
             <th class="sort-th" onclick="sortDash(this,4,'n')">Wind (kt) <span class="sa"></span></th>
           </tr></thead>
           <tbody id="storm-{bd['basin_key']}">
-            {storm_rows_html(current)}
+            {storm_html}
           </tbody>
           <tfoot>
             <tr class="total-row"><td><b>TOTAL</b></td><td><b>{current_ace:.1f}</b></td><td><b>100%</b></td><td></td><td></td></tr>
@@ -1354,6 +1137,7 @@ def generate_dashboard_html(basin_data):
 <meta name="twitter:description" content="Track Accumulated Cyclone Energy (ACE) for the Atlantic and Eastern Pacific hurricane seasons in real time. Updated every 6 hours from official NOAA data.">
 <meta name="twitter:image" content="https://aceofcanes.com/ace_preview.png">
 <link rel="icon" type="image/png" href="ace.png">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <title>Hurricane ACE Dashboard | aceofcanes.com</title>
 <script>(function(){{try{{var t=localStorage.getItem('ace-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light');}}catch(e){{}}}})();</script>
 <style>
@@ -1438,6 +1222,32 @@ def generate_dashboard_html(basin_data):
   .sim-link:hover {{ text-decoration:underline; }}
   @media(min-width:768px) {{ body {{ max-width:900px; margin:0 auto; padding:24px; }} .stats-grid {{ grid-template-columns:repeat(6,1fr); }} .stat-box.ace-total {{ grid-column:span 6; }} }}
   @media(min-width:1100px) {{ body {{ max-width:1100px; }} }}
+  .storm-name-btn {{ background:none; border:none; color:var(--accent); cursor:pointer; font-size:inherit; padding:0; display:inline-flex; align-items:center; gap:4px; white-space:nowrap; text-decoration:underline dotted; }}
+  .storm-name-btn:hover {{ color:var(--accent2); }}
+  .storm-chevron {{ font-size:0.7em; display:inline-block; transition:transform 0.2s; color:var(--muted); margin-left:2px; }}
+  .storm-name-btn.open .storm-chevron {{ transform:rotate(90deg); }}
+  .active-pulse {{ display:inline-block; width:7px; height:7px; border-radius:50%; background:#4caf50; box-shadow:0 0 0 0 rgba(76,175,80,0.7); animation:trpulse 1.5s infinite; flex-shrink:0; }}
+  @keyframes trpulse {{ 0%{{box-shadow:0 0 0 0 rgba(76,175,80,0.7);}} 70%{{box-shadow:0 0 0 6px rgba(76,175,80,0);}} 100%{{box-shadow:0 0 0 0 rgba(76,175,80,0);}} }}
+  tr.active-storm-row {{ border-left:3px solid #4caf50; }}
+  .track-row td {{ padding:0; border-bottom:2px solid var(--border); }}
+  .track-panel {{ overflow:hidden; max-height:0; transition:max-height 0.35s ease; background:var(--card); }}
+  .track-panel.open {{ max-height:620px; }}
+  .track-inner {{ padding:12px 14px 14px; }}
+  .track-map {{ height:255px; border-radius:8px; border:1px solid var(--border); margin-bottom:10px; }}
+  .storm-meta {{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:10px; }}
+  .meta-box {{ background:var(--box); border-radius:6px; padding:8px 10px; }}
+  .meta-label {{ color:var(--muted); font-size:0.72em; text-transform:uppercase; }}
+  .meta-value {{ color:var(--text-strong); font-size:0.95em; font-weight:bold; }}
+  .meta-sub {{ color:var(--muted); font-size:0.72em; }}
+  .active-badge {{ display:inline-flex; align-items:center; gap:5px; background:#0d2a14; border:1px solid #4caf50; border-radius:12px; padding:3px 8px; font-size:0.75em; color:#4caf50; margin-bottom:8px; }}
+  .intensity-bar {{ display:flex; height:8px; border-radius:4px; overflow:hidden; margin-bottom:10px; }}
+  .intensity-seg {{ flex-shrink:0; }}
+  .track-legend {{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }}
+  .legend-item {{ display:flex; align-items:center; gap:4px; font-size:0.72em; color:var(--muted); }}
+  .legend-dot {{ width:9px; height:9px; border-radius:50%; flex-shrink:0; }}
+  .nhc-link {{ font-size:0.78em; color:var(--muted); text-align:right; margin-top:6px; }}
+  .nhc-link a {{ color:var(--accent); text-decoration:none; }}
+  .nhc-link a:hover {{ text-decoration:underline; }}
 </style>
 </head>
 <body>
@@ -1453,7 +1263,7 @@ def generate_dashboard_html(basin_data):
 </details>
 <div class="toggle">
   <button class="active" onclick="show('atlantic',this)">Atlantic</button>
-  <button onclick="show('pacific',this)">Eastern Pacific</button>
+  <button onclick="show('pacific',this)">E/C Pacific</button>
 </div>
 {''.join(sections)}
 <div class="sources">
@@ -1463,7 +1273,8 @@ def generate_dashboard_html(basin_data):
     <li><a href="https://www.nhc.noaa.gov/data/#hurdat" target="_blank" rel="noopener noreferrer">NHC Real-time Best Track</a> — Current season preliminary storm data fetched via Tropycal (<code>include_btk=True</code>); updated continuously during active storms</li>
     <li><a href="https://www.cpc.ncep.noaa.gov/products/outlooks/background_information.shtml" target="_blank" rel="noopener noreferrer">NOAA CPC</a> — Season classification thresholds and 1991–2020 climatological normals</li>
   </ul>
-  <p>ACE (Accumulated Cyclone Energy) is calculated at 6-hourly synoptic times (0000/0600/1200/1800 UTC) for systems at tropical storm strength or higher (≥34 kt), including subtropical storms. Formula: ACE = Σ(V²<sub>max</sub>) × 10⁻⁴. Categories use the Saffir-Simpson scale in knots.</p>
+  <p>ACE (Accumulated Cyclone Energy) is calculated at 6-hourly synoptic times (0000/0600/1200/1800 UTC) for systems with status TS, HU, or SS and wind ≥34 kt — extratropical (EX) phases are excluded per NHC methodology. Formula: ACE = Σ(V²<sub>max</sub>) × 10⁻⁴. Categories use the Saffir-Simpson scale in knots.</p>
+  <p><b>Basin note:</b> The East &amp; Central Pacific tab combines both the Eastern Pacific (NHC, east of 140°W) and Central Pacific (CPHC, 140°W–180°) basins, consistent with the NOAA HURDAT2 Northeast &amp; North Central Pacific dataset. NHC tracks these separately on their <a href="https://www.nhc.noaa.gov/data/tcr/" target="_blank" rel="noopener noreferrer">TCR pages</a> (epac / cpac).</p>
   <p class="disclaimer">⚠️ This site is maintained by a hurricane data enthusiast — not a meteorologist, forecaster, or weather professional of any kind. I just love the data. All information is sourced directly from official NOAA/NHC databases. For official forecasts, watches, warnings, and life-safety information, always refer to the <a href="https://www.nhc.noaa.gov/" target="_blank" rel="noopener noreferrer">National Hurricane Center</a>.</p>
   <p class="kofi-link"><a href="https://ko-fi.com/aceofcanes" target="_blank" rel="noopener noreferrer">☕ Support this project on Ko-fi</a></p>
 </div>
@@ -1496,7 +1307,7 @@ function sortDash(th,col,type){{
   var key=card.id+col;
   var asc=_ds[key]===undefined?false:!_ds[key];
   _ds[key]=asc;
-  var rows=Array.from(tbody.querySelectorAll('tr'));
+  var rows=Array.from(tbody.querySelectorAll('tr.storm-row'));
   rows.sort(function(a,b){{
     var av=a.cells[col]?a.cells[col].getAttribute('data-v'):'';
     var bv=b.cells[col]?b.cells[col].getAttribute('data-v'):'';
@@ -1505,10 +1316,54 @@ function sortDash(th,col,type){{
     if(av>bv)return asc?1:-1;
     return 0;
   }});
-  rows.forEach(r=>tbody.appendChild(r));
-  card.querySelectorAll('.sort-th .sa').forEach((s,i)=>{{s.textContent=i===col?(asc?'▲':'▼'):'';}});
+  rows.forEach(function(r){{
+    tbody.appendChild(r);
+    var slug=r.id.replace('storm-row-','');
+    var tr=document.getElementById('track-row-'+slug);
+    if(tr)tbody.appendChild(tr);
+  }});
+  card.querySelectorAll('.sort-th .sa').forEach(function(s,i){{s.textContent=i===col?(asc?'&#9650;':'&#9660;'):''}});
+}}
+var ACE_TRACKS={json.dumps(all_track_data)};
+var _trMaps={{}};
+var _SC={{TD:'#9e9e9e',TS:'#81d4fa',SS:'#81d4fa'}};
+function _tc(st,w){{
+  if(st==='HU'){{if(w>=137)return'#b71c1c';if(w>=113)return'#ef5350';if(w>=96)return'#ff8a65';if(w>=83)return'#ffb74d';return'#ffe082';}}
+  return _SC[st]||'#9e9e9e';
+}}
+function toggleTrack(slug){{
+  var panel=document.getElementById('trpanel-'+slug);
+  var btn=document.getElementById('trbtn-'+slug);
+  if(!panel)return;
+  var open=panel.classList.contains('open');
+  if(open){{panel.classList.remove('open');if(btn)btn.classList.remove('open');return;}}
+  panel.classList.add('open');
+  if(btn)btn.classList.add('open');
+  if(!_trMaps[slug]){{_trMaps[slug]=true;setTimeout(function(){{_buildMap(slug);}},25);}}
+}}
+function _buildMap(slug){{
+  var d=ACE_TRACKS[slug];
+  var el=document.getElementById('trmap-'+slug);
+  if(!d||!d.points||!d.points.length||!el||el._leaflet_id)return;
+  var map=L.map(el,{{zoomControl:true,attributionControl:true}});
+  L.tileLayer('https://{{s}}.basemaps.cartocdn.com/dark_all/{{z}}/{{x}}/{{y}}{{r}}.png',{{
+    attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>',
+    subdomains:'abcd',maxZoom:10
+  }}).addTo(map);
+  var pts=d.points,lls=pts.map(function(p){{return[p.lat,p.lon];}});
+  for(var i=0;i<pts.length-1;i++){{
+    L.polyline([[pts[i].lat,pts[i].lon],[pts[i+1].lat,pts[i+1].lon]],{{color:_tc(pts[i].status,pts[i].wind),weight:3,opacity:0.9}}).addTo(map);
+  }}
+  pts.forEach(function(p,i){{
+    var c=_tc(p.status,p.wind),last=(i===pts.length-1);
+    var mk=L.circleMarker([p.lat,p.lon],{{radius:last?7:4,fillColor:c,color:last?'#fff':c,weight:last?2:1,fillOpacity:1,opacity:1}}).addTo(map);
+    mk.bindTooltip('<b>'+d.name+'</b><br>'+p.time+'<br>'+p.status+' \xb7 '+p.wind+'kt',{{direction:'top',offset:[0,-6]}});
+    if(last&&d.active)mk.bindPopup('<b>Current Position</b><br>'+p.time+'<br>'+p.status+' \xb7 '+p.wind+'kt',{{maxWidth:160}}).openPopup();
+  }});
+  if(lls.length)map.fitBounds(L.latLngBounds(lls),{{padding:[25,25]}});
 }}
 </script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <!-- Cloudflare Web Analytics --><script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{{"token": "775dfcf117b94ff59e3c118c330d02aa"}}'></script><!-- End Cloudflare Web Analytics -->
 </body>
 </html>'''
@@ -1550,12 +1405,14 @@ def generate_history_html(basin_data):
                     'hurricanes': stats['hurricanes'],
                     'majors': stats['major_hurricanes'],
                     'leader': stats.get('ace_leader') or '—',
+                    'storms_list': stats.get('storms_list', []),
                 }
         else:
             for year, ace in yearly_totals.items():
                 years_data[year] = {
                     'ace': round(ace, 1),
                     'named': '—', 'hurricanes': '—', 'majors': '—', 'leader': '—',
+                    'storms_list': [],
                 }
 
         # Override current year with live data (more up-to-date than HURDAT2)
@@ -1575,6 +1432,12 @@ def generate_history_html(basin_data):
         _season_end = datetime(current_year, 11, 30).date()
         _in_active_season = _season_start <= today <= _season_end and current_year == datetime.now().year
         if current_ace > 0 or named > 0 or _in_active_season:
+            current_storms_list = sorted(
+                [{'name': n, 'ace': round(d.get('ace', 0), 2),
+                  'category': get_category(d.get('max_wind', 0)), 'max_wind': d.get('max_wind', 0)}
+                 for n, d in details.items()],
+                key=lambda x: x['ace'], reverse=True
+            )
             years_data[current_year] = {
                 'ace': current_ace,
                 'named': named,
@@ -1582,6 +1445,7 @@ def generate_history_html(basin_data):
                 'majors': majors,
                 'leader': leader,
                 'active': True,
+                'storms_list': current_storms_list,
             }
 
         # Compute ACE rank and top-5
@@ -1618,13 +1482,17 @@ def generate_history_html(basin_data):
                 row_cls += ' row-current'
             if is_top5:
                 row_cls += ' row-top5'
-            active_label = ' <span class="active-dot" title="Season in progress">●</span>' if is_active else ''
+            active_label = ' <span class="active-dot" title="Season in progress">&#9679;</span>' if is_active else ''
             named_v = d['named'] if d['named'] != '—' else 0
             hurr_v = d['hurricanes'] if d['hurricanes'] != '—' else 0
             major_v = d['majors'] if d['majors'] != '—' else 0
+            yr_key = f'{bd["basin_key"]}-yr-{year}'
+            storm_list_html = _year_storm_list_html(d.get('storms_list', []))
             rows.append(
-                f'<tr class="{row_cls}" id="{bd["basin_key"]}-yr-{year}">'
-                f'<td data-v="{year}"><b>{year}</b>{active_label}</td>'
+                f'<tr class="{row_cls} yr-data-row" id="{yr_key}">'
+                f'<td data-v="{year}" style="white-space:nowrap">'
+                f'<button class="yr-expand-btn" id="yrbtn-{yr_key}" onclick="toggleYear(\'{yr_key}\')">'
+                f'<b>{year}</b>{active_label}<span class="yr-chevron">&#9658;</span></button></td>'
                 f'<td data-v="{ace:.4f}"><b>{ace:.1f}</b><div class="ace-bar"><div class="ace-bar-fill" style="width:{ace_bar_pct}%"></div></div></td>'
                 f'<td data-v="{pct}">{pct}%</td>'
                 f'<td data-v="{_csort(bc)}"><span class="badge badge-{bc}">{classification}</span></td>'
@@ -1634,6 +1502,10 @@ def generate_history_html(basin_data):
                 f'<td data-v="{d["leader"]}">{d["leader"]}</td>'
                 f'<td data-v="{rank}">#{rank}&nbsp;/&nbsp;{total_seasons}</td>'
                 f'</tr>'
+                f'<tr class="yr-expand-row" id="yr-xrow-{yr_key}">'
+                f'<td colspan="9"><div class="yr-panel" id="yrpanel-{yr_key}">'
+                f'<div class="yr-panel-inner">{storm_list_html}</div>'
+                f'</div></td></tr>'
             )
 
         # Average row (goes in tfoot, not sorted)
@@ -1787,6 +1659,20 @@ def generate_history_html(basin_data):
   .kofi-link a:hover {{ color:var(--accent); }}
   @media(min-width:768px) {{ body {{ max-width:960px; margin:0 auto; padding:24px; }} }}
   @media(min-width:1100px) {{ body {{ max-width:1280px; }} }}
+  .yr-expand-btn {{ background:none; border:none; color:var(--text-strong); cursor:pointer; font-size:inherit; padding:0; display:inline-flex; align-items:center; gap:4px; white-space:nowrap; width:100%; text-align:left; }}
+  .yr-chevron {{ font-size:0.65em; color:var(--muted); display:inline-block; transition:transform 0.2s; margin-left:3px; }}
+  .yr-expand-btn.open .yr-chevron {{ transform:rotate(90deg); }}
+  .yr-expand-row td {{ padding:0; border-bottom:1px solid var(--border); }}
+  .yr-panel {{ overflow:hidden; max-height:0; transition:max-height 0.3s ease; background:var(--sources-bg); }}
+  .yr-panel.open {{ max-height:800px; }}
+  .yr-panel-inner {{ padding:8px 12px 10px; }}
+  .ys-row {{ display:grid; grid-template-columns:110px 48px 46px 1fr; align-items:center; gap:6px; padding:3px 0; font-size:0.82em; border-bottom:1px solid var(--border); }}
+  .ys-row:last-child {{ border-bottom:none; }}
+  .ys-name {{ color:var(--text); font-weight:500; }}
+  .ys-cat {{ color:var(--muted); font-size:0.9em; }}
+  .ys-ace {{ color:var(--accent); font-weight:bold; text-align:right; }}
+  .ys-bar {{ height:4px; background:var(--gauge-bg); border-radius:2px; }}
+  .ys-bar-fill {{ height:100%; background:var(--accent); border-radius:2px; }}
 </style>
 </head>
 <body>
@@ -1802,7 +1688,7 @@ def generate_history_html(basin_data):
 </details>
 <div class="toggle">
   <button class="active" onclick="show('atlantic',this)">Atlantic</button>
-  <button onclick="show('pacific',this)">Eastern Pacific</button>
+  <button onclick="show('pacific',this)">E/C Pacific</button>
 </div>
 <div class="legend">
   <span class="badge badge-extreme">Extremely Active ≥159</span>
@@ -1818,7 +1704,8 @@ def generate_history_html(basin_data):
     <li><a href="https://www.nhc.noaa.gov/data/#hurdat" target="_blank" rel="noopener noreferrer">NHC Real-time Best Track</a> — Current season preliminary storm data fetched via Tropycal (<code>include_btk=True</code>); updated continuously during active storms</li>
     <li><a href="https://www.cpc.ncep.noaa.gov/products/outlooks/background_information.shtml" target="_blank" rel="noopener noreferrer">NOAA CPC</a> — Season classification thresholds and 1991–2020 climatological normals</li>
   </ul>
-  <p>ACE (Accumulated Cyclone Energy) is calculated at 6-hourly synoptic times (0000/0600/1200/1800 UTC) for systems at tropical storm strength or higher (≥34 kt), including subtropical storms. Formula: ACE = Σ(V²<sub>max</sub>) × 10⁻⁴. Categories use the Saffir-Simpson scale in knots.</p>
+  <p>ACE (Accumulated Cyclone Energy) is calculated at 6-hourly synoptic times (0000/0600/1200/1800 UTC) for systems with status TS, HU, or SS and wind ≥34 kt — extratropical (EX) phases are excluded per NHC methodology. Formula: ACE = Σ(V²<sub>max</sub>) × 10⁻⁴. Categories use the Saffir-Simpson scale in knots.</p>
+  <p><b>Basin note:</b> The East &amp; Central Pacific tab combines both the Eastern Pacific (NHC, east of 140°W) and Central Pacific (CPHC, 140°W–180°) basins, consistent with the NOAA HURDAT2 Northeast &amp; North Central Pacific dataset. NHC tracks these separately on their <a href="https://www.nhc.noaa.gov/data/tcr/" target="_blank" rel="noopener noreferrer">TCR pages</a> (epac / cpac).</p>
   <p class="disclaimer">⚠️ This site is maintained by a hurricane data enthusiast — not a meteorologist, forecaster, or weather professional of any kind. I just love the data. All information is sourced directly from official NOAA/NHC databases. For official forecasts, watches, warnings, and life-safety information, always refer to the <a href="https://www.nhc.noaa.gov/" target="_blank" rel="noopener noreferrer">National Hurricane Center</a>.</p>
   <p class="kofi-link"><a href="https://ko-fi.com/aceofcanes" target="_blank" rel="noopener noreferrer">☕ Support this project on Ko-fi</a></p>
 </div>
@@ -1851,7 +1738,7 @@ function sortHist(th,col,type){{
   var key=card.id+col;
   var asc=_hs[key]===undefined?false:!_hs[key];
   _hs[key]=asc;
-  var rows=Array.from(tbody.querySelectorAll('tr'));
+  var rows=Array.from(tbody.querySelectorAll('tr.yr-data-row'));
   rows.sort(function(a,b){{
     var av=a.cells[col]?a.cells[col].getAttribute('data-v'):'';
     var bv=b.cells[col]?b.cells[col].getAttribute('data-v'):'';
@@ -1860,8 +1747,20 @@ function sortHist(th,col,type){{
     if(av>bv)return asc?1:-1;
     return 0;
   }});
-  rows.forEach(r=>tbody.appendChild(r));
-  card.querySelectorAll('.sort-th .sa').forEach((s,i)=>{{s.textContent=i===col?(asc?'▲':'▼'):'';}});
+  rows.forEach(function(r){{
+    tbody.appendChild(r);
+    var xrow=document.getElementById('yr-xrow-'+r.id);
+    if(xrow)tbody.appendChild(xrow);
+  }});
+  card.querySelectorAll('.sort-th .sa').forEach(function(s,i){{s.textContent=i===col?(asc?'&#9650;':'&#9660;'):''}});
+}}
+function toggleYear(key){{
+  var panel=document.getElementById('yrpanel-'+key);
+  var btn=document.getElementById('yrbtn-'+key);
+  if(!panel)return;
+  var open=panel.classList.contains('open');
+  if(open){{panel.classList.remove('open');if(btn)btn.classList.remove('open');}}
+  else{{panel.classList.add('open');if(btn)btn.classList.add('open');}}
 }}
 </script>
 <!-- Cloudflare Web Analytics --><script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{{"token": "775dfcf117b94ff59e3c118c330d02aa"}}'></script><!-- End Cloudflare Web Analytics -->
@@ -1889,13 +1788,11 @@ def main():
     # Process Atlantic
     result = process_basin('atlantic')
     if result:
-        output_files.append(os.path.join(OUTPUT_FOLDER, BASINS['atlantic']['output_file']))
         basin_results.append(result)
 
     # Process Pacific
     result = process_basin('pacific')
     if result:
-        output_files.append(os.path.join(OUTPUT_FOLDER, BASINS['pacific']['output_file']))
         basin_results.append(result)
 
     # Generate HTML pages
@@ -1923,7 +1820,7 @@ def main():
             print(f"  ✗ Error: Could not save history page")
 
     print("\n" + "=" * 50)
-    print("All done! Spreadsheets and dashboard updated.")
+    print("All done! Dashboard updated.")
     if output_files:
         print(f"Files saved to: {OUTPUT_FOLDER}")
         for f in output_files:
