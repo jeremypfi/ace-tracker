@@ -208,7 +208,7 @@ def _year_storm_list_html(storms_list):
         if lf:
             lf_html = f'<span class="ys-lf">{" · ".join(lf)}</span>'
         else:
-            lf_html = '<span class="ys-lf ys-fish" title="A storm that never made landfall and just pissed off fish">Fish Storm</span>'
+            lf_html = '<span class="ys-lf ys-fish" data-tip="A storm that never made landfall and just pissed off fish">Fish Storm</span>'
         rows.append(
             f'<div class="ys-row">'
             f'<span class="ys-name">{s["name"]}{lf_html}</span>'
@@ -1080,7 +1080,7 @@ def generate_dashboard_html(basin_data):
             if landfall:
                 lf_cell = ' · '.join(landfall)
             else:
-                lf_cell = '<span class="dash-fish" title="A storm that never made landfall and just pissed off fish">Fish Storm</span>'
+                lf_cell = '<span class="dash-fish" data-tip="A storm that never made landfall and just pissed off fish">Fish Storm</span>'
 
             row_classes = 'storm-row'
             if is_major:
@@ -1346,7 +1346,9 @@ def generate_dashboard_html(basin_data):
   .storm-chevron {{ font-size:0.7em; display:inline-block; transition:transform 0.2s; color:var(--muted); margin-left:2px; }}
   .storm-name-btn.open .storm-chevron {{ transform:rotate(90deg); }}
   .lf-cell {{ font-size:0.85em; color:var(--text); }}
-  .dash-fish {{ color:var(--muted); font-style:italic; cursor:help; }}
+  .dash-fish {{ color:var(--muted); font-style:italic; cursor:help; position:relative; display:inline-block; }}
+  .dash-fish::after {{ content:attr(data-tip); position:absolute; bottom:calc(100% + 5px); left:0; background:var(--card-bg,#1e1e2e); color:var(--text); border:1px solid var(--border); padding:5px 10px; border-radius:5px; font-size:0.8em; font-style:normal; white-space:nowrap; opacity:0; pointer-events:none; transition:opacity 0.12s; z-index:200; }}
+  .dash-fish:hover::after {{ opacity:1; }}
   .active-pulse {{ display:inline-block; width:7px; height:7px; border-radius:50%; background:#4caf50; box-shadow:0 0 0 0 rgba(76,175,80,0.7); animation:trpulse 1.5s infinite; flex-shrink:0; }}
   @keyframes trpulse {{ 0%{{box-shadow:0 0 0 0 rgba(76,175,80,0.7);}} 70%{{box-shadow:0 0 0 6px rgba(76,175,80,0);}} 100%{{box-shadow:0 0 0 0 rgba(76,175,80,0);}} }}
   tr.active-storm-row {{ border-left:3px solid #4caf50; }}
@@ -1788,11 +1790,13 @@ def generate_history_html(basin_data):
   .yr-panel {{ overflow:hidden; max-height:0; transition:max-height 0.3s ease; background:var(--sources-bg); }}
   .yr-panel.open {{ max-height:2000px; }}
   .yr-panel-inner {{ padding:8px 12px 10px; }}
-  .ys-row {{ display:grid; grid-template-columns:110px 48px 46px 1fr; align-items:center; gap:6px; padding:3px 0; font-size:0.82em; border-bottom:1px solid var(--border); }}
+  .ys-row {{ display:grid; grid-template-columns:110px 48px 46px 1fr; align-items:start; gap:6px; padding:5px 0; font-size:0.82em; border-bottom:1px solid var(--border); }}
   .ys-row:last-child {{ border-bottom:none; }}
-  .ys-name {{ color:var(--text); font-weight:500; line-height:1.3; }}
-  .ys-lf {{ display:block; font-size:0.82em; font-weight:400; color:var(--muted); font-style:italic; }}
-  .ys-fish {{ color:var(--muted); opacity:0.7; cursor:help; }}
+  .ys-name {{ color:var(--text); font-weight:500; line-height:1.4; }}
+  .ys-lf {{ display:block; font-size:0.82em; font-weight:400; color:var(--muted); font-style:italic; margin-top:1px; }}
+  .ys-fish {{ color:var(--muted); opacity:0.7; cursor:help; position:relative; }}
+  .ys-fish::after {{ content:attr(data-tip); position:absolute; bottom:calc(100% + 4px); left:0; background:var(--card-bg,#1e1e2e); color:var(--text); border:1px solid var(--border); padding:4px 9px; border-radius:5px; font-size:0.82em; font-style:normal; white-space:nowrap; opacity:0; pointer-events:none; transition:opacity 0.12s; z-index:200; }}
+  .ys-fish:hover::after {{ opacity:1; }}
   .ys-cat {{ color:var(--muted); font-size:0.9em; }}
   .ys-ace {{ color:var(--accent); font-weight:bold; text-align:right; }}
   .ys-bar {{ height:4px; background:var(--gauge-bg); border-radius:2px; }}
