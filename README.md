@@ -2,7 +2,7 @@
 
 **Atlantic & Eastern Pacific Hurricane ACE Tracker**
 
-Tracks Accumulated Cyclone Energy (ACE) for Atlantic and Eastern Pacific hurricane seasons with storm-by-storm data from 1991 onward. Publishes a live web dashboard updated every 6 hours during hurricane season.
+Tracks Accumulated Cyclone Energy (ACE) for Atlantic and Eastern Pacific hurricane seasons with storm-by-storm data from 1991 onward. Publishes a live web dashboard updated every 3 hours during hurricane season.
 
 [![Tests](https://github.com/jeremypfi/ace-tracker/actions/workflows/tests.yml/badge.svg)](https://github.com/jeremypfi/ace-tracker/actions/workflows/tests.yml)
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
@@ -18,24 +18,23 @@ Tracks Accumulated Cyclone Energy (ACE) for Atlantic and Eastern Pacific hurrica
 | Current Season Dashboard | https://aceofcanes.com |
 | Season History (1991–present) | https://aceofcanes.com/history.html |
 
-Updated every 6 hours during hurricane season (Eastern Pacific: May 15 – Nov 30 · Atlantic: Jun 1 – Nov 30).
+Updated every 3 hours during hurricane season (Eastern Pacific: May 15 – Nov 30 · Atlantic: Jun 1 – Nov 30).
 
 ---
 
 ## Features
 
-- **Real-time tracking** — current season ACE updated every 6 hours via NHC best track data
+- **Real-time tracking** — current season ACE updated every 3 hours via NHC best track data
 - **Dual basin** — Atlantic and Eastern Pacific, toggle between them on each page
-- **Live web dashboard** — published to [aceofcanes.com](https://aceofcanes.com) automatically; dark/light mode toggle
-- **Season progress bar** — shows current day of season and percent complete; marks past seasons as complete
-- **Season history page** — all seasons 1991–present in a sortable table with classification badges, top-5 highlights, and a long-term average row; similar seasons link directly to matching history rows
-- **Excel spreadsheets** — two workbooks generated each run with 5 tabs each:
-  - Summary (season overview, stats, similar years)
-  - Current Season Storms (storm-by-storm ACE breakdown)
-  - Historical Storms (all storms since 1991)
-  - Yearly Totals (ranked historical seasons)
-  - Discord Update (copy/paste ready)
-- **Offline fallback** — backup data for the current season if NOAA is unreachable
+- **Dark/light mode** — persisted across sessions
+- **Season progress bar** — shows current day and percent complete
+- **Landfall data** — each storm shows where it made landfall and its intensity at the moment of impact (not just peak). Multi-landfall storms show all locations (e.g. `Florida (Cat 1) · Louisiana (Cat 3)`). Storms that never made landfall are labeled **Fish Storm**
+- **NHC development alert** — amber banner appears when NHC is tracking an area with Medium (≥40%) or High (≥70%) formation chances, with direct link to the NHC Tropical Weather Outlook
+- **Honest season comparisons** — Season Insights show both same-date historical averages (what's typical by this point in the season) and full-season averages, so early-season numbers aren't misleadingly compared against totals that take six months to accumulate
+- **Storm track maps** — interactive Leaflet maps per storm with intensity color-coding; expandable inline on the dashboard
+- **Season history page** — all seasons 1991–present in a sortable table with classification badges, top-5 highlights, per-year storm accordions with landfall data, and a long-term average row
+- **Similar seasons** — finds the 3 closest historical seasons by ACE accumulated through the same date
+- **Pace rank** — shows where this season ranks among all historical seasons at this same calendar date, alongside the full-season rank
 - **NOAA classifications** — Below Normal / Near Normal / Above Normal / Extremely Active
 
 ---
@@ -81,9 +80,7 @@ python3 ace_tracker.py
 ```
 
 Generates in `data/`:
-- `ACE_Tracker_Atlantic.xlsx`
-- `ACE_Tracker_Pacific.xlsx`
-- `ACE_Dashboard.html` — open in any browser
+- `ACE_Dashboard.html` — current season dashboard (open in any browser)
 - `history.html` — all-seasons history page
 
 ### Run tests
@@ -92,7 +89,7 @@ Generates in `data/`:
 python3 test_ace_tracker.py
 ```
 
-All 25 tests must pass before committing.
+All 34 tests must pass before committing. Use the `/pre-commit` skill in Claude Code for the full checklist.
 
 ---
 
@@ -100,24 +97,25 @@ All 25 tests must pass before committing.
 
 ```
 ace-tracker/
-├── ace_tracker.py          # Main script — data fetch, ACE calc, HTML/Excel generation
-├── test_ace_tracker.py     # 25 unit tests
+├── ace_tracker.py          # Main script — data fetch, ACE calc, HTML generation
+├── test_ace_tracker.py     # 34 unit + smoke tests
 ├── requirements.txt        # Python dependencies
-├── ace.png                 # Site logo (favicon + header)
+├── ace.png                 # Site logo (favicon + OG image)
+├── ace_preview.png         # Social share preview image
+├── landfall_cache.json     # Cached landfall geocoding results (gitignored, built by CI)
 ├── CNAME                   # Custom domain for GitHub Pages (aceofcanes.com)
 ├── robots.txt              # Search engine crawl rules
 ├── sitemap.xml             # Sitemap for search engine indexing
 ├── .github/
 │   ├── workflows/
 │   │   ├── tests.yml       # CI: runs tests on push/PR (Python 3.10, 3.11, 3.12)
-│   │   └── publish.yml     # Scheduled: generates and deploys dashboard every 6 hours
+│   │   └── publish.yml     # Scheduled: generates and deploys dashboard every 3 hours
 │   ├── dependabot.yml      # Automated dependency updates
 │   └── CODEOWNERS          # @jeremypfi must approve all PRs
 ├── SECURITY.md
-└── data/                   # Generated output (xlsx/html gitignored, ace.png committed)
+└── data/                   # Generated output (html gitignored, images committed)
     ├── ace.png
-    ├── ACE_Tracker_Atlantic.xlsx
-    ├── ACE_Tracker_Pacific.xlsx
+    ├── ace_preview.png
     ├── ACE_Dashboard.html
     └── history.html
 ```
@@ -128,7 +126,15 @@ ace-tracker/
 
 - **[NOAA HURDAT2](https://www.nhc.noaa.gov/data/#hurdat)** — official historical best-track database (1991–present) via the [Tropycal](https://tropycal.github.io/tropycal/) library
 - **[NHC Real-time Best Track](https://www.nhc.noaa.gov/data/#hurdat)** — current season preliminary data (`include_btk=True` in Tropycal), updated continuously during active storms
+- **[NHC Tropical Weather Outlook](https://www.nhc.noaa.gov/gtwo.php)** — XML feeds (`TWOAT.xml` / `TWOEP.xml`) parsed every run for active disturbances with development potential
 - **[NOAA CPC](https://www.cpc.ncep.noaa.gov/products/outlooks/background_information.shtml)** — season classification thresholds and 1991–2020 climatological normals
+- **[Natural Earth](https://www.naturalearthdata.com/)** — 10m shapefiles (via Cartopy) for offline landfall geocoding
+
+---
+
+## How Landfall Detection Works
+
+Historical storms (completed seasons) use the official HURDAT2 `'L'` landfall markers, which record the exact time and position of each landfall. These markers aren't added to the real-time best-track data until the post-season analysis, so active-season storms use a geographic fallback: track points are checked against Natural Earth shapefiles using exact point-in-polygon containment. Results are cached in `landfall_cache.json` and persisted via GitHub Actions cache so geocoding only runs for new or updated storms.
 
 ---
 
@@ -139,7 +145,8 @@ Key constants at the top of `ace_tracker.py`:
 | Constant | Purpose |
 |---|---|
 | `START_YEAR` | Earliest year included in historical data (default: 1991) |
-| `OUTPUT_FOLDER` | Where Excel and HTML files are saved (default: `data/`) |
+| `OUTPUT_FOLDER` | Where HTML files are saved (default: `data/`) |
+| `LANDFALL_CACHE_PATH` | Path to the landfall geocoding cache (default: repo root) |
 | `BASINS` | Normal ACE values and average storm counts per basin |
 | `BACKUP_DATA` | Fallback season data used if NOAA is unreachable |
 
@@ -147,16 +154,14 @@ Key constants at the top of `ace_tracker.py`:
 
 ## Troubleshooting
 
-**`No module named openpyxl`**
-```bash
-pip3 install -r requirements.txt
-```
-
 **Script can't fetch data**
 The tracker falls back to `BACKUP_DATA` automatically. You'll see:
 ```
 ✗ Error loading Tropycal data → Using backup data (yearly totals only)
 ```
+
+**Landfall cache miss on first CI run**
+The `landfall_cache.json` is built on the first run and cached by GitHub Actions. The first run after a fresh clone will geocode all historical storms (~1 min extra). Every subsequent run reads from cache.
 
 **`pkg_resources` deprecation warning**
 Tropycal 1.4 uses `pkg_resources` which is deprecated in setuptools 81+. `requirements.txt` pins `setuptools<82` as a workaround. Monitor [Tropycal releases](https://github.com/tropycal/tropycal/releases) for a fix.
@@ -167,6 +172,7 @@ Tropycal 1.4 uses `pkg_resources` which is deprecated in setuptools 81+. `requir
 
 - Built with [Claude Code](https://claude.ai/claude-code) (Anthropic)
 - Data from [NOAA National Hurricane Center](https://www.nhc.noaa.gov/) via [Tropycal](https://tropycal.github.io/tropycal/)
+- Maps powered by [Leaflet](https://leafletjs.com/)
 - Inspired by hurricane tracking communities
 
 ---
