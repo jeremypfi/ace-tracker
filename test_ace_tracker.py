@@ -19,6 +19,7 @@ from ace_tracker import (
     finalize_storm,
     calculate_yearly_totals,
     find_similar_seasons,
+    calculate_same_date_stats,
     generate_dashboard_html,
     generate_history_html,
     SYNOPTIC_TIMES,
@@ -303,6 +304,73 @@ class TestDataValidation(unittest.TestCase):
         # This is tested in the actual code with: (x / y) if y > 0 else 0
         # No direct function to test, but documented for completeness
         pass
+
+
+class TestSameDateStats(unittest.TestCase):
+    """Tests for calculate_same_date_stats() — same-date historical comparisons."""
+
+    def _make_storms(self):
+        """Three years of synthetic storms with known counts."""
+        storms = []
+        for year in [2023, 2024, 2025]:
+            # Storm A: forms Jun 1, ends Jun 20 — fully before Jun 28 cutoff
+            storms.append(finalize_storm({
+                'id': f'AL01{year}', 'name': 'Alpha', 'year': year,
+                'max_wind': 65,  # hurricane
+                'wind_readings': [65, 65],
+                'start_date': datetime(year, 6, 1),
+                'end_date':   datetime(year, 6, 20),
+                'landfall':   [],
+            }))
+            # Storm B: forms Jul 15 — after Jun 28 cutoff, should be excluded
+            storms.append(finalize_storm({
+                'id': f'AL02{year}', 'name': 'Beta', 'year': year,
+                'max_wind': 40,
+                'wind_readings': [40, 40],
+                'start_date': datetime(year, 7, 15),
+                'end_date':   datetime(year, 7, 25),
+                'landfall':   [],
+            }))
+        return storms
+
+    def test_excludes_post_cutoff_storms(self):
+        """Storms forming after the cutoff date are not counted."""
+        storms = self._make_storms()
+        result = calculate_same_date_stats(storms, 'atlantic', datetime(2026, 6, 28))
+        # Only Storm A (Jun 1-20) should count per year; Storm B (Jul 15) excluded
+        self.assertEqual(result['avg_named'], 1.0)
+        self.assertEqual(result['avg_hurricanes'], 1.0)
+
+    def test_excludes_current_year(self):
+        """The current year is never included in the historical average."""
+        storms = self._make_storms()
+        # Add a 2026 storm that would skew the average if included
+        storms.append(finalize_storm({
+            'id': 'AL012026', 'name': 'Arthur', 'year': 2026,
+            'max_wind': 40, 'wind_readings': [40],
+            'start_date': datetime(2026, 6, 1),
+            'end_date':   datetime(2026, 6, 10),
+            'landfall':   [],
+        }))
+        result = calculate_same_date_stats(storms, 'atlantic', datetime(2026, 6, 28))
+        # Average should still be 1.0 (only 2023-2025 in the denominator)
+        self.assertEqual(result['avg_named'], 1.0)
+
+    def test_returns_none_with_no_historical_data(self):
+        """Returns None when no historical storms are available."""
+        self.assertIsNone(calculate_same_date_stats([], 'atlantic'))
+
+    def test_date_label_format(self):
+        """date_label is human-readable (e.g. 'Jun 28')."""
+        storms = self._make_storms()
+        result = calculate_same_date_stats(storms, 'atlantic', datetime(2026, 6, 28))
+        self.assertEqual(result['date_label'], 'Jun 28')
+
+    def test_yearly_ace_keys_exclude_current_year(self):
+        """yearly_ace dict does not contain the current year."""
+        storms = self._make_storms()
+        result = calculate_same_date_stats(storms, 'atlantic', datetime(2026, 6, 28))
+        self.assertNotIn(2026, result['yearly_ace'])
 
 
 class TestHTMLGeneration(unittest.TestCase):
