@@ -213,7 +213,7 @@ def _year_storm_list_html(storms_list):
         rows.append(
             f'<div class="ys-row">'
             f'<span class="ys-name">{s["name"]}{lf_html}</span>'
-            f'<span class="ys-cat" title="Peak intensity">{s["category"]}</span>'
+            f'<span class="ys-cat" data-tip="Peak intensity">{s["category"]}</span>'
             f'<span class="ys-ace">{s["ace"]:.1f}</span>'
             f'<div class="ys-bar"><div class="ys-bar-fill" style="width:{bar_pct}%"></div></div>'
             f'</div>'
@@ -1050,6 +1050,188 @@ def _preseason_html(basin_key, yearly_totals, current_year):
       <ul class="insights">{fact_items}</ul>'''
 
 
+def fetch_nhc_disturbances(basin_key):
+    """Fetch NHC Tropical Weather Outlook and return disturbances with Medium/High formation chances.
+
+    Parses the NHC TWO XML feed (updated every 6 hours). Returns a list of dicts:
+      {area, desc, level_48h, pct_48h, level_7d, pct_7d, nhc_url, issued}
+    Returns [] on any failure or when nothing notable is active.
+    """
+    import re
+    import urllib.request
+    import xml.etree.ElementTree as ET
+
+    feed_urls = {
+        'atlantic': 'https://www.nhc.noaa.gov/xml/TWOAT.xml',
+        'pacific':  'https://www.nhc.noaa.gov/xml/TWOEP.xml',
+    }
+    nhc_links = {
+        'atlantic': 'https://www.nhc.noaa.gov/gtwo.php?basin=atl&fdays=5',
+        'pacific':  'https://www.nhc.noaa.gov/gtwo.php?basin=epac&fdays=5',
+    }
+    url = feed_urls.get(basin_key)
+    if not url:
+        return []
+
+    try:
+        req = urllib.request.Request(url, headers={'User-Agent': 'ACETracker/1.0'})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            raw = resp.read().decode('utf-8', errors='replace')
+
+        root = ET.fromstring(raw)
+        desc_el = root.find('.//item/description')
+        pub_el  = root.find('.//item/pubDate')
+        if desc_el is None or not desc_el.text:
+            return []
+
+        text   = desc_el.text
+        issued = pub_el.text.strip() if pub_el is not None and pub_el.text else ''
+
+        # Preserve any HTML line-break tags as newlines before stripping others
+        text = re.sub(r'<br\s*/?>', '\n', text, flags=re.IGNORECASE)
+        text = re.sub(r'</(?:p|div|li)[^>]*>', '\n', text, flags=re.IGNORECASE)
+        text = re.sub(r'<[^>]+>', ' ', text)
+        text = re.sub(r'&amp;', '&', text)
+        text = re.sub(r'&[a-z]+;', ' ', text)
+        # NWS text products use 2+ spaces as line separators when served as plain text
+        text = re.sub(r' {2,}', '\n', text)
+        text = re.sub(r'\n{3,}', '\n\n', text)
+
+        disturbances = []
+
+        # Trim NOAA product header — find where actual outlook content begins
+        for marker in ('For the ', 'Tropical Weather Outlook'):
+            pos = text.find(marker)
+            if pos >= 0:
+                text = text[pos:]
+                break
+
+        # Split into per-disturbance blocks.
+        # Numbered outlooks (multiple disturbances) use "1. Area:" markers.
+        # Single-disturbance outlooks have no numbering.
+        if re.search(r'\n\s*\d+\.\s', text):
+            blocks = re.split(r'\n\s*(?=\d+\.\s)', text)
+        else:
+            blocks = [text]
+
+        # Lines that are NOAA boilerplate, not geographic descriptions
+        _header_pat = re.compile(
+            r'^(000|[A-Z]{4,}\d+|Tropical Weather Outlook|NWS National|Forecaster\b|For the\b)',
+            re.IGNORECASE)
+
+        for block_idx, block in enumerate(blocks, 1):
+            m48 = re.search(
+                r'\*?\s*formation chance through 48 hours[.\s]+(\w+)[.\s]+(?:near\s+)?(\d+)\s*percent',
+                block, re.IGNORECASE)
+            m7d = re.search(
+                r'\*?\s*formation chance through 7 days[.\s]+(\w+)[.\s]+(?:near\s+)?(\d+)\s*percent',
+                block, re.IGNORECASE)
+            if not m48:
+                continue
+
+            level_48h = m48.group(1).upper()
+            pct_48h   = int(m48.group(2))
+            level_7d  = m7d.group(1).upper() if m7d else 'LOW'
+            pct_7d    = int(m7d.group(2))    if m7d else 0
+
+            # Only alert for Medium (≥40%) or High (≥70%) in either window
+            if pct_48h < 40 and pct_7d < 40:
+                continue
+
+            # Collect content lines (skip boilerplate headers)
+            content_lines = [
+                l.strip() for l in block.split('\n')
+                if l.strip() and not _header_pat.match(l.strip())
+            ]
+
+            # Area label: look for "Geographic Name: description..." pattern,
+            # or fall back to the first clean non-boilerplate line
+            area_line = ''
+            desc_lines = []
+            for ln in content_lines:
+                if re.search(r'formation chance', ln, re.IGNORECASE):
+                    break
+                # "Location Name: rest of text" — split on first colon
+                colon_match = re.match(r'^([\w ,\-]{4,60}):\s*(.*)$', ln)
+                if colon_match and not area_line:
+                    area_line = colon_match.group(1).strip()
+                    rest = colon_match.group(2).strip()
+                    if rest:
+                        desc_lines.append(rest)
+                else:
+                    stripped = re.sub(r'^\d+\.\s*', '', ln).strip()
+                    if stripped and not area_line and len(stripped) > 4:
+                        area_line = stripped[:100]
+                    elif stripped:
+                        desc_lines.append(stripped)
+            desc = ' '.join(desc_lines)[:280]
+
+            disturbances.append({
+                'area':      area_line,
+                'desc':      desc,
+                'level_48h': level_48h,
+                'pct_48h':   pct_48h,
+                'level_7d':  level_7d,
+                'pct_7d':    pct_7d,
+                'nhc_url':   nhc_links[basin_key],
+                'issued':    issued,
+            })
+
+        return disturbances
+
+    except Exception as e:
+        logger.warning(f"Could not fetch NHC TWO for {basin_key}: {e}")
+        return []
+
+
+def _nhc_alert_html(disturbances):
+    """Render the NHC tropical disturbance alert banner."""
+    if not disturbances:
+        return ''
+
+    nhc_url = disturbances[0]['nhc_url']
+    issued  = disturbances[0]['issued']
+    count   = len(disturbances)
+    noun    = 'area' if count == 1 else 'areas'
+
+    def chance_badge(level, pct):
+        if level == 'HIGH' or pct >= 70:
+            color, dot = '#ef5350', '🔴'
+        elif level == 'MEDIUM' or pct >= 40:
+            color, dot = '#ffa726', '🟡'
+        else:
+            color, dot = '#9e9e9e', '⚪'
+        return f'<span style="color:{color};font-weight:600">{dot} {pct}% ({level.title()})</span>'
+
+    rows = []
+    for i, d in enumerate(disturbances, 1):
+        area = d['area'] or f'Disturbance {i}'
+        b48  = chance_badge(d['level_48h'], d['pct_48h'])
+        b7d  = chance_badge(d['level_7d'],  d['pct_7d'])
+        desc_html = f'<div class="nhc-dist-desc">{d["desc"]}</div>' if d['desc'] else ''
+        rows.append(
+            f'<div class="nhc-dist">'
+            f'<div class="nhc-dist-area">Disturbance {i} — {area}</div>'
+            f'{desc_html}'
+            f'<div class="nhc-dist-chances">48h: {b48} &nbsp;·&nbsp; 7-day: {b7d}</div>'
+            f'</div>'
+        )
+
+    issued_html = f'<span class="nhc-issued">Data as of {issued}</span>' if issued else ''
+
+    return (
+        f'<div class="nhc-alert">'
+        f'<div class="nhc-alert-hdr">⚠ NHC is monitoring {count} {noun} for potential tropical development</div>'
+        + ''.join(rows) +
+        f'<div class="nhc-alert-foot">'
+        f'{issued_html}'
+        f'<a class="nhc-alert-link" href="{nhc_url}" target="_blank" rel="noopener">'
+        f'View NHC Tropical Weather Outlook ↗</a>'
+        f'</div>'
+        f'</div>'
+    )
+
+
 def generate_dashboard_html(basin_data):
     """Generate a mobile-friendly HTML dashboard for both basins."""
     now = datetime.now(timezone.utc)
@@ -1233,10 +1415,14 @@ def generate_dashboard_html(basin_data):
         <div class="stat-box"><div class="stat-label">Rank (since {START_YEAR})</div><div class="stat-value">#{rank}<span class="stat-sub"> of {total_seasons}</span></div></div>
       </div>'''
 
+        disturbances   = fetch_nhc_disturbances(bd['basin_key'])
+        nhc_alert      = _nhc_alert_html(disturbances)
+
         sections.append(f'''
     <div class="basin-card" id="{bd['basin_key']}">
       <h2>{basin['name']} — {current_year} Season</h2>
       {_season_progress_html(bd['basin_key'], current_year)}
+      {nhc_alert}
       {stats_grid}
       {lower_section}
     </div>''')
@@ -1301,6 +1487,17 @@ def generate_dashboard_html(basin_data):
   .basin-card.active {{ display:block; }}
   h2 {{ color:var(--accent); font-size:1.2em; margin-bottom:12px; border-bottom:1px solid var(--border); padding-bottom:8px; }}
   h3 {{ color:var(--accent-h3); font-size:1em; margin:16px 0 8px; }}
+  .nhc-alert {{ background:rgba(255,152,0,0.07); border:1px solid rgba(255,152,0,0.35); border-left:4px solid #ff9800; border-radius:8px; padding:10px 14px 8px; margin-bottom:14px; font-size:0.88em; }}
+  [data-theme='light'] .nhc-alert {{ background:rgba(255,152,0,0.06); }}
+  .nhc-alert-hdr {{ font-weight:700; color:#ff9800; margin-bottom:8px; font-size:0.95em; }}
+  .nhc-dist {{ border-top:1px solid rgba(255,152,0,0.2); padding:7px 0 4px; }}
+  .nhc-dist-area {{ font-weight:600; color:var(--text); margin-bottom:3px; }}
+  .nhc-dist-desc {{ color:var(--muted); font-size:0.88em; line-height:1.4; margin-bottom:4px; }}
+  .nhc-dist-chances {{ font-size:0.9em; }}
+  .nhc-alert-foot {{ display:flex; justify-content:space-between; align-items:center; margin-top:8px; padding-top:6px; border-top:1px solid rgba(255,152,0,0.2); flex-wrap:wrap; gap:6px; }}
+  .nhc-issued {{ color:var(--muted); font-size:0.82em; }}
+  .nhc-alert-link {{ color:var(--accent); text-decoration:none; font-size:0.88em; font-weight:500; }}
+  .nhc-alert-link:hover {{ text-decoration:underline; }}
   .stats-grid {{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }}
   .stat-box {{ background:var(--box); border-radius:8px; padding:10px; text-align:center; }}
   .stat-box.ace-total {{ grid-column:span 3; }}
@@ -1352,9 +1549,8 @@ def generate_dashboard_html(basin_data):
   .storm-chevron {{ font-size:0.7em; display:inline-block; transition:transform 0.2s; color:var(--muted); margin-left:2px; }}
   .storm-name-btn.open .storm-chevron {{ transform:rotate(90deg); }}
   .lf-cell {{ font-size:0.85em; color:var(--text); }}
-  .dash-fish {{ color:var(--muted); font-style:italic; cursor:help; position:relative; display:inline-block; }}
-  .dash-fish::after {{ content:attr(data-tip); position:absolute; bottom:calc(100% + 5px); left:0; background:var(--card-bg,#1e1e2e); color:var(--text); border:1px solid var(--border); padding:5px 10px; border-radius:5px; font-size:0.8em; font-style:normal; white-space:nowrap; opacity:0; pointer-events:none; transition:opacity 0.12s; z-index:200; }}
-  .dash-fish:hover::after {{ opacity:1; }}
+  .dash-fish {{ color:var(--muted); font-style:italic; cursor:help; }}
+  .global-tip {{ display:none; position:fixed; background:var(--card-bg,#1a1a2e); color:var(--text); border:1px solid var(--border); padding:5px 11px; border-radius:6px; font-size:0.82em; pointer-events:none; z-index:9999; max-width:320px; line-height:1.4; box-shadow:0 2px 8px rgba(0,0,0,0.4); }}
   .active-pulse {{ display:inline-block; width:7px; height:7px; border-radius:50%; background:#4caf50; box-shadow:0 0 0 0 rgba(76,175,80,0.7); animation:trpulse 1.5s infinite; flex-shrink:0; }}
   @keyframes trpulse {{ 0%{{box-shadow:0 0 0 0 rgba(76,175,80,0.7);}} 70%{{box-shadow:0 0 0 6px rgba(76,175,80,0);}} 100%{{box-shadow:0 0 0 0 rgba(76,175,80,0);}} }}
   tr.active-storm-row {{ border-left:3px solid #4caf50; }}
@@ -1493,6 +1689,16 @@ function _buildMap(slug){{
 }}
 </script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<div id="global-tip" class="global-tip"></div>
+<script>
+(function(){{
+  var tip=document.getElementById('global-tip');
+  function show(e){{var t=e.currentTarget.getAttribute('data-tip');if(!t)return;tip.textContent=t;tip.style.display='block';move(e);}}
+  function move(e){{var x=e.clientX,y=e.clientY,w=tip.offsetWidth,h=tip.offsetHeight;tip.style.left=Math.min(x+14,window.innerWidth-w-8)+'px';tip.style.top=Math.max(y-h-8,8)+'px';}}
+  function hide(){{tip.style.display='none';}}
+  document.querySelectorAll('[data-tip]').forEach(function(el){{el.addEventListener('mouseenter',show);el.addEventListener('mousemove',move);el.addEventListener('mouseleave',hide);}});
+}})();
+</script>
 <!-- Cloudflare Web Analytics --><script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{{"token": "775dfcf117b94ff59e3c118c330d02aa"}}'></script><!-- End Cloudflare Web Analytics -->
 </body>
 </html>'''
@@ -1800,10 +2006,9 @@ def generate_history_html(basin_data):
   .ys-row:last-child {{ border-bottom:none; }}
   .ys-name {{ color:var(--text); font-weight:500; line-height:1.4; }}
   .ys-lf {{ display:block; font-size:0.82em; font-weight:400; color:var(--muted); font-style:italic; margin-top:1px; }}
-  .ys-fish {{ color:var(--muted); opacity:0.7; cursor:help; position:relative; }}
-  .ys-fish::after {{ content:attr(data-tip); position:absolute; bottom:calc(100% + 4px); left:0; background:var(--card-bg,#1e1e2e); color:var(--text); border:1px solid var(--border); padding:4px 9px; border-radius:5px; font-size:0.82em; font-style:normal; white-space:nowrap; opacity:0; pointer-events:none; transition:opacity 0.12s; z-index:200; }}
-  .ys-fish:hover::after {{ opacity:1; }}
-  .ys-cat {{ color:var(--muted); font-size:0.9em; }}
+  .ys-fish {{ color:var(--muted); opacity:0.7; cursor:help; }}
+  .ys-cat {{ color:var(--muted); font-size:0.9em; cursor:help; text-decoration:underline dotted; text-underline-offset:2px; }}
+  .global-tip {{ display:none; position:fixed; background:var(--card-bg,#1a1a2e); color:var(--text); border:1px solid var(--border); padding:5px 11px; border-radius:6px; font-size:0.82em; pointer-events:none; z-index:9999; max-width:320px; line-height:1.4; box-shadow:0 2px 8px rgba(0,0,0,0.4); }}
   .ys-ace {{ color:var(--accent); font-weight:bold; text-align:right; }}
   .ys-bar {{ height:4px; background:var(--gauge-bg); border-radius:2px; }}
   .ys-bar-fill {{ height:100%; background:var(--accent); border-radius:2px; }}
@@ -1896,6 +2101,16 @@ function toggleYear(key){{
   if(open){{panel.classList.remove('open');if(btn)btn.classList.remove('open');}}
   else{{panel.classList.add('open');if(btn)btn.classList.add('open');}}
 }}
+</script>
+<div id="global-tip" class="global-tip"></div>
+<script>
+(function(){{
+  var tip=document.getElementById('global-tip');
+  function show(e){{var t=e.currentTarget.getAttribute('data-tip');if(!t)return;tip.textContent=t;tip.style.display='block';move(e);}}
+  function move(e){{var x=e.clientX,y=e.clientY,w=tip.offsetWidth,h=tip.offsetHeight;tip.style.left=Math.min(x+14,window.innerWidth-w-8)+'px';tip.style.top=Math.max(y-h-8,8)+'px';}}
+  function hide(){{tip.style.display='none';}}
+  document.querySelectorAll('[data-tip]').forEach(function(el){{el.addEventListener('mouseenter',show);el.addEventListener('mousemove',move);el.addEventListener('mouseleave',hide);}});
+}})();
 </script>
 <!-- Cloudflare Web Analytics --><script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{{"token": "775dfcf117b94ff59e3c118c330d02aa"}}'></script><!-- End Cloudflare Web Analytics -->
 </body>
