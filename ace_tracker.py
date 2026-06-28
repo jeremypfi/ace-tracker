@@ -213,7 +213,7 @@ def _year_storm_list_html(storms_list):
         rows.append(
             f'<div class="ys-row">'
             f'<span class="ys-name">{s["name"]}{lf_html}</span>'
-            f'<span class="ys-cat" title="Peak intensity">{s["category"]}</span>'
+            f'<span class="ys-cat" data-tip="Peak intensity">{s["category"]}</span>'
             f'<span class="ys-ace">{s["ace"]:.1f}</span>'
             f'<div class="ys-bar"><div class="ys-bar-fill" style="width:{bar_pct}%"></div></div>'
             f'</div>'
@@ -1352,9 +1352,8 @@ def generate_dashboard_html(basin_data):
   .storm-chevron {{ font-size:0.7em; display:inline-block; transition:transform 0.2s; color:var(--muted); margin-left:2px; }}
   .storm-name-btn.open .storm-chevron {{ transform:rotate(90deg); }}
   .lf-cell {{ font-size:0.85em; color:var(--text); }}
-  .dash-fish {{ color:var(--muted); font-style:italic; cursor:help; position:relative; display:inline-block; }}
-  .dash-fish::after {{ content:attr(data-tip); position:absolute; bottom:calc(100% + 5px); left:0; background:var(--card-bg,#1e1e2e); color:var(--text); border:1px solid var(--border); padding:5px 10px; border-radius:5px; font-size:0.8em; font-style:normal; white-space:nowrap; opacity:0; pointer-events:none; transition:opacity 0.12s; z-index:200; }}
-  .dash-fish:hover::after {{ opacity:1; }}
+  .dash-fish {{ color:var(--muted); font-style:italic; cursor:help; }}
+  .global-tip {{ display:none; position:fixed; background:var(--card-bg,#1a1a2e); color:var(--text); border:1px solid var(--border); padding:5px 11px; border-radius:6px; font-size:0.82em; pointer-events:none; z-index:9999; max-width:320px; line-height:1.4; box-shadow:0 2px 8px rgba(0,0,0,0.4); }}
   .active-pulse {{ display:inline-block; width:7px; height:7px; border-radius:50%; background:#4caf50; box-shadow:0 0 0 0 rgba(76,175,80,0.7); animation:trpulse 1.5s infinite; flex-shrink:0; }}
   @keyframes trpulse {{ 0%{{box-shadow:0 0 0 0 rgba(76,175,80,0.7);}} 70%{{box-shadow:0 0 0 6px rgba(76,175,80,0);}} 100%{{box-shadow:0 0 0 0 rgba(76,175,80,0);}} }}
   tr.active-storm-row {{ border-left:3px solid #4caf50; }}
@@ -1493,6 +1492,16 @@ function _buildMap(slug){{
 }}
 </script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<div id="global-tip" class="global-tip"></div>
+<script>
+(function(){{
+  var tip=document.getElementById('global-tip');
+  function show(e){{var t=e.currentTarget.getAttribute('data-tip');if(!t)return;tip.textContent=t;tip.style.display='block';move(e);}}
+  function move(e){{var x=e.clientX,y=e.clientY,w=tip.offsetWidth,h=tip.offsetHeight;tip.style.left=Math.min(x+14,window.innerWidth-w-8)+'px';tip.style.top=Math.max(y-h-8,8)+'px';}}
+  function hide(){{tip.style.display='none';}}
+  document.querySelectorAll('[data-tip]').forEach(function(el){{el.addEventListener('mouseenter',show);el.addEventListener('mousemove',move);el.addEventListener('mouseleave',hide);}});
+}})();
+</script>
 <!-- Cloudflare Web Analytics --><script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{{"token": "775dfcf117b94ff59e3c118c330d02aa"}}'></script><!-- End Cloudflare Web Analytics -->
 </body>
 </html>'''
@@ -1800,10 +1809,9 @@ def generate_history_html(basin_data):
   .ys-row:last-child {{ border-bottom:none; }}
   .ys-name {{ color:var(--text); font-weight:500; line-height:1.4; }}
   .ys-lf {{ display:block; font-size:0.82em; font-weight:400; color:var(--muted); font-style:italic; margin-top:1px; }}
-  .ys-fish {{ color:var(--muted); opacity:0.7; cursor:help; position:relative; }}
-  .ys-fish::after {{ content:attr(data-tip); position:absolute; bottom:calc(100% + 4px); left:0; background:var(--card-bg,#1e1e2e); color:var(--text); border:1px solid var(--border); padding:4px 9px; border-radius:5px; font-size:0.82em; font-style:normal; white-space:nowrap; opacity:0; pointer-events:none; transition:opacity 0.12s; z-index:200; }}
-  .ys-fish:hover::after {{ opacity:1; }}
-  .ys-cat {{ color:var(--muted); font-size:0.9em; }}
+  .ys-fish {{ color:var(--muted); opacity:0.7; cursor:help; }}
+  .ys-cat {{ color:var(--muted); font-size:0.9em; cursor:help; text-decoration:underline dotted; text-underline-offset:2px; }}
+  .global-tip {{ display:none; position:fixed; background:var(--card-bg,#1a1a2e); color:var(--text); border:1px solid var(--border); padding:5px 11px; border-radius:6px; font-size:0.82em; pointer-events:none; z-index:9999; max-width:320px; line-height:1.4; box-shadow:0 2px 8px rgba(0,0,0,0.4); }}
   .ys-ace {{ color:var(--accent); font-weight:bold; text-align:right; }}
   .ys-bar {{ height:4px; background:var(--gauge-bg); border-radius:2px; }}
   .ys-bar-fill {{ height:100%; background:var(--accent); border-radius:2px; }}
@@ -1896,6 +1904,16 @@ function toggleYear(key){{
   if(open){{panel.classList.remove('open');if(btn)btn.classList.remove('open');}}
   else{{panel.classList.add('open');if(btn)btn.classList.add('open');}}
 }}
+</script>
+<div id="global-tip" class="global-tip"></div>
+<script>
+(function(){{
+  var tip=document.getElementById('global-tip');
+  function show(e){{var t=e.currentTarget.getAttribute('data-tip');if(!t)return;tip.textContent=t;tip.style.display='block';move(e);}}
+  function move(e){{var x=e.clientX,y=e.clientY,w=tip.offsetWidth,h=tip.offsetHeight;tip.style.left=Math.min(x+14,window.innerWidth-w-8)+'px';tip.style.top=Math.max(y-h-8,8)+'px';}}
+  function hide(){{tip.style.display='none';}}
+  document.querySelectorAll('[data-tip]').forEach(function(el){{el.addEventListener('mouseenter',show);el.addEventListener('mousemove',move);el.addEventListener('mouseleave',hide);}});
+}})();
 </script>
 <!-- Cloudflare Web Analytics --><script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{{"token": "775dfcf117b94ff59e3c118c330d02aa"}}'></script><!-- End Cloudflare Web Analytics -->
 </body>
