@@ -1834,7 +1834,7 @@ function _buildMap(slug){{
   if(lls.length)map.fitBounds(L.latLngBounds(lls),{{padding:[50,50],maxZoom:6}});
 }}
 </script>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HT" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script>
 <div id="global-tip" class="global-tip"></div>
 <script>
 (function(){{
