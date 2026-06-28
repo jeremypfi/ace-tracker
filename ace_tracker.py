@@ -7,18 +7,12 @@ hurricane seasons with storm-by-storm historical data from 1991 onward.
 
 Data Sources:
 - Historical data: Tropycal library (HURDAT2 database)
-- Current season: Tropycal with NHC best track data
+- Current season: Tropycal with NHC best track data (include_btk=True)
+- Tropical Weather Outlook: NHC TWO XML feeds (TWOAT.xml / TWOEP.xml)
 
-Creates two separate spreadsheets:
-- ACE_Tracker_Atlantic.xlsx
-- ACE_Tracker_Pacific.xlsx
-
-Each spreadsheet contains 5 tabs:
-- Summary
-- Current Season Storms
-- Historical Storms (1991-present)
-- Yearly Totals
-- Discord Update (copy/paste ready for Discord)
+Output:
+- data/ACE_Dashboard.html  — current season dashboard (deployed to aceofcanes.com)
+- data/history.html        — all-seasons history page
 
 Usage:
     python3 ace_tracker.py
@@ -26,10 +20,11 @@ Usage:
 Author: Built with Claude for JP
 """
 
+import html
 import os
 import json
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 import tropycal.tracks as tracks
 
 # Configure logging
@@ -207,13 +202,13 @@ def _year_storm_list_html(storms_list):
         bar_pct = round(s['ace'] / max_ace * 100)
         lf = s.get('landfall', [])
         if lf:
-            lf_parts = [f'{loc} ({cat})' for loc, cat in lf]
+            lf_parts = [f'{html.escape(loc)} ({html.escape(cat)})' for loc, cat in lf]
             lf_html = f'<span class="ys-lf">{" · ".join(lf_parts)}</span>'
         else:
             lf_html = '<span class="ys-lf ys-fish" data-tip="A storm that never made landfall and just pissed off fish">Fish Storm</span>'
         rows.append(
             f'<div class="ys-row">'
-            f'<span class="ys-name">{s["name"]}{lf_html}</span>'
+            f'<span class="ys-name">{html.escape(s["name"])}{lf_html}</span>'
             f'<span class="ys-cat" data-tip="Peak intensity">{s["category"]}</span>'
             f'<span class="ys-ace">{s["ace"]:.1f}</span>'
             f'<div class="ys-bar"><div class="ys-bar-fill" style="width:{bar_pct}%"></div></div>'
@@ -1353,10 +1348,10 @@ def _nhc_alert_html(disturbances):
 
     rows = []
     for i, d in enumerate(disturbances, 1):
-        area = d['area'] or f'Disturbance {i}'
+        area = html.escape(d['area'] or f'Disturbance {i}')
         b48  = chance_badge(d['level_48h'], d['pct_48h'])
         b7d  = chance_badge(d['level_7d'],  d['pct_7d'])
-        desc_html = f'<div class="nhc-dist-desc">{d["desc"]}</div>' if d['desc'] else ''
+        desc_html = f'<div class="nhc-dist-desc">{html.escape(d["desc"])}</div>' if d['desc'] else ''
         rows.append(
             f'<div class="nhc-dist">'
             f'<div class="nhc-dist-area">Disturbance {i} — {area}</div>'
@@ -1365,7 +1360,7 @@ def _nhc_alert_html(disturbances):
             f'</div>'
         )
 
-    issued_html = f'<span class="nhc-issued">Data as of {issued}</span>' if issued else ''
+    issued_html = f'<span class="nhc-issued">Data as of {html.escape(issued)}</span>' if issued else ''
 
     return (
         f'<div class="nhc-alert">'
@@ -1414,7 +1409,7 @@ def generate_dashboard_html(basin_data):
 
             landfall = d.get('landfall', [])
             if landfall:
-                lf_cell = ' · '.join(f'{loc} ({cat})' for loc, cat in landfall)
+                lf_cell = ' · '.join(f'{html.escape(loc)} ({html.escape(cat)})' for loc, cat in landfall)
             else:
                 lf_cell = '<span class="dash-fish" data-tip="A storm that never made landfall and just pissed off fish">Fish Storm</span>'
 
@@ -1456,8 +1451,8 @@ def generate_dashboard_html(basin_data):
 
             rows.append(
                 f'<tr class="{row_classes}" id="storm-row-{slug}">'
-                f'<td data-v="{name}"><button class="storm-name-btn" id="trbtn-{slug}" onclick="toggleTrack(\'{slug}\')">'
-                f'{active_dot}{name}<span class="storm-chevron">&#9658;</span></button></td>'
+                f'<td data-v="{html.escape(name)}"><button class="storm-name-btn" id="trbtn-{slug}" onclick="toggleTrack(\'{slug}\')">'
+                f'{active_dot}{html.escape(name)}<span class="storm-chevron">&#9658;</span></button></td>'
                 f'<td data-v="{ace:.6f}">{ace:.1f}</td>'
                 f'<td data-v="{pct:.4f}">{pct:.1f}%</td>'
                 f'<td data-v="{wind}">{cat}</td>'
@@ -1575,6 +1570,9 @@ def generate_dashboard_html(basin_data):
       {lower_section}
     </div>''')
 
+    # Escape </ sequences so the JSON blob can't break out of the <script> tag
+    _track_json = json.dumps(all_track_data).replace('</', '<\\/')
+
     html = f'''<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1596,7 +1594,7 @@ def generate_dashboard_html(basin_data):
 <meta name="twitter:description" content="Track Accumulated Cyclone Energy (ACE) for the Atlantic and Eastern Pacific hurricane seasons in real time. Updated every 6 hours from official NOAA data.">
 <meta name="twitter:image" content="https://aceofcanes.com/ace_preview.png">
 <link rel="icon" type="image/png" href="ace.png">
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous" />
 <title>Hurricane ACE Dashboard | aceofcanes.com</title>
 <script>(function(){{try{{var t=localStorage.getItem('ace-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light');}}catch(e){{}}}})();</script>
 <style>
@@ -1797,7 +1795,7 @@ function sortDash(th,col,type){{
   }});
   card.querySelectorAll('.sort-th .sa').forEach(function(s,i){{s.innerHTML=i===col?(asc?'&#9650;':'&#9660;'):''}});
 }}
-var ACE_TRACKS={json.dumps(all_track_data)};
+var ACE_TRACKS={_track_json};
 var _trMaps={{}};
 var _SC={{TD:'#9e9e9e',TS:'#81d4fa',SS:'#81d4fa'}};
 function _tc(st,w){{
@@ -1836,7 +1834,7 @@ function _buildMap(slug){{
   if(lls.length)map.fitBounds(L.latLngBounds(lls),{{padding:[50,50],maxZoom:6}});
 }}
 </script>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HT" crossorigin="anonymous"></script>
 <div id="global-tip" class="global-tip"></div>
 <script>
 (function(){{
@@ -1983,7 +1981,7 @@ def generate_history_html(basin_data):
                 f'<td data-v="{named_v}">{d["named"]}</td>'
                 f'<td data-v="{hurr_v}">{d["hurricanes"]}</td>'
                 f'<td data-v="{major_v}">{d["majors"]}</td>'
-                f'<td data-v="{d["leader"]}">{d["leader"]}</td>'
+                f'<td data-v="{html.escape(str(d["leader"]))}">{html.escape(str(d["leader"]))}</td>'
                 f'<td data-v="{rank}">#{rank}&nbsp;/&nbsp;{total_seasons}</td>'
                 f'</tr>'
                 f'<tr class="yr-expand-row" id="yr-xrow-{yr_key}">'
