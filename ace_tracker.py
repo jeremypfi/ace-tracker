@@ -206,13 +206,14 @@ def _year_storm_list_html(storms_list):
         bar_pct = round(s['ace'] / max_ace * 100)
         lf = s.get('landfall', [])
         if lf:
-            lf_html = f'<span class="ys-lf">{" · ".join(lf)}</span>'
+            lf_parts = [f'{loc} ({cat})' for loc, cat in lf]
+            lf_html = f'<span class="ys-lf">{" · ".join(lf_parts)}</span>'
         else:
-            lf_html = '<span class="ys-lf ys-fish" title="A storm that never made landfall and just pissed off fish">Fish Storm</span>'
+            lf_html = '<span class="ys-lf ys-fish" data-tip="A storm that never made landfall and just pissed off fish">Fish Storm</span>'
         rows.append(
             f'<div class="ys-row">'
             f'<span class="ys-name">{s["name"]}{lf_html}</span>'
-            f'<span class="ys-cat">{s["category"]}</span>'
+            f'<span class="ys-cat" title="Peak intensity">{s["category"]}</span>'
             f'<span class="ys-ace">{s["ace"]:.1f}</span>'
             f'<div class="ys-bar"><div class="ys-bar-fill" style="width:{bar_pct}%"></div></div>'
             f'</div>'
@@ -300,23 +301,28 @@ def _reverse_geocode(lat, lon):
 
 
 def get_landfall_locations(storm_obj):
-    """Return a deduplicated list of landfall location strings for a storm.
+    """Return a deduplicated list of (location, category_at_landfall) tuples.
 
     Reads HURDAT2 'L' markers from storm_obj.special. Returns an empty list
-    for fish storms (no landfall).
+    for fish storms (no landfall). Category reflects the storm's intensity at
+    the moment of landfall, not its peak intensity.
     """
     try:
         special = list(storm_obj.special)
         lats = list(storm_obj.lat)
         lons = list(storm_obj.lon)
+        vmax = list(storm_obj.vmax)
         locations = []
         seen = set()
         for i, sp in enumerate(special):
             if sp == 'L' and i < len(lats) and i < len(lons):
                 loc = _reverse_geocode(float(lats[i]), float(lons[i]))
-                if loc and loc not in seen:
-                    seen.add(loc)
-                    locations.append(loc)
+                wind = int(vmax[i]) if i < len(vmax) else 0
+                cat = get_category(wind)
+                key = (loc, cat)
+                if loc and key not in seen:
+                    seen.add(key)
+                    locations.append((loc, cat))
         return locations
     except Exception:
         return []
@@ -1078,9 +1084,9 @@ def generate_dashboard_html(basin_data):
 
             landfall = d.get('landfall', [])
             if landfall:
-                lf_cell = ' · '.join(landfall)
+                lf_cell = ' · '.join(f'{loc} ({cat})' for loc, cat in landfall)
             else:
-                lf_cell = '<span class="dash-fish" title="A storm that never made landfall and just pissed off fish">Fish Storm</span>'
+                lf_cell = '<span class="dash-fish" data-tip="A storm that never made landfall and just pissed off fish">Fish Storm</span>'
 
             row_classes = 'storm-row'
             if is_major:
@@ -1346,7 +1352,9 @@ def generate_dashboard_html(basin_data):
   .storm-chevron {{ font-size:0.7em; display:inline-block; transition:transform 0.2s; color:var(--muted); margin-left:2px; }}
   .storm-name-btn.open .storm-chevron {{ transform:rotate(90deg); }}
   .lf-cell {{ font-size:0.85em; color:var(--text); }}
-  .dash-fish {{ color:var(--muted); font-style:italic; cursor:help; }}
+  .dash-fish {{ color:var(--muted); font-style:italic; cursor:help; position:relative; display:inline-block; }}
+  .dash-fish::after {{ content:attr(data-tip); position:absolute; bottom:calc(100% + 5px); left:0; background:var(--card-bg,#1e1e2e); color:var(--text); border:1px solid var(--border); padding:5px 10px; border-radius:5px; font-size:0.8em; font-style:normal; white-space:nowrap; opacity:0; pointer-events:none; transition:opacity 0.12s; z-index:200; }}
+  .dash-fish:hover::after {{ opacity:1; }}
   .active-pulse {{ display:inline-block; width:7px; height:7px; border-radius:50%; background:#4caf50; box-shadow:0 0 0 0 rgba(76,175,80,0.7); animation:trpulse 1.5s infinite; flex-shrink:0; }}
   @keyframes trpulse {{ 0%{{box-shadow:0 0 0 0 rgba(76,175,80,0.7);}} 70%{{box-shadow:0 0 0 6px rgba(76,175,80,0);}} 100%{{box-shadow:0 0 0 0 rgba(76,175,80,0);}} }}
   tr.active-storm-row {{ border-left:3px solid #4caf50; }}
@@ -1788,11 +1796,13 @@ def generate_history_html(basin_data):
   .yr-panel {{ overflow:hidden; max-height:0; transition:max-height 0.3s ease; background:var(--sources-bg); }}
   .yr-panel.open {{ max-height:2000px; }}
   .yr-panel-inner {{ padding:8px 12px 10px; }}
-  .ys-row {{ display:grid; grid-template-columns:110px 48px 46px 1fr; align-items:center; gap:6px; padding:3px 0; font-size:0.82em; border-bottom:1px solid var(--border); }}
+  .ys-row {{ display:grid; grid-template-columns:110px 48px 46px 1fr; align-items:start; gap:6px; padding:5px 0; font-size:0.82em; border-bottom:1px solid var(--border); }}
   .ys-row:last-child {{ border-bottom:none; }}
-  .ys-name {{ color:var(--text); font-weight:500; line-height:1.3; }}
-  .ys-lf {{ display:block; font-size:0.82em; font-weight:400; color:var(--muted); font-style:italic; }}
-  .ys-fish {{ color:var(--muted); opacity:0.7; cursor:help; }}
+  .ys-name {{ color:var(--text); font-weight:500; line-height:1.4; }}
+  .ys-lf {{ display:block; font-size:0.82em; font-weight:400; color:var(--muted); font-style:italic; margin-top:1px; }}
+  .ys-fish {{ color:var(--muted); opacity:0.7; cursor:help; position:relative; }}
+  .ys-fish::after {{ content:attr(data-tip); position:absolute; bottom:calc(100% + 4px); left:0; background:var(--card-bg,#1e1e2e); color:var(--text); border:1px solid var(--border); padding:4px 9px; border-radius:5px; font-size:0.82em; font-style:normal; white-space:nowrap; opacity:0; pointer-events:none; transition:opacity 0.12s; z-index:200; }}
+  .ys-fish:hover::after {{ opacity:1; }}
   .ys-cat {{ color:var(--muted); font-size:0.9em; }}
   .ys-ace {{ color:var(--accent); font-weight:bold; text-align:right; }}
   .ys-bar {{ height:4px; background:var(--gauge-bg); border-radius:2px; }}
