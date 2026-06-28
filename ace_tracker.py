@@ -204,15 +204,122 @@ def _year_storm_list_html(storms_list):
     rows = []
     for s in storms_list:
         bar_pct = round(s['ace'] / max_ace * 100)
+        lf = s.get('landfall', [])
+        if lf:
+            lf_html = f'<span class="ys-lf">{" · ".join(lf)}</span>'
+        else:
+            lf_html = '<span class="ys-lf ys-fish" title="A storm that never made landfall and just pissed off fish">Fish Storm</span>'
         rows.append(
             f'<div class="ys-row">'
-            f'<span class="ys-name">{s["name"]}</span>'
+            f'<span class="ys-name">{s["name"]}{lf_html}</span>'
             f'<span class="ys-cat">{s["category"]}</span>'
             f'<span class="ys-ace">{s["ace"]:.1f}</span>'
             f'<div class="ys-bar"><div class="ys-bar-fill" style="width:{bar_pct}%"></div></div>'
             f'</div>'
         )
     return '\n'.join(rows)
+
+
+# =============================================================================
+# LANDFALL GEOCODER
+# =============================================================================
+
+_landfall_readers = None
+
+
+def _build_landfall_geocoder():
+    """Load Natural Earth shapefiles for offline reverse geocoding. Cached after first call."""
+    global _landfall_readers
+    if _landfall_readers is not None:
+        return _landfall_readers
+    try:
+        import cartopy.io.shapereader as shpreader
+        states_shp = shpreader.natural_earth(resolution='10m', category='cultural',
+                                              name='admin_1_states_provinces')
+        countries_shp = shpreader.natural_earth(resolution='10m', category='cultural',
+                                                name='admin_0_countries')
+        # Pre-store records with bounds for fast bounding-box pre-filtering
+        states = [(rec, rec.geometry.bounds)
+                  for rec in shpreader.Reader(states_shp).records() if rec.geometry]
+        countries = [(rec, rec.geometry.bounds)
+                     for rec in shpreader.Reader(countries_shp).records() if rec.geometry]
+        _landfall_readers = (states, countries)
+    except Exception as _e:
+        logger.warning(f"Could not load landfall shapefiles: {_e}")
+        _landfall_readers = ([], [])
+    return _landfall_readers
+
+
+def _reverse_geocode(lat, lon):
+    """Convert a coastal lat/lon to a human-readable location name.
+
+    Uses a ~0.5-degree buffer so HURDAT2 landfall points that sit exactly on
+    the coastline are captured by the nearest land polygon.
+    """
+    states, countries = _build_landfall_geocoder()
+    if not states and not countries:
+        return None
+    try:
+        from shapely.geometry import Point
+        pt = Point(lon, lat)
+        buf = 0.5  # ~55 km — enough to catch coastal landfall coordinates
+        blon0, blat0 = lon - buf, lat - buf
+        blon1, blat1 = lon + buf, lat + buf
+        buffered = pt.buffer(buf)
+
+        # State/province level (more specific) — pre-filter by bounding box
+        best_attr, best_dist = None, float('inf')
+        for rec, (minx, miny, maxx, maxy) in states:
+            if minx > blon1 or maxx < blon0 or miny > blat1 or maxy < blat0:
+                continue
+            if rec.geometry.intersects(buffered):
+                d = rec.geometry.distance(pt)
+                if d < best_dist:
+                    best_dist = d
+                    best_attr = rec.attributes
+
+        if best_attr:
+            name = best_attr.get('name', '')
+            country = best_attr.get('admin', '')
+            if country == 'United States of America':
+                return name
+            if name and country:
+                return f'{name}, {country}'
+            return country or name or None
+
+        # Country level fallback
+        for rec, (minx, miny, maxx, maxy) in countries:
+            if minx > blon1 or maxx < blon0 or miny > blat1 or maxy < blat0:
+                continue
+            if rec.geometry.intersects(buffered):
+                return rec.attributes.get('NAME', None)
+
+        return None
+    except Exception:
+        return None
+
+
+def get_landfall_locations(storm_obj):
+    """Return a deduplicated list of landfall location strings for a storm.
+
+    Reads HURDAT2 'L' markers from storm_obj.special. Returns an empty list
+    for fish storms (no landfall).
+    """
+    try:
+        special = list(storm_obj.special)
+        lats = list(storm_obj.lat)
+        lons = list(storm_obj.lon)
+        locations = []
+        seen = set()
+        for i, sp in enumerate(special):
+            if sp == 'L' and i < len(lats) and i < len(lons):
+                loc = _reverse_geocode(float(lats[i]), float(lons[i]))
+                if loc and loc not in seen:
+                    seen.add(loc)
+                    locations.append(loc)
+        return locations
+    except Exception:
+        return []
 
 
 # =============================================================================
@@ -319,7 +426,8 @@ def parse_hurdat2(basin_key):
                             'max_wind': max_wind,
                             'wind_readings': wind_readings,
                             'start_date': start_date,
-                            'end_date': end_date
+                            'end_date': end_date,
+                            'landfall': get_landfall_locations(storm_obj),
                         }
 
                         # Finalize storm (calculates ACE, category, duration)
@@ -471,6 +579,7 @@ def get_current_season(basin_key):
                             'track_points': track_points,
                             'is_active': is_active,
                             'start_date': start_date_str,
+                            'landfall': get_landfall_locations(storm_obj),
                         }
 
                     except Exception as e:
@@ -601,6 +710,7 @@ def calculate_yearly_stats(storms):
                 'ace': round(storm['ace'], 2),
                 'category': storm['category'],
                 'max_wind': storm['max_wind'],
+                'landfall': storm.get('landfall', []),
             })
 
     for year in stats:
@@ -966,6 +1076,12 @@ def generate_dashboard_html(basin_data):
                 'points': track_points,
             }
 
+            landfall = d.get('landfall', [])
+            if landfall:
+                lf_cell = ' · '.join(landfall)
+            else:
+                lf_cell = '<span class="dash-fish" title="A storm that never made landfall and just pissed off fish">Fish Storm</span>'
+
             row_classes = 'storm-row'
             if is_major:
                 row_classes += ' major'
@@ -1010,9 +1126,10 @@ def generate_dashboard_html(basin_data):
                 f'<td data-v="{pct:.4f}">{pct:.1f}%</td>'
                 f'<td data-v="{wind}">{cat}</td>'
                 f'<td data-v="{wind}">{wind if wind > 0 else "—"}</td>'
+                f'<td class="lf-cell">{lf_cell}</td>'
                 f'</tr>'
                 f'<tr class="track-row" id="track-row-{slug}">'
-                f'<td colspan="5"><div class="track-panel" id="trpanel-{slug}"><div class="track-inner">{panel_inner}</div></div></td>'
+                f'<td colspan="6"><div class="track-panel" id="trpanel-{slug}"><div class="track-inner">{panel_inner}</div></div></td>'
                 f'</tr>'
             )
         return '\n'.join(rows), track_data
@@ -1061,12 +1178,13 @@ def generate_dashboard_html(basin_data):
             <th class="sort-th" onclick="sortDash(this,2,'n')">% <span class="sa"></span></th>
             <th class="sort-th" onclick="sortDash(this,3,'n')">Category <span class="sa"></span></th>
             <th class="sort-th" onclick="sortDash(this,4,'n')">Wind (kt) <span class="sa"></span></th>
+            <th>Landfall</th>
           </tr></thead>
           <tbody id="storm-{bd['basin_key']}">
             {storm_html}
           </tbody>
           <tfoot>
-            <tr class="total-row"><td><b>TOTAL</b></td><td><b>{current_ace:.1f}</b></td><td><b>100%</b></td><td></td><td></td></tr>
+            <tr class="total-row"><td><b>TOTAL</b></td><td><b>{current_ace:.1f}</b></td><td><b>100%</b></td><td></td><td></td><td></td></tr>
           </tfoot>
         </table>
       </div>
@@ -1227,6 +1345,8 @@ def generate_dashboard_html(basin_data):
   .storm-name-btn:hover {{ color:var(--accent2); }}
   .storm-chevron {{ font-size:0.7em; display:inline-block; transition:transform 0.2s; color:var(--muted); margin-left:2px; }}
   .storm-name-btn.open .storm-chevron {{ transform:rotate(90deg); }}
+  .lf-cell {{ font-size:0.85em; color:var(--text); }}
+  .dash-fish {{ color:var(--muted); font-style:italic; cursor:help; }}
   .active-pulse {{ display:inline-block; width:7px; height:7px; border-radius:50%; background:#4caf50; box-shadow:0 0 0 0 rgba(76,175,80,0.7); animation:trpulse 1.5s infinite; flex-shrink:0; }}
   @keyframes trpulse {{ 0%{{box-shadow:0 0 0 0 rgba(76,175,80,0.7);}} 70%{{box-shadow:0 0 0 6px rgba(76,175,80,0);}} 100%{{box-shadow:0 0 0 0 rgba(76,175,80,0);}} }}
   tr.active-storm-row {{ border-left:3px solid #4caf50; }}
@@ -1670,7 +1790,9 @@ def generate_history_html(basin_data):
   .yr-panel-inner {{ padding:8px 12px 10px; }}
   .ys-row {{ display:grid; grid-template-columns:110px 48px 46px 1fr; align-items:center; gap:6px; padding:3px 0; font-size:0.82em; border-bottom:1px solid var(--border); }}
   .ys-row:last-child {{ border-bottom:none; }}
-  .ys-name {{ color:var(--text); font-weight:500; }}
+  .ys-name {{ color:var(--text); font-weight:500; line-height:1.3; }}
+  .ys-lf {{ display:block; font-size:0.82em; font-weight:400; color:var(--muted); font-style:italic; }}
+  .ys-fish {{ color:var(--muted); opacity:0.7; cursor:help; }}
   .ys-cat {{ color:var(--muted); font-size:0.9em; }}
   .ys-ace {{ color:var(--accent); font-weight:bold; text-align:right; }}
   .ys-bar {{ height:4px; background:var(--gauge-bg); border-radius:2px; }}
