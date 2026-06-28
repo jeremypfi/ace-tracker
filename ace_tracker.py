@@ -45,6 +45,7 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 OUTPUT_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+LANDFALL_CACHE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "landfall_cache.json")
 
 BASINS = {
     'atlantic': {
@@ -300,6 +301,31 @@ def _reverse_geocode(lat, lon):
         return None
 
 
+def _load_landfall_cache():
+    """Load the persisted landfall cache from disk. Returns {} on any failure."""
+    try:
+        if os.path.exists(LANDFALL_CACHE_PATH):
+            with open(LANDFALL_CACHE_PATH, 'r') as f:
+                raw = json.load(f)
+            # JSON stores lists; convert inner lists back to tuples
+            return {k: [tuple(x) for x in v] for k, v in raw.items()}
+    except Exception as e:
+        logger.warning(f"Could not load landfall cache: {e}")
+    return {}
+
+
+def _save_landfall_cache(cache):
+    """Persist the landfall cache to disk."""
+    try:
+        # Convert tuples to lists for JSON serialisation
+        serialisable = {k: [list(x) for x in v] for k, v in cache.items()}
+        with open(LANDFALL_CACHE_PATH, 'w') as f:
+            json.dump(serialisable, f, separators=(',', ':'))
+        logger.info(f"Saved landfall cache ({len(cache)} entries)")
+    except Exception as e:
+        logger.warning(f"Could not save landfall cache: {e}")
+
+
 def get_landfall_locations(storm_obj):
     """Return a deduplicated list of (location, category_at_landfall) tuples.
 
@@ -324,6 +350,83 @@ def get_landfall_locations(storm_obj):
                     seen.add(key)
                     locations.append((loc, cat))
         return locations
+    except Exception:
+        return []
+
+
+def _detect_landfall_from_track(storm_obj):
+    """Geographic fallback for landfall detection when HURDAT2 'L' markers are absent.
+
+    NHC best track (BTK) data used during the active season often lacks the 'L'
+    landfall markers that are only added in the post-season HURDAT2 analysis.
+    This function fills the gap by checking whether synoptic-time track points
+    cross from water to land using exact point-in-polygon containment (no buffer)
+    to avoid false positives for storms that pass close to but stay offshore.
+    """
+    try:
+        from shapely.geometry import Point
+
+        states, countries = _build_landfall_geocoder()
+        if not states and not countries:
+            return []
+
+        lats  = list(storm_obj.lat)
+        lons  = list(storm_obj.lon)
+        vmax  = list(storm_obj.vmax)
+        times = list(storm_obj.time)
+
+        def land_at(lat, lon):
+            """Return (kind, attributes) if the point is over land, else None."""
+            pt = Point(lon, lat)
+            m  = 0.2  # bounding-box margin for performance pre-filter only
+            for rec, (minx, miny, maxx, maxy) in states:
+                if minx > lon + m or maxx < lon - m or miny > lat + m or maxy < lat - m:
+                    continue
+                if rec.geometry.contains(pt):
+                    return 'state', rec.attributes
+            for rec, (minx, miny, maxx, maxy) in countries:
+                if minx > lon + m or maxx < lon - m or miny > lat + m or maxy < lat - m:
+                    continue
+                if rec.geometry.contains(pt):
+                    return 'country', rec.attributes
+            return None
+
+        def loc_name(kind, attrs):
+            if kind == 'state':
+                name    = attrs.get('name', '')
+                country = attrs.get('admin', '')
+                if country == 'United States of America':
+                    return name
+                return f'{name}, {country}' if name and country else country or name
+            return attrs.get('NAME', '')
+
+        locations = []
+        seen      = set()
+        prev_land = None   # None = track just started; False = was over water
+
+        for i in range(len(lats)):
+            t = times[i]
+            if hasattr(t, 'hour') and t.hour not in (0, 6, 12, 18):
+                continue
+
+            result    = land_at(float(lats[i]), float(lons[i]))
+            over_land = result is not None
+
+            # Only flag the first synoptic point over land after confirmed water
+            if over_land and prev_land is False:
+                kind, attrs = result
+                loc  = loc_name(kind, attrs)
+                wind = int(vmax[i]) if i < len(vmax) else 0
+                cat  = get_category(wind)
+                key  = (loc, cat)
+                if loc and key not in seen:
+                    seen.add(key)
+                    locations.append((loc, cat))
+
+            prev_land = over_land
+
+        return locations
+
     except Exception:
         return []
 
@@ -384,6 +487,10 @@ def parse_hurdat2(basin_key):
 
         storms = []
 
+        # Load landfall cache once — avoids re-geocoding 1,200+ historical storms
+        lf_cache = _load_landfall_cache()
+        lf_cache_dirty = False
+
         # Iterate through all years from START_YEAR to current
         current_year = datetime.now().year
         for year in range(START_YEAR, current_year + 1):
@@ -424,6 +531,15 @@ def parse_hurdat2(basin_key):
                         # Extract synoptic-time wind readings for ACE calculation
                         wind_readings = _extract_synoptic_winds(storm_obj)
 
+                        # Landfall: use cache for completed seasons, compute otherwise
+                        cache_key = str(storm_id)
+                        if cache_key in lf_cache:
+                            landfall = lf_cache[cache_key]
+                        else:
+                            landfall = get_landfall_locations(storm_obj)
+                            lf_cache[cache_key] = landfall
+                            lf_cache_dirty = True
+
                         # Build storm record
                         storm_record = {
                             'id': storm_id,
@@ -433,7 +549,7 @@ def parse_hurdat2(basin_key):
                             'wind_readings': wind_readings,
                             'start_date': start_date,
                             'end_date': end_date,
-                            'landfall': get_landfall_locations(storm_obj),
+                            'landfall': landfall,
                         }
 
                         # Finalize storm (calculates ACE, category, duration)
@@ -450,6 +566,12 @@ def parse_hurdat2(basin_key):
 
         logger.info(f"Successfully loaded {len(storms)} storms from Tropycal")
         print(f"  ✓ Loaded {len(storms)} storms from {START_YEAR}-present via Tropycal")
+        if lf_cache_dirty:
+            _save_landfall_cache(lf_cache)
+            cached_pct = round(sum(1 for s in storms if str(s['id']) in lf_cache) / len(storms) * 100) if storms else 0
+            print(f"  ✓ Landfall cache updated ({len(lf_cache)} entries, {cached_pct}% hit rate this run)")
+        else:
+            print(f"  ✓ Landfall cache: all {len(lf_cache)} entries served from cache (0 geocoding calls)")
         return storms
 
     except Exception as e:
@@ -492,6 +614,10 @@ def get_current_season(basin_key):
             source='hurdat',
             include_btk=True
         )
+
+        # Load landfall cache for geo fallback results (keyed by storm_id + last track date)
+        cs_lf_cache = _load_landfall_cache()
+        cs_lf_dirty = False
 
         # During active season only try current year; off-season also checks prior year
         for year in years_to_try:
@@ -577,6 +703,26 @@ def get_current_season(basin_key):
                         except Exception:
                             pass
 
+                        # Landfall detection: try HURDAT2 'L' markers first.
+                        # BTK data often lacks them, so fall back to geographic
+                        # track analysis. Cache geo results keyed by storm_id +
+                        # last track timestamp so stale entries auto-invalidate
+                        # when new track data arrives for an active storm.
+                        landfall = get_landfall_locations(storm_obj)
+                        if not landfall:
+                            try:
+                                last_t   = storm_obj.time[-1]
+                                last_str = last_t.strftime('%Y%m%d%H') if hasattr(last_t, 'strftime') else str(last_t)[:13]
+                            except Exception:
+                                last_str = 'unknown'
+                            geo_key = f"geo:{storm_id}:{last_str}"
+                            if geo_key in cs_lf_cache:
+                                landfall = cs_lf_cache[geo_key]
+                            else:
+                                landfall = _detect_landfall_from_track(storm_obj)
+                                cs_lf_cache[geo_key] = landfall
+                                cs_lf_dirty = True
+
                         # Store storm data
                         storms[storm_name] = storm_ace
                         storm_details[storm_name] = {
@@ -585,7 +731,7 @@ def get_current_season(basin_key):
                             'track_points': track_points,
                             'is_active': is_active,
                             'start_date': start_date_str,
-                            'landfall': get_landfall_locations(storm_obj),
+                            'landfall': landfall,
                         }
 
                     except Exception as e:
@@ -597,6 +743,8 @@ def get_current_season(basin_key):
                     logger.info(f"Found {len(storms)} storms for {year} season (ACE: {total:.2f})")
                     print(f"  ✓ Found {len(storms)} storms for {year} season")
                     print(f"  ✓ Total ACE: {total:.2f}")
+                    if cs_lf_dirty:
+                        _save_landfall_cache(cs_lf_cache)
 
                     return {
                         'year': year,
