@@ -19,6 +19,8 @@ from ace_tracker import (
     finalize_storm,
     calculate_yearly_totals,
     find_similar_seasons,
+    generate_dashboard_html,
+    generate_history_html,
     SYNOPTIC_TIMES,
     ACE_STATUSES,
     MIN_NAMED_STORM_WIND
@@ -301,6 +303,88 @@ class TestDataValidation(unittest.TestCase):
         # This is tested in the actual code with: (x / y) if y > 0 else 0
         # No direct function to test, but documented for completeness
         pass
+
+
+class TestHTMLGeneration(unittest.TestCase):
+    """Smoke tests for HTML generation — catches NameErrors, TypeErrors, and
+    broken f-strings in generate_dashboard_html / generate_history_html without
+    requiring a live Tropycal / network call."""
+
+    def _make_basin_data(self):
+        """Minimal basin_data fixture that exercises both pages."""
+        storms = [
+            finalize_storm({
+                'id': 'AL012026', 'name': 'Arthur', 'year': 2026,
+                'max_wind': 40, 'wind_readings': [40, 40],
+                'start_date': datetime(2026, 6, 15),
+                'end_date':   datetime(2026, 6, 18),
+                'landfall':   [('Texas', 'TS')],
+            }),
+            finalize_storm({
+                'id': 'AL012005', 'name': 'Katrina', 'year': 2005,
+                'max_wind': 150, 'wind_readings': [150, 150, 130, 100],
+                'start_date': datetime(2005, 8, 23),
+                'end_date':   datetime(2005, 8, 30),
+                'landfall':   [('Florida', 'Cat 1'), ('Louisiana', 'Cat 3')],
+            }),
+        ]
+        yearly_totals = {2005: 245.0, 2024: 161.6, 2025: 130.8}
+        return [{
+            'basin_key': 'atlantic',
+            'storms': storms,
+            'current': {
+                'year': 2026,
+                'storms': {'Arthur': 0.41},
+                'storm_details': {
+                    'Arthur': {
+                        'ace': 0.41, 'max_wind': 40,
+                        'track_points': [
+                            {'lat': 25.0, 'lon': -90.0, 'wind': 40,
+                             'status': 'TS', 'time': '6/17 00Z'},
+                        ],
+                        'is_active': False,
+                        'start_date': '6/15',
+                        'landfall': [('Texas', 'TS')],
+                    }
+                },
+                'total': 0.41,
+            },
+            'yearly_totals': yearly_totals,
+            'historical_storms': storms,
+            'insights': ['ACE Leader: Arthur with 0.4 ACE'],
+        }]
+
+    def test_dashboard_html_generates(self):
+        """generate_dashboard_html() runs without error and returns non-empty HTML."""
+        basin_data = self._make_basin_data()
+        result = generate_dashboard_html(basin_data)
+        self.assertIsInstance(result, str)
+        self.assertIn('<!DOCTYPE html>', result)
+        self.assertIn('Arthur', result)
+
+    def test_history_html_generates(self):
+        """generate_history_html() runs without error and returns non-empty HTML."""
+        basin_data = self._make_basin_data()
+        result = generate_history_html(basin_data)
+        self.assertIsInstance(result, str)
+        self.assertIn('<!DOCTYPE html>', result)
+        self.assertIn('All Seasons', result)
+        self.assertIn('2005', result)
+
+    def test_html_escape_applied(self):
+        """html_escape() is reachable from inside the generator functions
+        (guards against the 'html' local-variable shadowing bug)."""
+        basin_data = self._make_basin_data()
+        # Inject a synthetic name with an HTML special character
+        basin_data[0]['current']['storms']['Test&Storm'] = 1.0
+        basin_data[0]['current']['storm_details']['Test&Storm'] = {
+            'ace': 1.0, 'max_wind': 40, 'track_points': [],
+            'is_active': False, 'start_date': '6/1', 'landfall': [],
+        }
+        basin_data[0]['current']['total'] = 1.41
+        result = generate_dashboard_html(basin_data)
+        self.assertIn('Test&amp;Storm', result)
+        self.assertNotIn('<script>alert', result)
 
 
 def run_tests():

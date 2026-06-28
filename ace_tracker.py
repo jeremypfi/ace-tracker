@@ -20,7 +20,7 @@ Usage:
 Author: Built with Claude for JP
 """
 
-import html
+from html import escape as html_escape
 import os
 import json
 import logging
@@ -202,13 +202,13 @@ def _year_storm_list_html(storms_list):
         bar_pct = round(s['ace'] / max_ace * 100)
         lf = s.get('landfall', [])
         if lf:
-            lf_parts = [f'{html.escape(loc)} ({html.escape(cat)})' for loc, cat in lf]
+            lf_parts = [f'{html_escape(loc)} ({html_escape(cat)})' for loc, cat in lf]
             lf_html = f'<span class="ys-lf">{" · ".join(lf_parts)}</span>'
         else:
             lf_html = '<span class="ys-lf ys-fish" data-tip="A storm that never made landfall and just pissed off fish">Fish Storm</span>'
         rows.append(
             f'<div class="ys-row">'
-            f'<span class="ys-name">{html.escape(s["name"])}{lf_html}</span>'
+            f'<span class="ys-name">{html_escape(s["name"])}{lf_html}</span>'
             f'<span class="ys-cat" data-tip="Peak intensity">{s["category"]}</span>'
             f'<span class="ys-ace">{s["ace"]:.1f}</span>'
             f'<div class="ys-bar"><div class="ys-bar-fill" style="width:{bar_pct}%"></div></div>'
@@ -1348,10 +1348,10 @@ def _nhc_alert_html(disturbances):
 
     rows = []
     for i, d in enumerate(disturbances, 1):
-        area = html.escape(d['area'] or f'Disturbance {i}')
+        area = html_escape(d['area'] or f'Disturbance {i}')
         b48  = chance_badge(d['level_48h'], d['pct_48h'])
         b7d  = chance_badge(d['level_7d'],  d['pct_7d'])
-        desc_html = f'<div class="nhc-dist-desc">{html.escape(d["desc"])}</div>' if d['desc'] else ''
+        desc_html = f'<div class="nhc-dist-desc">{html_escape(d["desc"])}</div>' if d['desc'] else ''
         rows.append(
             f'<div class="nhc-dist">'
             f'<div class="nhc-dist-area">Disturbance {i} — {area}</div>'
@@ -1360,7 +1360,7 @@ def _nhc_alert_html(disturbances):
             f'</div>'
         )
 
-    issued_html = f'<span class="nhc-issued">Data as of {html.escape(issued)}</span>' if issued else ''
+    issued_html = f'<span class="nhc-issued">Data as of {html_escape(issued)}</span>' if issued else ''
 
     return (
         f'<div class="nhc-alert">'
@@ -1409,7 +1409,7 @@ def generate_dashboard_html(basin_data):
 
             landfall = d.get('landfall', [])
             if landfall:
-                lf_cell = ' · '.join(f'{html.escape(loc)} ({html.escape(cat)})' for loc, cat in landfall)
+                lf_cell = ' · '.join(f'{html_escape(loc)} ({html_escape(cat)})' for loc, cat in landfall)
             else:
                 lf_cell = '<span class="dash-fish" data-tip="A storm that never made landfall and just pissed off fish">Fish Storm</span>'
 
@@ -1451,8 +1451,8 @@ def generate_dashboard_html(basin_data):
 
             rows.append(
                 f'<tr class="{row_classes}" id="storm-row-{slug}">'
-                f'<td data-v="{html.escape(name)}"><button class="storm-name-btn" id="trbtn-{slug}" onclick="toggleTrack(\'{slug}\')">'
-                f'{active_dot}{html.escape(name)}<span class="storm-chevron">&#9658;</span></button></td>'
+                f'<td data-v="{html_escape(name)}"><button class="storm-name-btn" id="trbtn-{slug}" onclick="toggleTrack(\'{slug}\')">'
+                f'{active_dot}{html_escape(name)}<span class="storm-chevron">&#9658;</span></button></td>'
                 f'<td data-v="{ace:.6f}">{ace:.1f}</td>'
                 f'<td data-v="{pct:.4f}">{pct:.1f}%</td>'
                 f'<td data-v="{wind}">{cat}</td>'
@@ -1981,7 +1981,7 @@ def generate_history_html(basin_data):
                 f'<td data-v="{named_v}">{d["named"]}</td>'
                 f'<td data-v="{hurr_v}">{d["hurricanes"]}</td>'
                 f'<td data-v="{major_v}">{d["majors"]}</td>'
-                f'<td data-v="{html.escape(str(d["leader"]))}">{html.escape(str(d["leader"]))}</td>'
+                f'<td data-v="{html_escape(str(d["leader"]))}">{html_escape(str(d["leader"]))}</td>'
                 f'<td data-v="{rank}">#{rank}&nbsp;/&nbsp;{total_seasons}</td>'
                 f'</tr>'
                 f'<tr class="yr-expand-row" id="yr-xrow-{yr_key}">'
