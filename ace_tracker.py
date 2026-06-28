@@ -206,13 +206,14 @@ def _year_storm_list_html(storms_list):
         bar_pct = round(s['ace'] / max_ace * 100)
         lf = s.get('landfall', [])
         if lf:
-            lf_html = f'<span class="ys-lf">{" · ".join(lf)}</span>'
+            lf_parts = [f'{loc} ({cat})' for loc, cat in lf]
+            lf_html = f'<span class="ys-lf">{" · ".join(lf_parts)}</span>'
         else:
             lf_html = '<span class="ys-lf ys-fish" data-tip="A storm that never made landfall and just pissed off fish">Fish Storm</span>'
         rows.append(
             f'<div class="ys-row">'
             f'<span class="ys-name">{s["name"]}{lf_html}</span>'
-            f'<span class="ys-cat">{s["category"]}</span>'
+            f'<span class="ys-cat" title="Peak intensity">{s["category"]}</span>'
             f'<span class="ys-ace">{s["ace"]:.1f}</span>'
             f'<div class="ys-bar"><div class="ys-bar-fill" style="width:{bar_pct}%"></div></div>'
             f'</div>'
@@ -300,23 +301,28 @@ def _reverse_geocode(lat, lon):
 
 
 def get_landfall_locations(storm_obj):
-    """Return a deduplicated list of landfall location strings for a storm.
+    """Return a deduplicated list of (location, category_at_landfall) tuples.
 
     Reads HURDAT2 'L' markers from storm_obj.special. Returns an empty list
-    for fish storms (no landfall).
+    for fish storms (no landfall). Category reflects the storm's intensity at
+    the moment of landfall, not its peak intensity.
     """
     try:
         special = list(storm_obj.special)
         lats = list(storm_obj.lat)
         lons = list(storm_obj.lon)
+        vmax = list(storm_obj.vmax)
         locations = []
         seen = set()
         for i, sp in enumerate(special):
             if sp == 'L' and i < len(lats) and i < len(lons):
                 loc = _reverse_geocode(float(lats[i]), float(lons[i]))
-                if loc and loc not in seen:
-                    seen.add(loc)
-                    locations.append(loc)
+                wind = int(vmax[i]) if i < len(vmax) else 0
+                cat = get_category(wind)
+                key = (loc, cat)
+                if loc and key not in seen:
+                    seen.add(key)
+                    locations.append((loc, cat))
         return locations
     except Exception:
         return []
@@ -1078,7 +1084,7 @@ def generate_dashboard_html(basin_data):
 
             landfall = d.get('landfall', [])
             if landfall:
-                lf_cell = ' · '.join(landfall)
+                lf_cell = ' · '.join(f'{loc} ({cat})' for loc, cat in landfall)
             else:
                 lf_cell = '<span class="dash-fish" data-tip="A storm that never made landfall and just pissed off fish">Fish Storm</span>'
 
