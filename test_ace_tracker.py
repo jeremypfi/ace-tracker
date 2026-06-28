@@ -371,6 +371,25 @@ class TestHTMLGeneration(unittest.TestCase):
         self.assertIn('All Seasons', result)
         self.assertIn('2005', result)
 
+    def test_leaflet_sri_hashes_present(self):
+        """Dashboard HTML contains the correct full SRI hashes for Leaflet.
+
+        Guards against truncated or missing integrity attributes that would
+        cause the browser to silently block the map library.
+        """
+        basin_data = self._make_basin_data()
+        result = generate_dashboard_html(basin_data)
+        # Both the full hash value AND crossorigin must be present
+        self.assertIn(
+            'sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH',
+            result, "Leaflet JS SRI hash missing or truncated"
+        )
+        self.assertIn(
+            'sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H',
+            result, "Leaflet CSS SRI hash missing or truncated"
+        )
+        self.assertIn('crossorigin="anonymous"', result)
+
     def test_html_escape_applied(self):
         """html_escape() is reachable from inside the generator functions
         (guards against the 'html' local-variable shadowing bug)."""
