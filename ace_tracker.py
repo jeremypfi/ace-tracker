@@ -24,7 +24,7 @@ from html import escape as html_escape
 import os
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import tropycal.tracks as tracks
 
 # Configure logging
@@ -875,6 +875,98 @@ def find_similar_seasons(target_ace, yearly_totals, exclude_year=None):
     return candidates[:3]
 
 
+def calculate_same_date_stats(historical_storms, basin_key, target_date=None):
+    """Compute historical averages for counts and ACE as of the same calendar
+    date across all completed seasons since START_YEAR.
+
+    For each historical year, only storms that had formed by the equivalent
+    day-of-season are counted. ACE is prorated for storms still active on
+    that date (elapsed fraction of storm duration × total ACE).
+
+    Returns a dict with avg_named, avg_hurricanes, avg_majors, avg_ace,
+    yearly_ace (year→same-date ACE, for similar-season lookup),
+    day_of_season, and date_label.  Returns None if no data is available.
+    """
+    if target_date is None:
+        target_date = datetime.now()
+
+    if basin_key == 'atlantic':
+        ssm, ssd = 6, 1   # June 1
+    else:
+        ssm, ssd = 5, 15  # May 15
+
+    target_season_start = datetime(target_date.year, ssm, ssd)
+    day_of_season = max(0, (target_date - target_season_start).days)
+    date_label = target_date.strftime('%b %-d')
+    current_year = target_date.year
+
+    # Group historical storms by year, excluding current season
+    storms_by_year = {}
+    for s in historical_storms:
+        y = s['year']
+        if y == current_year:
+            continue
+        storms_by_year.setdefault(y, []).append(s)
+
+    if not storms_by_year:
+        return None
+
+    sd_named = {}
+    sd_hurricanes = {}
+    sd_majors = {}
+    sd_ace = {}
+
+    for year, yr_storms in storms_by_year.items():
+        hist_cutoff = datetime(year, ssm, ssd) + timedelta(days=day_of_season)
+        named = hurricanes = majors = 0
+        ace = 0.0
+
+        for s in yr_storms:
+            start = s.get('start_date')
+            end   = s.get('end_date')
+            if start is None:
+                continue
+            # Strip timezone so comparisons work
+            if getattr(start, 'tzinfo', None):
+                start = start.replace(tzinfo=None)
+            if end and getattr(end, 'tzinfo', None):
+                end = end.replace(tzinfo=None)
+
+            if start > hist_cutoff:
+                continue  # Storm hadn't formed yet
+
+            named += 1
+            if s['max_wind'] >= 64:
+                hurricanes += 1
+            if s['max_wind'] >= 96:
+                majors += 1
+
+            # Prorate ACE for storms still active at the cutoff
+            storm_ace = s.get('ace', 0.0)
+            if end is None or end <= hist_cutoff:
+                ace += storm_ace
+            else:
+                total_days = max(1, (end - start).days)
+                elapsed    = max(0, (hist_cutoff - start).days)
+                ace += storm_ace * min(1.0, elapsed / total_days)
+
+        sd_named[year]     = named
+        sd_hurricanes[year] = hurricanes
+        sd_majors[year]    = majors
+        sd_ace[year]       = round(ace, 2)
+
+    n = len(storms_by_year)
+    return {
+        'avg_named':     round(sum(sd_named.values())     / n, 1),
+        'avg_hurricanes': round(sum(sd_hurricanes.values()) / n, 1),
+        'avg_majors':    round(sum(sd_majors.values())    / n, 1),
+        'avg_ace':       round(sum(sd_ace.values())       / n, 2),
+        'yearly_ace':    sd_ace,
+        'day_of_season': day_of_season,
+        'date_label':    date_label,
+    }
+
+
 # =============================================================================
 # GENERATE SEASON INSIGHTS
 # =============================================================================
@@ -886,6 +978,9 @@ def generate_insights(basin_key, current, yearly_totals, historical_storms, year
     current_ace = current['total']
     current_year = current['year']
     storms = current['storms']
+
+    # Compute same-date historical stats once — used by multiple insights below
+    sd = calculate_same_date_stats(historical_storms or [], basin_key) if historical_storms else None
 
     # 1. ACE Leader
     if storms:
@@ -899,20 +994,42 @@ def generate_insights(basin_key, current, yearly_totals, historical_storms, year
     insights.append(f"📊 Season Classification: {classification} (ACE: {current_ace:.1f})")
 
     # 3. Similar historical seasons
-    similar = find_similar_seasons(current_ace, yearly_totals, exclude_year=current_year)
-    if similar:
+    # Use same-date ACE when active enough to be meaningful; fall back to full-season
+    if sd and sd['avg_ace'] >= 0.5:
+        similar = find_similar_seasons(current_ace, sd['yearly_ace'], exclude_year=current_year)
         similar_links = ", ".join(
-            [f'<a href="history.html#{basin_key}-yr-{y}" class="sim-link">{y}</a> ({ace:.1f})' for y, ace in similar]
+            f'<a href="history.html#{basin_key}-yr-{y}" class="sim-link">{y}</a> ({ace:.1f})'
+            for y, ace in similar
         )
-        insights.append(f"📈 Most Similar Seasons: {similar_links}")
+        insights.append(f"📈 Most Similar Seasons (through {sd['date_label']}): {similar_links}")
+    else:
+        similar = find_similar_seasons(current_ace, yearly_totals, exclude_year=current_year)
+        if similar:
+            similar_links = ", ".join(
+                f'<a href="history.html#{basin_key}-yr-{y}" class="sim-link">{y}</a> ({ace:.1f})'
+                for y, ace in similar
+            )
+            label = f" (early season — full-season comparison)" if sd else ""
+            insights.append(f"📈 Most Similar Seasons: {similar_links}{label}")
 
-    # 4. Historical ranking
-    all_years = list(yearly_totals.items())
-    all_years.append((current_year, current_ace))
-    all_years.sort(key=lambda x: x[1], reverse=True)
-    rank = next(i + 1 for i, (y, _) in enumerate(all_years) if y == current_year)
-    total_seasons = len(all_years)
-    insights.append(f"🏆 Historical Rank: #{rank} of {total_seasons} seasons since {START_YEAR}")
+    # 4. Historical ranking — pace rank (same-date) + full-season rank
+    all_years_full = list(yearly_totals.items()) + [(current_year, current_ace)]
+    all_years_full.sort(key=lambda x: x[1], reverse=True)
+    full_rank = next(i + 1 for i, (y, _) in enumerate(all_years_full) if y == current_year)
+    total_seasons = len(all_years_full)
+
+    if sd:
+        sd_with_current = dict(sd['yearly_ace'])
+        sd_with_current[current_year] = current_ace
+        all_years_sd = sorted(sd_with_current.items(), key=lambda x: x[1], reverse=True)
+        pace_rank = next(i + 1 for i, (y, _) in enumerate(all_years_sd) if y == current_year)
+        pace_total = len(all_years_sd)
+        insights.append(
+            f"🏆 Pace rank through {sd['date_label']}: #{pace_rank} of {pace_total} seasons "
+            f"| Full-season rank: #{full_rank} of {total_seasons} (season in progress)"
+        )
+    else:
+        insights.append(f"🏆 Historical Rank: #{full_rank} of {total_seasons} seasons since {START_YEAR}")
 
     # 5. Comparison to normal
     normal = basin['normal_ace']
@@ -920,18 +1037,31 @@ def generate_insights(basin_key, current, yearly_totals, historical_storms, year
     above_below = "above" if current_ace > normal else "below"
     insights.append(f"📉 {pct_of_normal:.0f}% of normal ({above_below} the {normal:.1f} average)")
 
-    # 6. Major hurricane count (from current storms — HURDAT2 or climatlas)
+    # 6. Hurricanes and major hurricanes — same-date avg alongside full-season avg
     current_storms_detail = [s for s in historical_storms if s['year'] == current_year] if historical_storms else []
     if not current_storms_detail:
         current_storms_detail = build_current_storm_records(current)
 
     if current_storms_detail:
-        major_count = sum(1 for s in current_storms_detail if s['is_major'])
+        major_count    = sum(1 for s in current_storms_detail if s['is_major'])
         hurricane_count = sum(1 for s in current_storms_detail if s['max_wind'] >= 64)
-        avg_major = basin['avg_major_hurricanes']
-        avg_hurricanes = basin['avg_hurricanes']
-        insights.append(f"🌀 Hurricanes: {hurricane_count} (season avg: {avg_hurricanes})")
-        insights.append(f"⚡ Major Hurricanes: {major_count} (season avg: {avg_major})")
+        avg_hurricanes_full = basin['avg_hurricanes']
+        avg_major_full      = basin['avg_major_hurricanes']
+
+        if sd:
+            insights.append(
+                f"🌀 Hurricanes: {hurricane_count} "
+                f"| avg through {sd['date_label']}: {sd['avg_hurricanes']:.1f} "
+                f"| full season avg: {avg_hurricanes_full}"
+            )
+            insights.append(
+                f"⚡ Major Hurricanes: {major_count} "
+                f"| avg through {sd['date_label']}: {sd['avg_majors']:.1f} "
+                f"| full season avg: {avg_major_full}"
+            )
+        else:
+            insights.append(f"🌀 Hurricanes: {hurricane_count} (season avg: {avg_hurricanes_full})")
+            insights.append(f"⚡ Major Hurricanes: {major_count} (season avg: {avg_major_full})")
 
     # 7. % of ACE from top storm
     if storms and current_ace > 0:
@@ -941,12 +1071,19 @@ def generate_insights(basin_key, current, yearly_totals, historical_storms, year
         if leader_pct > 30:
             insights.append(f"💪 Top-heavy season: {leader_pct:.0f}% of all ACE from just {leader_name}")
 
-    # 8. Number of storms vs average
+    # 8. Named storms — same-date avg alongside full-season avg
     num_storms = len(storms)
-    avg_storms = basin['avg_named_storms']
-    insights.append(f"🌊 Named Storms: {num_storms} (season avg: {avg_storms})")
+    avg_storms_full = basin['avg_named_storms']
+    if sd:
+        insights.append(
+            f"🌊 Named Storms: {num_storms} "
+            f"| avg through {sd['date_label']}: {sd['avg_named']:.1f} "
+            f"| full season avg: {avg_storms_full}"
+        )
+    else:
+        insights.append(f"🌊 Named Storms: {num_storms} (season avg: {avg_storms_full})")
 
-    # 9. Longest storm this season (only from HURDAT2 which has date ranges)
+    # 9. Longest storm this season
     if historical_storms:
         hurdat_current = [s for s in historical_storms if s['year'] == current_year]
         if hurdat_current:
@@ -954,13 +1091,13 @@ def generate_insights(basin_key, current, yearly_totals, historical_storms, year
             if longest['duration_days'] > 0:
                 insights.append(f"⏱️ Longest Storm: {longest['name']} ({longest['duration_days']} days)")
 
-    # 10. Compare to same date last year
+    # 10. Compare to last year's final total
     last_year = current_year - 1
     if last_year in yearly_totals:
         last_year_total = yearly_totals[last_year]
         insights.append(f"📅 Last Year ({last_year}) Final Total: {last_year_total:.1f} ACE")
 
-    # 11. All-time single storm record comparison
+    # 11. All-time single-storm record comparison
     record = basin['all_time_single_storm_ace']
     if storms:
         leader_name = max(storms, key=storms.get)
