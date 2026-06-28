@@ -211,6 +211,7 @@ data/*.xlsx
 data/*.html
 docs/html/
 docs/pdf/
+landfall_cache.json
 
 # OS files
 .DS_Store

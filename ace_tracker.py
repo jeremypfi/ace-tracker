@@ -45,6 +45,7 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 OUTPUT_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+LANDFALL_CACHE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "landfall_cache.json")
 
 BASINS = {
     'atlantic': {
@@ -300,6 +301,31 @@ def _reverse_geocode(lat, lon):
         return None
 
 
+def _load_landfall_cache():
+    """Load the persisted landfall cache from disk. Returns {} on any failure."""
+    try:
+        if os.path.exists(LANDFALL_CACHE_PATH):
+            with open(LANDFALL_CACHE_PATH, 'r') as f:
+                raw = json.load(f)
+            # JSON stores lists; convert inner lists back to tuples
+            return {k: [tuple(x) for x in v] for k, v in raw.items()}
+    except Exception as e:
+        logger.warning(f"Could not load landfall cache: {e}")
+    return {}
+
+
+def _save_landfall_cache(cache):
+    """Persist the landfall cache to disk."""
+    try:
+        # Convert tuples to lists for JSON serialisation
+        serialisable = {k: [list(x) for x in v] for k, v in cache.items()}
+        with open(LANDFALL_CACHE_PATH, 'w') as f:
+            json.dump(serialisable, f, separators=(',', ':'))
+        logger.info(f"Saved landfall cache ({len(cache)} entries)")
+    except Exception as e:
+        logger.warning(f"Could not save landfall cache: {e}")
+
+
 def get_landfall_locations(storm_obj):
     """Return a deduplicated list of (location, category_at_landfall) tuples.
 
@@ -384,6 +410,10 @@ def parse_hurdat2(basin_key):
 
         storms = []
 
+        # Load landfall cache once — avoids re-geocoding 1,200+ historical storms
+        lf_cache = _load_landfall_cache()
+        lf_cache_dirty = False
+
         # Iterate through all years from START_YEAR to current
         current_year = datetime.now().year
         for year in range(START_YEAR, current_year + 1):
@@ -424,6 +454,15 @@ def parse_hurdat2(basin_key):
                         # Extract synoptic-time wind readings for ACE calculation
                         wind_readings = _extract_synoptic_winds(storm_obj)
 
+                        # Landfall: use cache for completed seasons, compute otherwise
+                        cache_key = str(storm_id)
+                        if cache_key in lf_cache:
+                            landfall = lf_cache[cache_key]
+                        else:
+                            landfall = get_landfall_locations(storm_obj)
+                            lf_cache[cache_key] = landfall
+                            lf_cache_dirty = True
+
                         # Build storm record
                         storm_record = {
                             'id': storm_id,
@@ -433,7 +472,7 @@ def parse_hurdat2(basin_key):
                             'wind_readings': wind_readings,
                             'start_date': start_date,
                             'end_date': end_date,
-                            'landfall': get_landfall_locations(storm_obj),
+                            'landfall': landfall,
                         }
 
                         # Finalize storm (calculates ACE, category, duration)
@@ -450,6 +489,12 @@ def parse_hurdat2(basin_key):
 
         logger.info(f"Successfully loaded {len(storms)} storms from Tropycal")
         print(f"  ✓ Loaded {len(storms)} storms from {START_YEAR}-present via Tropycal")
+        if lf_cache_dirty:
+            _save_landfall_cache(lf_cache)
+            cached_pct = round(sum(1 for s in storms if str(s['id']) in lf_cache) / len(storms) * 100) if storms else 0
+            print(f"  ✓ Landfall cache updated ({len(lf_cache)} entries, {cached_pct}% hit rate this run)")
+        else:
+            print(f"  ✓ Landfall cache: all {len(lf_cache)} entries served from cache (0 geocoding calls)")
         return storms
 
     except Exception as e:
