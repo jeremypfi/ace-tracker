@@ -35,20 +35,20 @@ Same thresholds for both Atlantic and Eastern Pacific:
 
 ```bash
 python3 ace_tracker.py        # generates HTML files in data/
-python3 test_ace_tracker.py   # 25 tests — ALL must pass before committing
+python3 test_ace_tracker.py   # 34 tests — ALL must pass before committing
 pip3 install -r requirements.txt
 ```
 
 ## Architecture
 
-`ace_tracker.py` (~1,900 lines): fetches via Tropycal → calculates ACE at synoptic times → generates HTML dashboard + history page in `data/`.
+`ace_tracker.py` (~2,600 lines): fetches via Tropycal → calculates ACE at synoptic times → generates HTML dashboard + history page in `data/`.
 
-`test_ace_tracker.py`: 25 tests across 7 classes — categorization, ACE formula, NOAA classification, storm finalization, yearly totals, similar-season matching.
+`test_ace_tracker.py`: 34 tests across 10 classes — categorization, ACE formula, NOAA classification, storm finalization, yearly totals, similar-season matching.
 
 ## Repository Rules
 
 - **Only @jeremypfi can approve and merge PRs** (CODEOWNERS + branch protection)
-- All 25 tests must pass before committing — run `/pre-commit` skill
+- All 34 tests must pass before committing — run `/pre-commit` skill
 - Never commit `data/*.html` — gitignored
 - **Before opening any PR:** fetch origin and merge main into the branch first:
   ```bash
@@ -59,4 +59,4 @@ pip3 install -r requirements.txt
 
 ## Known Issue
 
-Tropycal `_version.py` uses `pkg_resources`, removed in setuptools 81+. Pinned `setuptools<81` in `requirements.txt`. Revisit when tropycal ships a fix.
+Tropycal `_version.py` uses `pkg_resources`, removed in setuptools 82+. Pinned `setuptools<82` in `requirements.txt`. Revisit when tropycal ships a fix.
