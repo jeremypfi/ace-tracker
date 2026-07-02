@@ -20,6 +20,7 @@ from ace_data import (
     calculate_yearly_totals,
     find_similar_seasons,
     calculate_same_date_stats,
+    calculate_ace_pace,
     SYNOPTIC_TIMES,
     ACE_STATUSES,
     MIN_NAMED_STORM_WIND,
@@ -372,6 +373,118 @@ class TestSameDateStats(unittest.TestCase):
         self.assertNotIn(2026, result['yearly_ace'])
 
 
+class TestAcePace(unittest.TestCase):
+    """Tests for calculate_ace_pace() — day-by-day pace chart data."""
+
+    def _make_ace_storm(self, year, ace, month=6, day=1, duration=4, id_suffix='a'):
+        """A storm with an exact ACE value (wind_readings of 100kt repeated
+        `ace` times gives ACE == ace exactly, since (100**2)/10000 == 1.0)."""
+        return finalize_storm({
+            'id': f'AL01{year}{id_suffix}', 'name': 'Test', 'year': year,
+            'max_wind': 100, 'wind_readings': [100] * int(ace),
+            'start_date': datetime(year, month, day),
+            'end_date':   datetime(year, month, day + duration),
+            'landfall':   [],
+        })
+
+    def test_returns_none_with_no_historical_data(self):
+        """Returns None when no historical storms are available."""
+        self.assertIsNone(calculate_ace_pace([], 'atlantic'))
+
+    def test_returns_none_with_only_current_year(self):
+        """Returns None when there are zero climatology years (only the
+        current, in-progress season has data)."""
+        storms = [self._make_ace_storm(2026, 10)]
+        result = calculate_ace_pace(storms, 'atlantic', datetime(2026, 6, 28))
+        self.assertIsNone(result)
+
+    def test_excludes_current_year_from_climatology(self):
+        """A huge current-year outlier storm does not affect the
+        climatology mean/p25/p75."""
+        storms = [
+            self._make_ace_storm(2022, 10), self._make_ace_storm(2023, 20),
+            self._make_ace_storm(2024, 30), self._make_ace_storm(2025, 40),
+        ]
+        baseline = calculate_ace_pace(storms, 'atlantic', datetime(2026, 6, 11))
+        storms_with_outlier = storms + [self._make_ace_storm(2026, 999, id_suffix='outlier')]
+        result = calculate_ace_pace(storms_with_outlier, 'atlantic', datetime(2026, 6, 11))
+        self.assertEqual(result['climatology_mean'], baseline['climatology_mean'])
+        self.assertEqual(result['climatology_p25'], baseline['climatology_p25'])
+        self.assertEqual(result['climatology_p75'], baseline['climatology_p75'])
+
+    def test_includes_current_year_in_current_season_curve(self):
+        """The current year's own storm shows up (fully, once ended) in
+        current_season."""
+        storms = [
+            self._make_ace_storm(2022, 10), self._make_ace_storm(2023, 20),
+            self._make_ace_storm(2026, 15),
+        ]
+        result = calculate_ace_pace(storms, 'atlantic', datetime(2026, 6, 11))
+        # Day index 10 = June 11 = Jun 1 + 10 days; storm ended Jun 5, so
+        # by day 10 its full ACE (15) has accrued.
+        self.assertEqual(result['current_season'][10], 15)
+
+    def test_percentile_computation(self):
+        """climatology_p25/p75 match hand-computed linear-interpolation
+        percentiles for a known set of same-day cumulative ACE values."""
+        storms = [
+            self._make_ace_storm(2022, 10), self._make_ace_storm(2023, 20),
+            self._make_ace_storm(2024, 30), self._make_ace_storm(2025, 40),
+        ]
+        result = calculate_ace_pace(storms, 'atlantic', datetime(2026, 6, 11))
+        # Day index 10: all 4 storms (started Jun 1, ended Jun 5) have fully
+        # accrued. Sorted values [10,20,30,40], n=4:
+        #   p25: k=(4-1)*0.25=0.75 -> 10*0.25 + 20*0.75 = 17.5
+        #   p75: k=(4-1)*0.75=2.25 -> 30*0.75 + 40*0.25 = 32.5
+        self.assertAlmostEqual(result['climatology_p25'][10], 17.5)
+        self.assertAlmostEqual(result['climatology_p75'][10], 32.5)
+        self.assertAlmostEqual(result['climatology_mean'][10], 25.0)
+
+    def test_last_season_curve(self):
+        """last_season matches the cumulative curve for as_of_date.year - 1."""
+        storms = [
+            self._make_ace_storm(2022, 10), self._make_ace_storm(2023, 20),
+            self._make_ace_storm(2025, 40),
+        ]
+        result = calculate_ace_pace(storms, 'atlantic', datetime(2026, 6, 11))
+        self.assertEqual(result['last_season'][10], 40)
+
+    def test_last_season_none_when_absent(self):
+        """last_season is None when as_of_date.year - 1 has no storms."""
+        storms = [self._make_ace_storm(2020, 10), self._make_ace_storm(2021, 20)]
+        result = calculate_ace_pace(storms, 'atlantic', datetime(2026, 6, 11))
+        self.assertIsNone(result['last_season'])
+
+    def test_today_index_clamped_before_season_start(self):
+        """as_of_date before the season start clamps today_index to 0."""
+        storms = [self._make_ace_storm(2022, 10)]
+        result = calculate_ace_pace(storms, 'atlantic', datetime(2026, 4, 1))
+        self.assertEqual(result['today_index'], 0)
+
+    def test_today_index_clamped_after_season_end(self):
+        """as_of_date after Nov 30 clamps today_index to the last valid index."""
+        storms = [self._make_ace_storm(2022, 10)]
+        result = calculate_ace_pace(storms, 'atlantic', datetime(2026, 12, 15))
+        expected_last = (datetime(2026, 11, 30) - datetime(2026, 6, 1)).days
+        self.assertEqual(result['today_index'], expected_last)
+
+    def test_current_season_null_after_today(self):
+        """current_season values after today_index are all None."""
+        storms = [self._make_ace_storm(2022, 10), self._make_ace_storm(2026, 15)]
+        result = calculate_ace_pace(storms, 'atlantic', datetime(2026, 6, 11))
+        self.assertTrue(all(v is None for v in result['current_season'][11:]))
+
+    def test_array_lengths_consistent(self):
+        """All returned arrays share the same length."""
+        storms = [self._make_ace_storm(2022, 10), self._make_ace_storm(2023, 20)]
+        result = calculate_ace_pace(storms, 'atlantic', datetime(2026, 6, 11))
+        n = len(result['day_labels'])
+        self.assertEqual(len(result['climatology_mean']), n)
+        self.assertEqual(len(result['climatology_p25']), n)
+        self.assertEqual(len(result['climatology_p75']), n)
+        self.assertEqual(len(result['current_season']), n)
+
+
 class TestHTMLGeneration(unittest.TestCase):
     """Smoke tests for HTML generation — catches NameErrors, TypeErrors, and
     broken f-strings in generate_dashboard_html / generate_history_html without
@@ -456,6 +569,40 @@ class TestHTMLGeneration(unittest.TestCase):
             result, "Leaflet CSS SRI hash missing or truncated"
         )
         self.assertIn('crossorigin="anonymous"', result)
+
+    def test_pace_chart_embedded(self):
+        """generate_dashboard_html embeds ACE_PACE data and renders the
+        chart canvas when ace_pace is present. Uses the real
+        calculate_ace_pace output (not a hand-built dict) so this also
+        checks the return shape is genuinely JSON-serializable."""
+        basin_data = self._make_basin_data()
+        basin_data[0]['ace_pace'] = calculate_ace_pace(
+            basin_data[0]['historical_storms'], 'atlantic', datetime(2026, 6, 18)
+        )
+        result = generate_dashboard_html(basin_data)
+        self.assertIn('ACE_PACE=', result)
+        self.assertIn('pace-canvas-atlantic', result)
+
+    def test_pace_chart_omitted_without_data(self):
+        """generate_dashboard_html degrades gracefully (no KeyError) when
+        ace_pace is absent from a basin's data."""
+        basin_data = self._make_basin_data()
+        result = generate_dashboard_html(basin_data)
+        self.assertIsInstance(result, str)
+        self.assertIn('ACE_PACE=', result)  # embedded as {} when no basin has pace data
+
+    def test_chartjs_sri_hash_present(self):
+        """Dashboard HTML contains the correct full SRI hash for Chart.js.
+
+        Guards against the same truncated/wrong-hash bug that already hit
+        the Leaflet script tag once in this repo.
+        """
+        basin_data = self._make_basin_data()
+        result = generate_dashboard_html(basin_data)
+        self.assertIn(
+            'sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ',
+            result, "Chart.js SRI hash missing or truncated"
+        )
 
     def test_html_escape_applied(self):
         """html_escape() is reachable from inside the generator functions

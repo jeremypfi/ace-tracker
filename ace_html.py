@@ -154,6 +154,25 @@ def _preseason_html(basin_key, yearly_totals, current_year):
 
 
 
+def _ace_pace_html(pace, basin_key):
+    """HTML chrome for the Season Pace chart. The chart itself and the
+    summary stat row are populated client-side from ACE_PACE — see
+    _renderPaceChart()/toggleTheme() JS below — so this only emits the
+    canvas and placeholder stat boxes."""
+    if not pace:
+        return ''
+    return f'''
+      <h3>Season Pace</h3>
+      <div class="pace-chart-wrap"><canvas id="pace-canvas-{basin_key}"></canvas></div>
+      <div class="pace-stats-mini">
+        <div class="meta-box"><div class="meta-label">ACE to Date</div><div class="meta-value" id="pace-todate-{basin_key}">—</div></div>
+        <div class="meta-box"><div class="meta-label">Normal for Today</div><div class="meta-value" id="pace-normal-{basin_key}">—</div></div>
+        <div class="meta-box"><div class="meta-label">vs. Normal</div><div class="meta-value" id="pace-pct-{basin_key}">—</div></div>
+      </div>
+      <p class="pace-caption">Historical range based on {pace['years_used']} seasons since {START_YEAR}.</p>'''
+
+
+
 # ===============================================================================
 # NHC ALERT BANNER
 # ===============================================================================
@@ -318,6 +337,7 @@ def generate_dashboard_html(basin_data):
 
     sections = []
     all_track_data = {}
+    all_pace_data = {}
     for bd in basin_data:
         if not bd:
             continue
@@ -410,17 +430,24 @@ def generate_dashboard_html(basin_data):
         disturbances   = fetch_nhc_disturbances(bd['basin_key'])
         nhc_alert      = _nhc_alert_html(disturbances)
 
+        ace_pace = bd.get('ace_pace')
+        pace_section = _ace_pace_html(ace_pace, bd['basin_key'])
+        if ace_pace:
+            all_pace_data[bd['basin_key']] = ace_pace
+
         sections.append(f'''
     <div class="basin-card" id="{bd['basin_key']}">
       <h2>{basin['name']} — {current_year} Season</h2>
       {_season_progress_html(bd['basin_key'], current_year)}
       {nhc_alert}
       {stats_grid}
+      {pace_section}
       {lower_section}
     </div>''')
 
-    # Escape </ sequences so the JSON blob can't break out of the <script> tag
+    # Escape </ sequences so the JSON blobs can't break out of the <script> tag
     _track_json = json.dumps(all_track_data).replace('</', '<\\/')
+    _pace_json = json.dumps(all_pace_data).replace('</', '<\\/')
 
     html = f'''<!DOCTYPE html>
 <html lang="en">
@@ -568,6 +595,10 @@ def generate_dashboard_html(basin_data):
   .nhc-link {{ font-size:0.78em; color:var(--muted); text-align:right; margin-top:6px; }}
   .nhc-link a {{ color:var(--accent); text-decoration:none; }}
   .nhc-link a:hover {{ text-decoration:underline; }}
+  .pace-chart-wrap {{ position:relative; height:240px; margin:12px 0 4px; }}
+  .pace-stats-mini {{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin:10px 0 4px; }}
+  .pace-caption {{ color:var(--muted); font-size:0.78em; text-align:center; margin-top:2px; }}
+  @media(min-width:768px) {{ .pace-chart-wrap {{ height:300px; }} }}
   .cone-graphic {{ margin-bottom:10px; }}
   .cone-graphic img {{ display:block; width:100%; height:auto; border-radius:8px; border:1px solid var(--border); }}
   .cone-credit {{ font-size:0.72em; color:var(--muted); text-align:center; margin-top:4px; }}
@@ -611,6 +642,7 @@ function show(id,btn) {{
   document.getElementById(id)?.classList.add('active');
   btn.classList.add('active');
   try{{history.replaceState(null,'','#'+id);}}catch(e){{}}
+  _renderPaceChart(id);
 }}
 function toggleTheme() {{
   var h=document.documentElement;
@@ -618,12 +650,15 @@ function toggleTheme() {{
   h.setAttribute('data-theme',light?'dark':'light');
   try{{localStorage.setItem('ace-theme',light?'dark':'light');}}catch(e){{}}
   document.getElementById('themeBtn').textContent=light?'☀':'☾';
+  _restylePaceCharts();
 }}
 document.addEventListener('DOMContentLoaded',function() {{
   document.getElementById('themeBtn').textContent=document.documentElement.getAttribute('data-theme')==='light'?'☾':'☀';
   var hash=location.hash.replace('#','');
   var match=[].slice.call(document.querySelectorAll('.toggle button')).filter(function(b){{return(b.getAttribute('onclick')||'').indexOf("'"+hash+"'")>=0;}})[0];
   if(match)match.click();
+  var activeCard=document.querySelector('.basin-card.active');
+  if(activeCard)_renderPaceChart(activeCard.id);
 }});
 var _ds={{}};
 function sortDash(th,col,type){{
@@ -650,6 +685,79 @@ function sortDash(th,col,type){{
   card.querySelectorAll('.sort-th .sa').forEach(function(s,i){{s.innerHTML=i===col?(asc?'&#9650;':'&#9660;'):''}});
 }}
 var ACE_TRACKS={_track_json};
+var ACE_PACE={_pace_json};
+var _paceCharts={{}};
+function _paceColors(){{
+  var s=getComputedStyle(document.documentElement);
+  var g=function(v){{return s.getPropertyValue(v).trim();}};
+  return {{accent:g('--accent'),accent2:g('--accent2'),muted:g('--muted'),mutedDark:g('--muted-dark'),border:g('--border')}};
+}}
+function _hexToRgba(hex,a){{
+  var h=hex.replace('#','');
+  if(h.length===3)h=h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+  var r=parseInt(h.substring(0,2),16),g=parseInt(h.substring(2,4),16),b=parseInt(h.substring(4,6),16);
+  return 'rgba('+r+','+g+','+b+','+a+')';
+}}
+function _renderPaceChart(basinKey){{
+  if(_paceCharts[basinKey])return;
+  var d=ACE_PACE[basinKey];
+  var el=document.getElementById('pace-canvas-'+basinKey);
+  if(!d||!el||typeof Chart==='undefined')return;
+  var colors=_paceColors();
+  var datasets=[
+    {{label:'p75',data:d.climatology_p75,borderWidth:0,pointRadius:0,fill:false}},
+    {{label:'p25',data:d.climatology_p25,borderWidth:0,pointRadius:0,fill:'-1',backgroundColor:_hexToRgba(colors.accent2,0.15)}},
+    {{label:'Historical average',data:d.climatology_mean,borderColor:colors.muted,borderWidth:2,borderDash:[5,5],pointRadius:0}}
+  ];
+  if(d.last_season){{
+    datasets.push({{label:'Last season',data:d.last_season,borderColor:colors.mutedDark,borderWidth:1.5,pointRadius:0}});
+  }}
+  datasets.push({{label:'This season',data:d.current_season,borderColor:colors.accent,borderWidth:3,pointRadius:0,spanGaps:false}});
+  _paceCharts[basinKey]=new Chart(el,{{
+    type:'line',
+    data:{{labels:d.day_labels,datasets:datasets}},
+    options:{{
+      responsive:true,maintainAspectRatio:false,
+      interaction:{{mode:'index',intersect:false}},
+      plugins:{{
+        legend:{{display:false}},
+        tooltip:{{filter:function(item){{return item.dataset.label!=='p75'&&item.dataset.label!=='p25';}}}}
+      }},
+      scales:{{
+        x:{{ticks:{{color:colors.muted,autoSkip:true,maxTicksLimit:8}},grid:{{display:false}}}},
+        y:{{ticks:{{color:colors.muted}},grid:{{color:colors.border}}}}
+      }}
+    }}
+  }});
+  _updatePaceStats(basinKey,d);
+}}
+function _updatePaceStats(basinKey,d){{
+  var todate=d.current_season[d.today_index]||0;
+  var normal=d.climatology_mean[d.today_index]||0;
+  var pct=normal>0?(todate/normal*100):0;
+  var elT=document.getElementById('pace-todate-'+basinKey);
+  var elN=document.getElementById('pace-normal-'+basinKey);
+  var elP=document.getElementById('pace-pct-'+basinKey);
+  if(elT)elT.textContent=todate.toFixed(1);
+  if(elN)elN.textContent=normal.toFixed(1);
+  if(elP)elP.textContent=pct.toFixed(0)+'%';
+}}
+function _restylePaceCharts(){{
+  var colors=_paceColors();
+  Object.keys(_paceCharts).forEach(function(basinKey){{
+    var chart=_paceCharts[basinKey];
+    chart.data.datasets.forEach(function(ds){{
+      if(ds.label==='p25')ds.backgroundColor=_hexToRgba(colors.accent2,0.15);
+      else if(ds.label==='Historical average')ds.borderColor=colors.muted;
+      else if(ds.label==='Last season')ds.borderColor=colors.mutedDark;
+      else if(ds.label==='This season')ds.borderColor=colors.accent;
+    }});
+    chart.options.scales.x.ticks.color=colors.muted;
+    chart.options.scales.y.ticks.color=colors.muted;
+    chart.options.scales.y.grid.color=colors.border;
+    chart.update();
+  }});
+}}
 var _trMaps={{}};
 var _SC={{TD:'#9e9e9e',TS:'#81d4fa',SS:'#81d4fa'}};
 function _tc(st,w){{
@@ -689,6 +797,7 @@ function _buildMap(slug){{
 }}
 </script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/chart.js@4.5.1/dist/chart.umd.min.js" integrity="sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ" crossorigin="anonymous"></script>
 <div id="global-tip" class="global-tip"></div>
 <script>
 (function(){{
