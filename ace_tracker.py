@@ -461,24 +461,25 @@ def _extract_synoptic_winds(storm_obj):
     return wind_readings
 
 
-def parse_hurdat2(basin_key):
+def parse_hurdat2(basin_key, dataset=None):
     """Fetch historical storm data using Tropycal TrackDataset.
 
     Replaces manual HURDAT2 parsing with Tropycal library.
+    Accepts an optional pre-built `dataset` (shared with get_current_season)
+    to avoid downloading and parsing the same basin data twice per run.
     Returns list of storm dicts matching the existing data structure.
     """
     tropycal_basin = _tropycal_basin_name(basin_key)
 
     try:
-        logger.info(f"Loading {tropycal_basin} data from Tropycal TrackDataset...")
-        print(f"Loading historical data via Tropycal (basin: {tropycal_basin})...")
-
-        # Create TrackDataset with include_btk=True to get latest seasons
-        dataset = tracks.TrackDataset(
-            basin=tropycal_basin,
-            source='hurdat',
-            include_btk=True
-        )
+        if dataset is None:
+            logger.info(f"Loading {tropycal_basin} data from Tropycal TrackDataset...")
+            print(f"Loading historical data via Tropycal (basin: {tropycal_basin})...")
+            dataset = tracks.TrackDataset(
+                basin=tropycal_basin,
+                source='hurdat',
+                include_btk=True
+            )
 
         storms = []
 
@@ -579,11 +580,13 @@ def parse_hurdat2(basin_key):
 # CURRENT SEASON from Tropycal
 # =============================================================================
 
-def get_current_season(basin_key):
+def get_current_season(basin_key, dataset=None):
     """Fetch current season data using Tropycal.
 
     Uses TrackDataset with include_btk=True to get the most recent season data
-    including preliminary best track data from NHC.
+    including preliminary best track data from NHC. Accepts an optional
+    pre-built `dataset` (shared with parse_hurdat2) to avoid downloading and
+    parsing the same basin data twice per run.
 
     Returns dict with: year, storms (name->ACE), storm_details (name->{ace, max_wind}), total
     """
@@ -600,15 +603,14 @@ def get_current_season(basin_key):
     years_to_try = [current_year] if in_active_season else [current_year, current_year - 1]
 
     try:
-        logger.info(f"Fetching current season data via Tropycal...")
-        print(f"Fetching current season data via Tropycal...")
-
-        # Create TrackDataset with include_btk=True for latest data
-        dataset = tracks.TrackDataset(
-            basin=tropycal_basin,
-            source='hurdat',
-            include_btk=True
-        )
+        if dataset is None:
+            logger.info(f"Fetching current season data via Tropycal...")
+            print(f"Fetching current season data via Tropycal...")
+            dataset = tracks.TrackDataset(
+                basin=tropycal_basin,
+                source='hurdat',
+                include_btk=True
+            )
 
         # Load landfall cache for geo fallback results (keyed by storm_id + last track date)
         cs_lf_cache = _load_landfall_cache()
@@ -1220,8 +1222,19 @@ def process_basin(basin_key):
     print(f"{basin['name']} Hurricane ACE Tracker")
     print("=" * 50 + "\n")
 
+    # Build one TrackDataset and share it between parse_hurdat2 (full history)
+    # and get_current_season (latest season) — both used to fetch/parse the
+    # same basin data independently, doubling the network + parse time per run.
+    tropycal_basin = _tropycal_basin_name(basin_key)
+    try:
+        print(f"Loading {tropycal_basin} data via Tropycal (shared across historical + current season)...")
+        shared_dataset = tracks.TrackDataset(basin=tropycal_basin, source='hurdat', include_btk=True)
+    except Exception as e:
+        logger.warning(f"Could not build shared TrackDataset for {basin_key}: {e}")
+        shared_dataset = None
+
     # Get historical data
-    historical_storms = parse_hurdat2(basin_key)
+    historical_storms = parse_hurdat2(basin_key, dataset=shared_dataset)
 
     if historical_storms:
         yearly_totals = calculate_yearly_totals(historical_storms)
@@ -1231,7 +1244,7 @@ def process_basin(basin_key):
         yearly_stats = None
 
     # Get current season
-    current = get_current_season(basin_key)
+    current = get_current_season(basin_key, dataset=shared_dataset)
 
     # Generate insights
     insights = generate_insights(basin_key, current, yearly_totals, historical_storms, yearly_stats)
