@@ -1512,11 +1512,91 @@ def _nhc_alert_html(disturbances):
     )
 
 
+# NHC 'binNumber' prefixes for CurrentStorms.json entries, keyed by our basin_key
+NHC_BIN_PREFIXES = {
+    'atlantic': ('AL',),
+    'pacific':  ('EP', 'CP'),
+}
+
+
+def fetch_active_storm_cones(basin_key, storm_details):
+    """Fetch and locally cache NHC forecast cone images for currently active storms.
+
+    Downloads each active storm's 5-day cone PNG from NHC once per run and saves it
+    under data/cones/, so the dashboard serves the image from our own domain instead
+    of hotlinking NHC's graphics server on every visitor request. The cone image
+    filename embeds the forecast advisory's update time, which we read from
+    CurrentStorms.json rather than guessing.
+
+    Returns a dict of storm_name -> relative path (e.g. 'cones/ep042026.png'),
+    or {} if nothing is active or the fetch fails.
+    """
+    import urllib.request
+
+    active_names = {name.upper() for name, d in storm_details.items() if d.get('is_active')}
+    if not active_names:
+        return {}
+
+    try:
+        req = urllib.request.Request(
+            'https://www.nhc.noaa.gov/CurrentStorms.json',
+            headers={'User-Agent': 'ACETracker/1.0'})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode('utf-8'))
+    except Exception as e:
+        logger.warning(f"Could not fetch CurrentStorms.json: {e}")
+        return {}
+
+    prefixes = NHC_BIN_PREFIXES.get(basin_key, ())
+    cone_dir = os.path.join('data', 'cones')
+    images = {}
+
+    for storm in data.get('activeStorms', []):
+        bin_number = storm.get('binNumber', '')
+        if not bin_number.startswith(prefixes):
+            continue
+        name = (storm.get('name') or '').upper()
+        if name not in active_names:
+            continue
+
+        storm_id = storm.get('id', '')
+        update_time = (storm.get('forecastGraphics') or {}).get('fileUpdateTime')
+        if not storm_id or not update_time:
+            continue
+
+        try:
+            ts = datetime.fromisoformat(update_time.replace('Z', '+00:00'))
+            time_code = ts.strftime('%d%H%M')
+            bin4 = storm_id[:4].upper()
+            atcf_id = storm_id.upper()
+            url = (f'https://www.nhc.noaa.gov/storm_graphics/{bin4}/refresh/'
+                   f'{atcf_id}_5day_cone+png/{time_code}_5day_cone.png')
+
+            img_req = urllib.request.Request(url, headers={'User-Agent': 'ACETracker/1.0'})
+            with urllib.request.urlopen(img_req, timeout=15) as resp:
+                img_bytes = resp.read()
+
+            os.makedirs(cone_dir, exist_ok=True)
+            filename = f'{storm_id.lower()}.png'
+            with open(os.path.join(cone_dir, filename), 'wb') as f:
+                f.write(img_bytes)
+
+            for orig_name in storm_details:
+                if orig_name.upper() == name:
+                    images[orig_name] = f'cones/{filename}'
+                    break
+        except Exception as e:
+            logger.warning(f"Could not fetch cone image for {name}: {e}")
+            continue
+
+    return images
+
+
 def generate_dashboard_html(basin_data):
     """Generate a mobile-friendly HTML dashboard for both basins."""
     now = datetime.now(timezone.utc)
 
-    def storm_rows_html(current):
+    def storm_rows_html(current, cone_images):
         storms = current['storms']
         details = current.get('storm_details', {})
         total = current['total']
@@ -1561,6 +1641,15 @@ def generate_dashboard_html(basin_data):
             nhc_link = ('<div class="nhc-link"><a href="https://www.nhc.noaa.gov/" target="_blank" rel="noopener">'
                         'View NHC Active Storms →</a></div>') if is_active else ''
 
+            cone_img = ''
+            if is_active and cone_images.get(name):
+                cone_img = (
+                    f'<div class="cone-graphic">'
+                    f'<img src="{html_escape(cone_images[name])}" alt="NHC forecast cone for {html_escape(name)}" loading="lazy">'
+                    f'<div class="cone-credit">Forecast cone via <a href="https://www.nhc.noaa.gov/" target="_blank" rel="noopener">NHC</a></div>'
+                    f'</div>'
+                )
+
             ibar = _intensity_bar_html(track_points)
             legend = (
                 '<div class="track-legend">'
@@ -1584,7 +1673,7 @@ def generate_dashboard_html(basin_data):
             map_div = f'<div class="track-map" id="trmap-{slug}"></div>' if track_points else (
                 '<p style="color:var(--muted);font-size:0.82em;text-align:center;padding:8px 0">No track data available</p>')
 
-            panel_inner = f'{active_badge}{meta}{ibar}{legend}{map_div}{nhc_link}'
+            panel_inner = f'{active_badge}{meta}{ibar}{legend}{map_div}{cone_img}{nhc_link}'
 
             rows.append(
                 f'<tr class="{row_classes}" id="storm-row-{slug}">'
@@ -1621,6 +1710,7 @@ def generate_dashboard_html(basin_data):
         classification = get_noaa_classification(current_ace, bd['basin_key'])
 
         details = current.get('storm_details', {})
+        cone_images = fetch_active_storm_cones(bd['basin_key'], details)
         named = len(details)
         hurricanes = sum(1 for d in details.values() if d.get('max_wind', 0) >= 64)
         majors = sum(1 for d in details.values() if d.get('max_wind', 0) >= 96)
@@ -1634,7 +1724,7 @@ def generate_dashboard_html(basin_data):
             all_years.sort(key=lambda x: x[1], reverse=True)
             rank = next(i + 1 for i, (y, _) in enumerate(all_years) if y == current_year)
             total_seasons = len(all_years)
-            storm_html, track_data = storm_rows_html(current)
+            storm_html, track_data = storm_rows_html(current, cone_images)
             all_track_data.update(track_data)
             lower_section = f'''
       <h3>Storm Breakdown</h3>
@@ -1839,7 +1929,7 @@ def generate_dashboard_html(basin_data):
   tr.active-storm-row {{ border-left:3px solid #4caf50; }}
   .track-row td {{ padding:0; border-bottom:2px solid var(--border); }}
   .track-panel {{ overflow:hidden; max-height:0; transition:max-height 0.35s ease; background:var(--card); }}
-  .track-panel.open {{ max-height:720px; }}
+  .track-panel.open {{ max-height:1500px; }}
   .track-inner {{ padding:12px 14px 14px; }}
   .track-map {{ height:320px; border-radius:8px; border:1px solid var(--border); margin-bottom:10px; }}
   .storm-meta {{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:10px; }}
@@ -1856,6 +1946,11 @@ def generate_dashboard_html(basin_data):
   .nhc-link {{ font-size:0.78em; color:var(--muted); text-align:right; margin-top:6px; }}
   .nhc-link a {{ color:var(--accent); text-decoration:none; }}
   .nhc-link a:hover {{ text-decoration:underline; }}
+  .cone-graphic {{ margin-bottom:10px; }}
+  .cone-graphic img {{ display:block; width:100%; height:auto; border-radius:8px; border:1px solid var(--border); }}
+  .cone-credit {{ font-size:0.72em; color:var(--muted); text-align:center; margin-top:4px; }}
+  .cone-credit a {{ color:var(--accent); text-decoration:none; }}
+  .cone-credit a:hover {{ text-decoration:underline; }}
 </style>
 </head>
 <body>
