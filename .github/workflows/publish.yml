@@ -87,5 +87,28 @@ jobs:
       with:
         path: ./data
 
+    # actions/deploy-pages occasionally hits transient 5xx errors from the
+    # Pages backend (e.g. "503 ... is githubstatus.com reporting a Pages
+    # outage?"). Retry a couple of times with a short backoff before giving up.
     - name: Deploy to GitHub Pages
+      id: deploy_attempt_1
+      uses: actions/deploy-pages@v5
+      continue-on-error: true
+
+    - name: Wait before retry
+      if: steps.deploy_attempt_1.outcome == 'failure'
+      run: sleep 30
+
+    - name: Deploy to GitHub Pages (retry 1)
+      id: deploy_attempt_2
+      if: steps.deploy_attempt_1.outcome == 'failure'
+      uses: actions/deploy-pages@v5
+      continue-on-error: true
+
+    - name: Wait before final retry
+      if: steps.deploy_attempt_2.outcome == 'failure'
+      run: sleep 60
+
+    - name: Deploy to GitHub Pages (retry 2)
+      if: steps.deploy_attempt_2.outcome == 'failure'
       uses: actions/deploy-pages@v5
