@@ -12,6 +12,16 @@ import logging
 from datetime import datetime, timedelta, timezone
 import tropycal.tracks as tracks
 
+# Configured here (not just in the ace_tracker.py entrypoint) so that any
+# direct import of this module — e.g. test_ace_tracker.py, or a future
+# standalone script — gets the same formatted log output the CLI does,
+# matching the original monolith's behavior where importing any part of it
+# ran this exactly once at module load.
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 logger = logging.getLogger(__name__)
 
 # ===============================================================================

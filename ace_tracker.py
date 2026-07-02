@@ -37,11 +37,8 @@ from ace_data import (
 )
 from ace_html import generate_dashboard_html, generate_history_html
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
+# logging.basicConfig() lives in ace_data.py, which every import path here
+# (directly or via ace_html) already pulls in — see the comment there.
 logger = logging.getLogger(__name__)
 
 # ===============================================================================
