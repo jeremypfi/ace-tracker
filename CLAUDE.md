@@ -41,9 +41,13 @@ pip3 install -r requirements.txt
 
 ## Architecture
 
-`ace_tracker.py` (~2,600 lines): fetches via Tropycal → calculates ACE at synoptic times → generates HTML dashboard + history page in `data/`.
+`ace_data.py`: fetches via Tropycal → calculates ACE at synoptic times → generates plain-text reports (Discord/console). Owns `BASINS`, `START_YEAR`, and other domain constants.
 
-`test_ace_tracker.py`: 34 tests across 10 classes — categorization, ACE formula, NOAA classification, storm finalization, yearly totals, similar-season matching.
+`ace_html.py`: renders the dashboard and history HTML pages in `data/`. Imports domain constants and data functions from `ace_data.py`.
+
+`ace_tracker.py`: CLI entrypoint — `process_basin()` and `main()`, wiring `ace_data.py` and `ace_html.py` together. Run via `python3 ace_tracker.py`.
+
+`test_ace_tracker.py`: 34 tests across 10 classes — categorization, ACE formula, NOAA classification, storm finalization, yearly totals, similar-season matching. Imports directly from `ace_data.py`/`ace_html.py`.
 
 ## Repository Rules
 

@@ -46,4 +46,4 @@ jobs:
 
     - name: Check code syntax
       run: |
-        python -m py_compile ace_tracker.py
+        python -m py_compile ace_data.py ace_html.py ace_tracker.py
