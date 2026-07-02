@@ -32,6 +32,7 @@ Updated every 3 hours during hurricane season (Eastern Pacific: May 15 – Nov 3
 - **NHC development alert** — amber banner appears when NHC is tracking an area with Medium (≥40%) or High (≥70%) formation chances, with direct link to the NHC Tropical Weather Outlook
 - **Honest season comparisons** — Season Insights show both same-date historical averages (what's typical by this point in the season) and full-season averages, so early-season numbers aren't misleadingly compared against totals that take six months to accumulate
 - **Storm track maps** — interactive Leaflet maps per storm with intensity color-coding; expandable inline on the dashboard
+- **NHC forecast cone** — active storms show their official 5-day forecast cone graphic, fetched from NHC once per run and served from our own domain (not hotlinked)
 - **Season history page** — all seasons 1991–present in a sortable table with classification badges, top-5 highlights, per-year storm accordions with landfall data, and a long-term average row
 - **Similar seasons** — finds the 3 closest historical seasons by ACE accumulated through the same date
 - **Pace rank** — shows where this season ranks among all historical seasons at this same calendar date, alongside the full-season rank
@@ -117,7 +118,8 @@ ace-tracker/
     ├── ace.png
     ├── ace_preview.png
     ├── ACE_Dashboard.html
-    └── history.html
+    ├── history.html
+    └── cones/              # NHC forecast cone images, fetched fresh each run (gitignored)
 ```
 
 ---
@@ -127,6 +129,7 @@ ace-tracker/
 - **[NOAA HURDAT2](https://www.nhc.noaa.gov/data/#hurdat)** — official historical best-track database (1991–present) via the [Tropycal](https://tropycal.github.io/tropycal/) library
 - **[NHC Real-time Best Track](https://www.nhc.noaa.gov/data/#hurdat)** — current season preliminary data (`include_btk=True` in Tropycal), updated continuously during active storms
 - **[NHC Tropical Weather Outlook](https://www.nhc.noaa.gov/gtwo.php)** — XML feeds (`TWOAT.xml` / `TWOEP.xml`) parsed every run for active disturbances with development potential
+- **[NHC CurrentStorms.json](https://www.nhc.noaa.gov/CurrentStorms.json)** — active storm metadata used to locate and cache each storm's 5-day forecast cone graphic
 - **[NOAA CPC](https://www.cpc.ncep.noaa.gov/products/outlooks/background_information.shtml)** — season classification thresholds and 1991–2020 climatological normals
 - **[Natural Earth](https://www.naturalearthdata.com/)** — 10m shapefiles (via Cartopy) for offline landfall geocoding
 
