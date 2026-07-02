@@ -209,6 +209,7 @@ __marimo__/
 # ACE Tracker generated files
 data/*.xlsx
 data/*.html
+data/cones/
 docs/html/
 docs/pdf/
 landfall_cache.json
