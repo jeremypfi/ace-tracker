@@ -98,7 +98,9 @@ All 34 tests must pass before committing. Use the `/pre-commit` skill in Claude 
 
 ```
 ace-tracker/
-├── ace_tracker.py          # Main script — data fetch, ACE calc, HTML generation
+├── ace_data.py             # Data fetch, ACE calc, plain-text report generation
+├── ace_html.py             # Dashboard + history HTML rendering
+├── ace_tracker.py          # CLI entrypoint — wires ace_data.py + ace_html.py together
 ├── test_ace_tracker.py     # 34 unit + smoke tests
 ├── requirements.txt        # Python dependencies
 ├── ace.png                 # Site logo (favicon + OG image)
@@ -143,12 +145,12 @@ Historical storms (completed seasons) use the official HURDAT2 `'L'` landfall ma
 
 ## Configuration
 
-Key constants at the top of `ace_tracker.py`:
+Key constants, mostly in `ace_data.py` (`OUTPUT_FOLDER` is the one exception — it stays in `ace_tracker.py` since only `main()` uses it):
 
 | Constant | Purpose |
 |---|---|
 | `START_YEAR` | Earliest year included in historical data (default: 1991) |
-| `OUTPUT_FOLDER` | Where HTML files are saved (default: `data/`) |
+| `OUTPUT_FOLDER` | Where HTML files are saved (default: `data/`) — defined in `ace_tracker.py` |
 | `LANDFALL_CACHE_PATH` | Path to the landfall geocoding cache (default: repo root) |
 | `BASINS` | Normal ACE values and average storm counts per basin |
 | `BACKUP_DATA` | Fallback season data used if NOAA is unreachable |

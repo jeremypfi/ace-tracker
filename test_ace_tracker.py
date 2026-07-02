@@ -12,7 +12,7 @@ Usage:
 
 import unittest
 from datetime import datetime
-from ace_tracker import (
+from ace_data import (
     get_category,
     is_major,
     get_noaa_classification,
@@ -20,12 +20,11 @@ from ace_tracker import (
     calculate_yearly_totals,
     find_similar_seasons,
     calculate_same_date_stats,
-    generate_dashboard_html,
-    generate_history_html,
     SYNOPTIC_TIMES,
     ACE_STATUSES,
-    MIN_NAMED_STORM_WIND
+    MIN_NAMED_STORM_WIND,
 )
+from ace_html import generate_dashboard_html, generate_history_html
 
 
 class TestStormCategories(unittest.TestCase):
