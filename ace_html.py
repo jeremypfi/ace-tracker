@@ -736,13 +736,18 @@ function _renderPaceChart(basinKey){{
 function _updatePaceStats(basinKey,d){{
   var todate=d.current_season[d.today_index]||0;
   var normal=d.climatology_mean[d.today_index]||0;
-  var pct=normal>0?(todate/normal*100):0;
+  // normal===0 this early in the season doesn't mean "on pace" if there's
+  // already ACE this season — it means the ratio isn't meaningful yet.
+  var pctText;
+  if(normal>0){{pctText=(todate/normal*100).toFixed(0)+'%';}}
+  else if(todate>0){{pctText='—';}}
+  else{{pctText='0%';}}
   var elT=document.getElementById('pace-todate-'+basinKey);
   var elN=document.getElementById('pace-normal-'+basinKey);
   var elP=document.getElementById('pace-pct-'+basinKey);
   if(elT)elT.textContent=todate.toFixed(1);
   if(elN)elN.textContent=normal.toFixed(1);
-  if(elP)elP.textContent=pct.toFixed(0)+'%';
+  if(elP)elP.textContent=pctText;
 }}
 function _restylePaceCharts(){{
   var colors=_paceColors();

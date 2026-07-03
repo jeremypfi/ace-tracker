@@ -919,14 +919,11 @@ def calculate_same_date_stats(historical_storms, basin_key, target_date=None):
 
         for s in yr_storms:
             start = s.get('start_date')
-            end   = s.get('end_date')
             if start is None:
                 continue
             # Strip timezone so comparisons work
             if getattr(start, 'tzinfo', None):
                 start = start.replace(tzinfo=None)
-            if end and getattr(end, 'tzinfo', None):
-                end = end.replace(tzinfo=None)
 
             if start > hist_cutoff:
                 continue  # Storm hadn't formed yet
