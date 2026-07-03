@@ -479,12 +479,14 @@ def generate_dashboard_html(basin_data):
     --accent-h3:#81d4fa; --text:#e0e6ed; --text-strong:#ffffff; --muted:#78909c;
     --muted-dark:#546e7a; --border:#1e3a5f; --danger:#ef5350; --danger-bg:#2a1a1a;
     --danger-text:#ef8a80; --total-row:#1a2d4a; --sources-bg:#0d1b2a; --gauge-bg:#1e3a5f;
+    --pace-last:#ffb74d;
   }}
   [data-theme="light"] {{
     --bg:#f0f4f8; --card:#ffffff; --box:#e8f0fe; --accent:#0277bd; --accent2:#0288d1;
     --accent-h3:#01579b; --text:#1a2d4a; --text-strong:#0a1628; --muted:#607d8b;
     --muted-dark:#455a64; --border:#b0bec5; --danger:#d32f2f; --danger-bg:#ffeaea;
     --danger-text:#c62828; --total-row:#e8f0fe; --sources-bg:#e2ecf7; --gauge-bg:#c9daf8;
+    --pace-last:#e65100;
   }}
   * {{ margin:0; padding:0; box-sizing:border-box; }}
   body {{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:var(--bg); color:var(--text); padding:12px; transition:background 0.2s,color 0.2s; }}
@@ -690,7 +692,7 @@ var _paceCharts={{}};
 function _paceColors(){{
   var s=getComputedStyle(document.documentElement);
   var g=function(v){{return s.getPropertyValue(v).trim();}};
-  return {{accent:g('--accent'),accent2:g('--accent2'),muted:g('--muted'),mutedDark:g('--muted-dark'),border:g('--border')}};
+  return {{accent:g('--accent'),accent2:g('--accent2'),muted:g('--muted'),mutedDark:g('--muted-dark'),border:g('--border'),last:g('--pace-last')}};
 }}
 function _hexToRgba(hex,a){{
   var h=hex.replace('#','');
@@ -710,7 +712,7 @@ function _renderPaceChart(basinKey){{
     {{label:'Historical average',data:d.climatology_mean,borderColor:colors.muted,borderWidth:2,borderDash:[5,5],pointRadius:0}}
   ];
   if(d.last_season){{
-    datasets.push({{label:'Last season',data:d.last_season,borderColor:colors.mutedDark,borderWidth:1.5,pointRadius:0}});
+    datasets.push({{label:'Last season',data:d.last_season,borderColor:colors.last,borderWidth:2.5,pointRadius:0}});
   }}
   datasets.push({{label:'This season',data:d.current_season,borderColor:colors.accent,borderWidth:3,pointRadius:0,spanGaps:false}});
   _paceCharts[basinKey]=new Chart(el,{{
@@ -720,7 +722,7 @@ function _renderPaceChart(basinKey){{
       responsive:true,maintainAspectRatio:false,
       interaction:{{mode:'index',intersect:false}},
       plugins:{{
-        legend:{{display:false}},
+        legend:{{display:true,position:'top',labels:{{color:colors.muted,boxWidth:14,boxHeight:2,font:{{size:11}},filter:function(item){{return item.text!=='p75'&&item.text!=='p25';}}}}}},
         tooltip:{{filter:function(item){{return item.dataset.label!=='p75'&&item.dataset.label!=='p25';}}}}
       }},
       scales:{{
@@ -749,9 +751,10 @@ function _restylePaceCharts(){{
     chart.data.datasets.forEach(function(ds){{
       if(ds.label==='p25')ds.backgroundColor=_hexToRgba(colors.accent2,0.15);
       else if(ds.label==='Historical average')ds.borderColor=colors.muted;
-      else if(ds.label==='Last season')ds.borderColor=colors.mutedDark;
+      else if(ds.label==='Last season')ds.borderColor=colors.last;
       else if(ds.label==='This season')ds.borderColor=colors.accent;
     }});
+    chart.options.plugins.legend.labels.color=colors.muted;
     chart.options.scales.x.ticks.color=colors.muted;
     chart.options.scales.y.ticks.color=colors.muted;
     chart.options.scales.y.grid.color=colors.border;
