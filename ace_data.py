@@ -844,6 +844,33 @@ def find_similar_seasons(target_ace, yearly_totals, exclude_year=None):
 
 
 
+def _storm_ace_at_cutoff(storm, cutoff):
+    """ACE a storm had contributed as of `cutoff` (a naive datetime).
+
+    0.0 if the storm hadn't formed yet by `cutoff`; the storm's full ACE if
+    it had already ended by `cutoff`; otherwise a linear proration by
+    elapsed/total days. Shared by calculate_same_date_stats (one date, many
+    years) and calculate_ace_pace (many dates, few years) so both features
+    can never independently drift on the same number.
+    """
+    start = storm.get('start_date')
+    end = storm.get('end_date')
+    if start is None:
+        return 0.0
+    if getattr(start, 'tzinfo', None):
+        start = start.replace(tzinfo=None)
+    if end and getattr(end, 'tzinfo', None):
+        end = end.replace(tzinfo=None)
+    if start > cutoff:
+        return 0.0
+    storm_ace = storm.get('ace', 0.0)
+    if end is None or end <= cutoff:
+        return storm_ace
+    total_days = max(1, (end - start).days)
+    elapsed = max(0, (cutoff - start).days)
+    return storm_ace * min(1.0, elapsed / total_days)
+
+
 def calculate_same_date_stats(historical_storms, basin_key, target_date=None):
     """Compute historical averages for counts and ACE as of the same calendar
     date across all completed seasons since START_YEAR.
@@ -892,14 +919,11 @@ def calculate_same_date_stats(historical_storms, basin_key, target_date=None):
 
         for s in yr_storms:
             start = s.get('start_date')
-            end   = s.get('end_date')
             if start is None:
                 continue
             # Strip timezone so comparisons work
             if getattr(start, 'tzinfo', None):
                 start = start.replace(tzinfo=None)
-            if end and getattr(end, 'tzinfo', None):
-                end = end.replace(tzinfo=None)
 
             if start > hist_cutoff:
                 continue  # Storm hadn't formed yet
@@ -910,14 +934,7 @@ def calculate_same_date_stats(historical_storms, basin_key, target_date=None):
             if s['max_wind'] >= 96:
                 majors += 1
 
-            # Prorate ACE for storms still active at the cutoff
-            storm_ace = s.get('ace', 0.0)
-            if end is None or end <= hist_cutoff:
-                ace += storm_ace
-            else:
-                total_days = max(1, (end - start).days)
-                elapsed    = max(0, (hist_cutoff - start).days)
-                ace += storm_ace * min(1.0, elapsed / total_days)
+            ace += _storm_ace_at_cutoff(s, hist_cutoff)
 
         sd_named[year]     = named
         sd_hurricanes[year] = hurricanes
@@ -935,6 +952,91 @@ def calculate_same_date_stats(historical_storms, basin_key, target_date=None):
         'date_label':    date_label,
     }
 
+
+def _percentile(sorted_values, pct):
+    """Linear-interpolation percentile over an already-sorted list."""
+    n = len(sorted_values)
+    if n == 0:
+        return 0.0
+    if n == 1:
+        return sorted_values[0]
+    k = (n - 1) * (pct / 100)
+    f, c = int(k), min(int(k) + 1, n - 1)
+    if f == c:
+        return sorted_values[f]
+    return sorted_values[f] * (c - k) + sorted_values[c] * (k - f)
+
+
+def calculate_ace_pace(historical_storms, basin_key, as_of_date=None):
+    """Build day-by-day cumulative ACE curves for the dashboard pace chart:
+    historical climatology (mean/p25/p75, excluding the current season),
+    this season's own cumulative curve (prorated up to `as_of_date`, using
+    the same proration logic as calculate_same_date_stats), and last
+    season's complete curve.
+
+    Returns None if there is no historical data to build a climatology from.
+    """
+    if as_of_date is None:
+        as_of_date = datetime.now()
+
+    if basin_key == 'atlantic':
+        ssm, ssd = 6, 1   # June 1
+    else:
+        ssm, ssd = 5, 15  # May 15
+
+    season_start = datetime(as_of_date.year, ssm, ssd)
+    season_end = datetime(as_of_date.year, 11, 30)
+    total_days = (season_end - season_start).days
+    today_index = min(total_days, max(0, (as_of_date - season_start).days))
+
+    storms_by_year = {}
+    for s in historical_storms:
+        storms_by_year.setdefault(s['year'], []).append(s)
+
+    climatology_years = [y for y in storms_by_year if y < as_of_date.year]
+    if not climatology_years:
+        return None
+
+    def cumulative_curve(year, storms):
+        curve = []
+        for d in range(total_days + 1):
+            cutoff = datetime(year, ssm, ssd) + timedelta(days=d)
+            curve.append(round(sum(_storm_ace_at_cutoff(s, cutoff) for s in storms), 2))
+        return curve
+
+    climatology_curves = [cumulative_curve(y, storms_by_year[y]) for y in climatology_years]
+
+    climatology_mean = []
+    climatology_p25 = []
+    climatology_p75 = []
+    for d in range(total_days + 1):
+        day_values = sorted(curve[d] for curve in climatology_curves)
+        climatology_mean.append(round(sum(day_values) / len(day_values), 2))
+        climatology_p25.append(round(_percentile(day_values, 25), 2))
+        climatology_p75.append(round(_percentile(day_values, 75), 2))
+
+    current_year = as_of_date.year
+    current_full = cumulative_curve(current_year, storms_by_year.get(current_year, []))
+    current_season = [v if d <= today_index else None for d, v in enumerate(current_full)]
+
+    last_year = current_year - 1
+    last_season = cumulative_curve(last_year, storms_by_year[last_year]) if last_year in storms_by_year else None
+
+    day_labels = [(season_start + timedelta(days=d)).strftime('%b %-d') for d in range(total_days + 1)]
+
+    return {
+        'day_labels': day_labels,
+        'climatology_mean': climatology_mean,
+        'climatology_p25': climatology_p25,
+        'climatology_p75': climatology_p75,
+        'current_season': current_season,
+        'last_season': last_season,
+        'today_index': today_index,
+        'current_year': current_year,
+        'last_year': last_year,
+        'years_used': len(climatology_years),
+        'basin_key': basin_key,
+    }
 
 
 # ===============================================================================

@@ -154,6 +154,25 @@ def _preseason_html(basin_key, yearly_totals, current_year):
 
 
 
+def _ace_pace_html(pace, basin_key):
+    """HTML chrome for the Season Pace chart. The chart itself and the
+    summary stat row are populated client-side from ACE_PACE — see
+    _renderPaceChart()/toggleTheme() JS below — so this only emits the
+    canvas and placeholder stat boxes."""
+    if not pace:
+        return ''
+    return f'''
+      <h3>Season Pace</h3>
+      <div class="pace-chart-wrap"><canvas id="pace-canvas-{basin_key}"></canvas></div>
+      <div class="pace-stats-mini">
+        <div class="meta-box"><div class="meta-label">ACE to Date</div><div class="meta-value" id="pace-todate-{basin_key}">—</div></div>
+        <div class="meta-box"><div class="meta-label">Normal for Today</div><div class="meta-value" id="pace-normal-{basin_key}">—</div></div>
+        <div class="meta-box"><div class="meta-label">vs. Normal</div><div class="meta-value" id="pace-pct-{basin_key}">—</div></div>
+      </div>
+      <p class="pace-caption">Historical range based on {pace['years_used']} seasons since {START_YEAR}.</p>'''
+
+
+
 # ===============================================================================
 # NHC ALERT BANNER
 # ===============================================================================
@@ -318,6 +337,7 @@ def generate_dashboard_html(basin_data):
 
     sections = []
     all_track_data = {}
+    all_pace_data = {}
     for bd in basin_data:
         if not bd:
             continue
@@ -410,17 +430,24 @@ def generate_dashboard_html(basin_data):
         disturbances   = fetch_nhc_disturbances(bd['basin_key'])
         nhc_alert      = _nhc_alert_html(disturbances)
 
+        ace_pace = bd.get('ace_pace')
+        pace_section = _ace_pace_html(ace_pace, bd['basin_key'])
+        if ace_pace:
+            all_pace_data[bd['basin_key']] = ace_pace
+
         sections.append(f'''
     <div class="basin-card" id="{bd['basin_key']}">
       <h2>{basin['name']} — {current_year} Season</h2>
       {_season_progress_html(bd['basin_key'], current_year)}
       {nhc_alert}
       {stats_grid}
+      {pace_section}
       {lower_section}
     </div>''')
 
-    # Escape </ sequences so the JSON blob can't break out of the <script> tag
+    # Escape </ sequences so the JSON blobs can't break out of the <script> tag
     _track_json = json.dumps(all_track_data).replace('</', '<\\/')
+    _pace_json = json.dumps(all_pace_data).replace('</', '<\\/')
 
     html = f'''<!DOCTYPE html>
 <html lang="en">
@@ -452,12 +479,14 @@ def generate_dashboard_html(basin_data):
     --accent-h3:#81d4fa; --text:#e0e6ed; --text-strong:#ffffff; --muted:#78909c;
     --muted-dark:#546e7a; --border:#1e3a5f; --danger:#ef5350; --danger-bg:#2a1a1a;
     --danger-text:#ef8a80; --total-row:#1a2d4a; --sources-bg:#0d1b2a; --gauge-bg:#1e3a5f;
+    --pace-last:#ffb74d;
   }}
   [data-theme="light"] {{
     --bg:#f0f4f8; --card:#ffffff; --box:#e8f0fe; --accent:#0277bd; --accent2:#0288d1;
     --accent-h3:#01579b; --text:#1a2d4a; --text-strong:#0a1628; --muted:#607d8b;
     --muted-dark:#455a64; --border:#b0bec5; --danger:#d32f2f; --danger-bg:#ffeaea;
     --danger-text:#c62828; --total-row:#e8f0fe; --sources-bg:#e2ecf7; --gauge-bg:#c9daf8;
+    --pace-last:#e65100;
   }}
   * {{ margin:0; padding:0; box-sizing:border-box; }}
   body {{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:var(--bg); color:var(--text); padding:12px; transition:background 0.2s,color 0.2s; }}
@@ -493,9 +522,9 @@ def generate_dashboard_html(basin_data):
   .nhc-issued {{ color:var(--muted); font-size:0.82em; }}
   .nhc-alert-link {{ color:var(--accent); text-decoration:none; font-size:0.88em; font-weight:500; }}
   .nhc-alert-link:hover {{ text-decoration:underline; }}
-  .stats-grid {{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }}
-  .stat-box {{ background:var(--box); border-radius:8px; padding:10px; text-align:center; }}
-  .stat-box.ace-total {{ grid-column:span 3; }}
+  .stats-grid {{ display:flex; flex-wrap:wrap; gap:8px; }}
+  .stat-box {{ background:var(--box); border-radius:8px; padding:10px; text-align:center; flex:1 1 100px; }}
+  .stat-box.ace-total {{ flex:1 1 100%; }}
   .stat-label {{ color:var(--muted); font-size:0.75em; text-transform:uppercase; }}
   .stat-value {{ color:var(--text-strong); font-size:1.5em; font-weight:bold; }}
   .stat-value.small {{ font-size:1.1em; }}
@@ -537,7 +566,7 @@ def generate_dashboard_html(basin_data):
   .preseason-notice {{ background:var(--box); border-radius:8px; padding:14px 16px; margin:12px 0; border-left:4px solid var(--accent); font-size:0.9em; color:var(--text); text-align:center; line-height:1.5; }}
   .sim-link {{ color:var(--accent); text-decoration:none; }}
   .sim-link:hover {{ text-decoration:underline; }}
-  @media(min-width:768px) {{ body {{ max-width:900px; margin:0 auto; padding:24px; }} .stats-grid {{ grid-template-columns:repeat(6,1fr); }} .stat-box.ace-total {{ grid-column:span 6; }} }}
+  @media(min-width:768px) {{ body {{ max-width:900px; margin:0 auto; padding:24px; }} }}
   @media(min-width:1100px) {{ body {{ max-width:1100px; }} }}
   .storm-name-btn {{ background:none; border:none; color:var(--accent); cursor:pointer; font-size:inherit; padding:0; display:inline-flex; align-items:center; gap:4px; white-space:nowrap; text-decoration:underline dotted; }}
   .storm-name-btn:hover {{ color:var(--accent2); }}
@@ -568,6 +597,10 @@ def generate_dashboard_html(basin_data):
   .nhc-link {{ font-size:0.78em; color:var(--muted); text-align:right; margin-top:6px; }}
   .nhc-link a {{ color:var(--accent); text-decoration:none; }}
   .nhc-link a:hover {{ text-decoration:underline; }}
+  .pace-chart-wrap {{ position:relative; height:240px; margin:12px 0 4px; }}
+  .pace-stats-mini {{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin:10px 0 4px; }}
+  .pace-caption {{ color:var(--muted); font-size:0.78em; text-align:center; margin-top:2px; }}
+  @media(min-width:768px) {{ .pace-chart-wrap {{ height:300px; }} }}
   .cone-graphic {{ margin-bottom:10px; }}
   .cone-graphic img {{ display:block; width:100%; height:auto; border-radius:8px; border:1px solid var(--border); }}
   .cone-credit {{ font-size:0.72em; color:var(--muted); text-align:center; margin-top:4px; }}
@@ -611,6 +644,7 @@ function show(id,btn) {{
   document.getElementById(id)?.classList.add('active');
   btn.classList.add('active');
   try{{history.replaceState(null,'','#'+id);}}catch(e){{}}
+  _renderPaceChart(id);
 }}
 function toggleTheme() {{
   var h=document.documentElement;
@@ -618,12 +652,15 @@ function toggleTheme() {{
   h.setAttribute('data-theme',light?'dark':'light');
   try{{localStorage.setItem('ace-theme',light?'dark':'light');}}catch(e){{}}
   document.getElementById('themeBtn').textContent=light?'☀':'☾';
+  _restylePaceCharts();
 }}
 document.addEventListener('DOMContentLoaded',function() {{
   document.getElementById('themeBtn').textContent=document.documentElement.getAttribute('data-theme')==='light'?'☾':'☀';
   var hash=location.hash.replace('#','');
   var match=[].slice.call(document.querySelectorAll('.toggle button')).filter(function(b){{return(b.getAttribute('onclick')||'').indexOf("'"+hash+"'")>=0;}})[0];
   if(match)match.click();
+  var activeCard=document.querySelector('.basin-card.active');
+  if(activeCard)_renderPaceChart(activeCard.id);
 }});
 var _ds={{}};
 function sortDash(th,col,type){{
@@ -650,6 +687,85 @@ function sortDash(th,col,type){{
   card.querySelectorAll('.sort-th .sa').forEach(function(s,i){{s.innerHTML=i===col?(asc?'&#9650;':'&#9660;'):''}});
 }}
 var ACE_TRACKS={_track_json};
+var ACE_PACE={_pace_json};
+var _paceCharts={{}};
+function _paceColors(){{
+  var s=getComputedStyle(document.documentElement);
+  var g=function(v){{return s.getPropertyValue(v).trim();}};
+  return {{accent:g('--accent'),accent2:g('--accent2'),muted:g('--muted'),mutedDark:g('--muted-dark'),border:g('--border'),last:g('--pace-last')}};
+}}
+function _hexToRgba(hex,a){{
+  var h=hex.replace('#','');
+  if(h.length===3)h=h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+  var r=parseInt(h.substring(0,2),16),g=parseInt(h.substring(2,4),16),b=parseInt(h.substring(4,6),16);
+  return 'rgba('+r+','+g+','+b+','+a+')';
+}}
+function _renderPaceChart(basinKey){{
+  if(_paceCharts[basinKey])return;
+  var d=ACE_PACE[basinKey];
+  var el=document.getElementById('pace-canvas-'+basinKey);
+  if(!d||!el||typeof Chart==='undefined')return;
+  var colors=_paceColors();
+  var datasets=[
+    {{label:'p75',data:d.climatology_p75,borderWidth:0,pointRadius:0,fill:false}},
+    {{label:'p25',data:d.climatology_p25,borderWidth:0,pointRadius:0,fill:'-1',backgroundColor:_hexToRgba(colors.accent2,0.15)}},
+    {{label:'Historical average',data:d.climatology_mean,borderColor:colors.muted,borderWidth:2,borderDash:[5,5],pointRadius:0}}
+  ];
+  if(d.last_season){{
+    datasets.push({{label:'Last season',data:d.last_season,borderColor:colors.last,borderWidth:2.5,pointRadius:0}});
+  }}
+  datasets.push({{label:'This season',data:d.current_season,borderColor:colors.accent,borderWidth:3,pointRadius:0,spanGaps:false}});
+  _paceCharts[basinKey]=new Chart(el,{{
+    type:'line',
+    data:{{labels:d.day_labels,datasets:datasets}},
+    options:{{
+      responsive:true,maintainAspectRatio:false,
+      interaction:{{mode:'index',intersect:false}},
+      plugins:{{
+        legend:{{display:true,position:'top',labels:{{color:colors.muted,boxWidth:14,boxHeight:2,font:{{size:11}},filter:function(item){{return item.text!=='p75'&&item.text!=='p25';}}}}}},
+        tooltip:{{filter:function(item){{return item.dataset.label!=='p75'&&item.dataset.label!=='p25';}}}}
+      }},
+      scales:{{
+        x:{{ticks:{{color:colors.muted,autoSkip:true,maxTicksLimit:8}},grid:{{display:false}}}},
+        y:{{ticks:{{color:colors.muted}},grid:{{color:colors.border}}}}
+      }}
+    }}
+  }});
+  _updatePaceStats(basinKey,d);
+}}
+function _updatePaceStats(basinKey,d){{
+  var todate=d.current_season[d.today_index]||0;
+  var normal=d.climatology_mean[d.today_index]||0;
+  // normal===0 this early in the season doesn't mean "on pace" if there's
+  // already ACE this season — it means the ratio isn't meaningful yet.
+  var pctText;
+  if(normal>0){{pctText=(todate/normal*100).toFixed(0)+'%';}}
+  else if(todate>0){{pctText='—';}}
+  else{{pctText='0%';}}
+  var elT=document.getElementById('pace-todate-'+basinKey);
+  var elN=document.getElementById('pace-normal-'+basinKey);
+  var elP=document.getElementById('pace-pct-'+basinKey);
+  if(elT)elT.textContent=todate.toFixed(1);
+  if(elN)elN.textContent=normal.toFixed(1);
+  if(elP)elP.textContent=pctText;
+}}
+function _restylePaceCharts(){{
+  var colors=_paceColors();
+  Object.keys(_paceCharts).forEach(function(basinKey){{
+    var chart=_paceCharts[basinKey];
+    chart.data.datasets.forEach(function(ds){{
+      if(ds.label==='p25')ds.backgroundColor=_hexToRgba(colors.accent2,0.15);
+      else if(ds.label==='Historical average')ds.borderColor=colors.muted;
+      else if(ds.label==='Last season')ds.borderColor=colors.last;
+      else if(ds.label==='This season')ds.borderColor=colors.accent;
+    }});
+    chart.options.plugins.legend.labels.color=colors.muted;
+    chart.options.scales.x.ticks.color=colors.muted;
+    chart.options.scales.y.ticks.color=colors.muted;
+    chart.options.scales.y.grid.color=colors.border;
+    chart.update();
+  }});
+}}
 var _trMaps={{}};
 var _SC={{TD:'#9e9e9e',TS:'#81d4fa',SS:'#81d4fa'}};
 function _tc(st,w){{
@@ -689,6 +805,7 @@ function _buildMap(slug){{
 }}
 </script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/chart.js@4.5.1/dist/chart.umd.min.js" integrity="sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ" crossorigin="anonymous"></script>
 <div id="global-tip" class="global-tip"></div>
 <script>
 (function(){{

@@ -31,6 +31,7 @@ from ace_data import (
     get_current_season,
     calculate_yearly_totals,
     calculate_yearly_stats,
+    calculate_ace_pace,
     generate_insights,
     generate_discord_text,
     generate_console_report,
@@ -77,9 +78,11 @@ def process_basin(basin_key):
     if historical_storms:
         yearly_totals = calculate_yearly_totals(historical_storms)
         yearly_stats = calculate_yearly_stats(historical_storms)
+        ace_pace = calculate_ace_pace(historical_storms, basin_key)
     else:
         yearly_totals = BACKUP_DATA[basin_key]['yearly_totals']
         yearly_stats = None
+        ace_pace = None
 
     # Get current season
     current = get_current_season(basin_key, dataset=shared_dataset)
@@ -105,6 +108,7 @@ def process_basin(basin_key):
         'yearly_totals': yearly_totals,
         'yearly_stats': yearly_stats,
         'insights': insights,
+        'ace_pace': ace_pace,
     }
 
 
