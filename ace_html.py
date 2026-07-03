@@ -522,9 +522,9 @@ def generate_dashboard_html(basin_data):
   .nhc-issued {{ color:var(--muted); font-size:0.82em; }}
   .nhc-alert-link {{ color:var(--accent); text-decoration:none; font-size:0.88em; font-weight:500; }}
   .nhc-alert-link:hover {{ text-decoration:underline; }}
-  .stats-grid {{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }}
-  .stat-box {{ background:var(--box); border-radius:8px; padding:10px; text-align:center; }}
-  .stat-box.ace-total {{ grid-column:span 3; }}
+  .stats-grid {{ display:flex; flex-wrap:wrap; gap:8px; }}
+  .stat-box {{ background:var(--box); border-radius:8px; padding:10px; text-align:center; flex:1 1 100px; }}
+  .stat-box.ace-total {{ flex:1 1 100%; }}
   .stat-label {{ color:var(--muted); font-size:0.75em; text-transform:uppercase; }}
   .stat-value {{ color:var(--text-strong); font-size:1.5em; font-weight:bold; }}
   .stat-value.small {{ font-size:1.1em; }}
@@ -566,7 +566,7 @@ def generate_dashboard_html(basin_data):
   .preseason-notice {{ background:var(--box); border-radius:8px; padding:14px 16px; margin:12px 0; border-left:4px solid var(--accent); font-size:0.9em; color:var(--text); text-align:center; line-height:1.5; }}
   .sim-link {{ color:var(--accent); text-decoration:none; }}
   .sim-link:hover {{ text-decoration:underline; }}
-  @media(min-width:768px) {{ body {{ max-width:900px; margin:0 auto; padding:24px; }} .stats-grid {{ grid-template-columns:repeat(6,1fr); }} .stat-box.ace-total {{ grid-column:span 6; }} }}
+  @media(min-width:768px) {{ body {{ max-width:900px; margin:0 auto; padding:24px; }} }}
   @media(min-width:1100px) {{ body {{ max-width:1100px; }} }}
   .storm-name-btn {{ background:none; border:none; color:var(--accent); cursor:pointer; font-size:inherit; padding:0; display:inline-flex; align-items:center; gap:4px; white-space:nowrap; text-decoration:underline dotted; }}
   .storm-name-btn:hover {{ color:var(--accent2); }}
