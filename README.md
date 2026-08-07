@@ -31,12 +31,14 @@ Updated every 3 hours during hurricane season (Eastern Pacific: May 15 – Nov 3
 - **Landfall data** — each storm shows where it made landfall and its intensity at the moment of impact (not just peak). Multi-landfall storms show all locations (e.g. `Florida (Cat 1) · Louisiana (Cat 3)`). Storms that never made landfall are labeled **Fish Storm**
 - **NHC development alert** — amber banner appears when NHC is tracking an area with Medium (≥40%) or High (≥70%) formation chances, with direct link to the NHC Tropical Weather Outlook
 - **Honest season comparisons** — Season Insights show both same-date historical averages (what's typical by this point in the season) and full-season averages, so early-season numbers aren't misleadingly compared against totals that take six months to accumulate
-- **Storm track maps** — interactive Leaflet maps per storm with intensity color-coding; expandable inline on the dashboard
+- **Storm track maps** — interactive Leaflet maps per storm with intensity color-coding; expandable inline on the dashboard, with a loading indicator while tiles load
+- **Shareable storm links** — copy a direct link to any storm on the dashboard via the 🔗 button on each row; opening the link auto-switches basin and expands that storm
 - **NHC forecast cone** — active storms show their official 5-day forecast cone graphic, fetched from NHC once per run and served from our own domain (not hotlinked)
 - **Season history page** — all seasons 1991–present in a sortable table with classification badges, top-5 highlights, per-year storm accordions with landfall data, and a long-term average row
 - **Similar seasons** — finds the 3 closest historical seasons by ACE accumulated through the same date
 - **Pace rank** — shows where this season ranks among all historical seasons at this same calendar date, alongside the full-season rank
 - **NOAA classifications** — Below Normal / Near Normal / Above Normal / Extremely Active
+- **Season projection widget** — shows the daily ACE rate needed for the rest of the season to reach each remaining NOAA classification by Nov 30
 
 ---
 
