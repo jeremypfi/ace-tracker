@@ -17,6 +17,7 @@ from ace_data import (
     START_YEAR,
     get_category,
     get_noaa_classification,
+    get_season_projection,
     fetch_nhc_disturbances,
     fetch_active_storm_cones,
 )
@@ -225,6 +226,27 @@ def _nhc_alert_html(disturbances):
     )
 
 
+def _season_projection_html(current_ace, basin_key):
+    """Render the 'what would it take?' daily-ACE-rate projection widget."""
+    projection = get_season_projection(current_ace, basin_key)
+    if not projection:
+        return ''
+
+    rows = ''.join(
+        f'<div class="proj-row">'
+        f'<span class="proj-label">{html_escape(p["label"])} <span class="proj-threshold">(≥{p["threshold"]} ACE)</span></span>'
+        f'<span class="proj-value">{p["daily_rate"]:.2f} ACE/day</span>'
+        f'</div>'
+        for p in projection
+    )
+    return f'''
+      <h3>What Would It Take?</h3>
+      <div class="projection-widget">
+        <p class="projection-caption">Daily ACE rate needed for the rest of the season to reach each classification by Nov 30:</p>
+        {rows}
+      </div>'''
+
+
 # NHC 'binNumber' prefixes for CurrentStorms.json entries, keyed by our basin_key
 
 
@@ -311,7 +333,12 @@ def generate_dashboard_html(basin_data):
                 f'</div>'
             )
 
-            map_div = f'<div class="track-map" id="trmap-{slug}"></div>' if track_points else (
+            map_div = (
+                f'<div class="track-map-wrap">'
+                f'<div class="track-map" id="trmap-{slug}"></div>'
+                f'<div class="track-map-skeleton" id="trskel-{slug}"><div class="skeleton-spinner"></div></div>'
+                f'</div>'
+            ) if track_points else (
                 '<p style="color:var(--muted);font-size:0.82em;text-align:center;padding:8px 0">No track data available</p>')
 
             panel_inner = f'{active_badge}{meta}{ibar}{legend}{map_div}{cone_img}{nhc_link}'
@@ -319,7 +346,9 @@ def generate_dashboard_html(basin_data):
             rows.append(
                 f'<tr class="{row_classes}" id="storm-row-{slug}">'
                 f'<td data-v="{html_escape(name)}"><button class="storm-name-btn" id="trbtn-{slug}" onclick="toggleTrack(\'{slug}\')">'
-                f'{active_dot}{html_escape(name)}<span class="storm-chevron">&#9658;</span></button></td>'
+                f'{active_dot}{html_escape(name)}<span class="storm-chevron">&#9658;</span></button>'
+                f'<button class="storm-share-btn" type="button" data-tip="Copy link to this storm" '
+                f'aria-label="Copy link to {html_escape(name)}" onclick="copyStormLink(event,\'{slug}\')">&#128279;</button></td>'
                 f'<td data-v="{ace:.6f}">{ace:.1f}</td>'
                 f'<td data-v="{pct:.4f}">{pct:.1f}%</td>'
                 f'<td data-v="{wind}">{cat}</td>'
@@ -390,7 +419,8 @@ def generate_dashboard_html(basin_data):
       </div>
 
       <h3>Season Insights</h3>
-      <ul class="insights">{insight_items_html(insights)}</ul>'''
+      <ul class="insights">{insight_items_html(insights)}</ul>
+      {_season_projection_html(current_ace, bd['basin_key'])}'''
 
         gauge_pct = min(pct_normal, 200)
 
@@ -545,6 +575,13 @@ def generate_dashboard_html(basin_data):
   tr.total-row {{ background:var(--total-row); }}
   .insights {{ list-style:none; padding:0; }}
   .insights li {{ background:var(--box); padding:8px 10px; margin:4px 0; border-radius:6px; font-size:0.85em; border-left:3px solid var(--accent); color:var(--text); }}
+  .projection-widget {{ background:var(--box); border-radius:8px; padding:10px 12px; margin-top:6px; }}
+  .projection-caption {{ color:var(--muted); font-size:0.78em; margin:0 0 8px; }}
+  .proj-row {{ display:flex; justify-content:space-between; align-items:baseline; padding:5px 0; border-top:1px solid var(--border); font-size:0.88em; }}
+  .proj-row:first-of-type {{ border-top:none; }}
+  .proj-label {{ color:var(--text); }}
+  .proj-threshold {{ color:var(--muted); font-size:0.85em; }}
+  .proj-value {{ color:var(--text-strong); font-weight:bold; white-space:nowrap; }}
   .sources {{ background:var(--sources-bg); border-top:1px solid var(--border); margin-top:24px; padding:16px 12px; border-radius:8px; }}
   .sources h4 {{ color:var(--muted); font-size:0.8em; text-transform:uppercase; margin-bottom:8px; }}
   .sources a {{ color:var(--accent); text-decoration:none; font-size:0.78em; }}
@@ -572,6 +609,10 @@ def generate_dashboard_html(basin_data):
   .storm-name-btn:hover {{ color:var(--accent2); }}
   .storm-chevron {{ font-size:0.7em; display:inline-block; transition:transform 0.2s; color:var(--muted); margin-left:2px; }}
   .storm-name-btn.open .storm-chevron {{ transform:rotate(90deg); }}
+  .storm-share-btn {{ background:none; border:none; color:var(--muted); cursor:pointer; font-size:0.85em; padding:0 0 0 8px; vertical-align:middle; }}
+  .storm-share-btn:hover {{ color:var(--accent); }}
+  .storm-row.storm-highlight {{ animation:storm-highlight-flash 2.5s ease-out; }}
+  @keyframes storm-highlight-flash {{ 0%,15% {{ background:var(--accent); }} 100% {{ background:transparent; }} }}
   .lf-cell {{ font-size:0.85em; color:var(--text); }}
   .dash-fish {{ color:var(--muted); font-style:italic; cursor:help; }}
   .global-tip {{ display:none; position:fixed; background:var(--card-bg,#1a1a2e); color:var(--text); border:1px solid var(--border); padding:5px 11px; border-radius:6px; font-size:0.82em; pointer-events:none; z-index:9999; max-width:320px; line-height:1.4; box-shadow:0 2px 8px rgba(0,0,0,0.4); }}
@@ -583,6 +624,11 @@ def generate_dashboard_html(basin_data):
   .track-panel.open {{ max-height:1500px; }}
   .track-inner {{ padding:12px 14px 14px; }}
   .track-map {{ height:320px; border-radius:8px; border:1px solid var(--border); margin-bottom:10px; }}
+  .track-map-wrap {{ position:relative; margin-bottom:10px; }}
+  .track-map-wrap .track-map {{ margin-bottom:0; }}
+  .track-map-skeleton {{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:var(--box); border-radius:8px; border:1px solid var(--border); }}
+  .skeleton-spinner {{ width:28px; height:28px; border-radius:50%; border:3px solid var(--border); border-top-color:var(--accent); animation:skeleton-spin 0.8s linear infinite; }}
+  @keyframes skeleton-spin {{ to {{ transform:rotate(360deg); }} }}
   .storm-meta {{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:10px; }}
   .meta-box {{ background:var(--box); border-radius:6px; padding:8px 10px; }}
   .meta-label {{ color:var(--muted); font-size:0.72em; text-transform:uppercase; }}
@@ -654,11 +700,45 @@ function toggleTheme() {{
   document.getElementById('themeBtn').textContent=light?'☀':'☾';
   _restylePaceCharts();
 }}
+function copyStormLink(e,slug) {{
+  var url=location.origin+location.pathname+'#storm-row-'+slug;
+  var btn=e.currentTarget;
+  function done(ok) {{
+    var prev=btn.innerHTML;
+    btn.innerHTML=ok?'&#10003;':'&#9888;';
+    setTimeout(function(){{btn.innerHTML=prev;}},1400);
+  }}
+  if(navigator.clipboard&&navigator.clipboard.writeText) {{
+    navigator.clipboard.writeText(url).then(function(){{done(true);}},function(){{done(false);}});
+  }} else {{
+    try {{
+      var ta=document.createElement('textarea');
+      ta.value=url;ta.style.position='fixed';ta.style.opacity='0';
+      document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);
+      done(true);
+    }} catch(err) {{ done(false); }}
+  }}
+}}
 document.addEventListener('DOMContentLoaded',function() {{
   document.getElementById('themeBtn').textContent=document.documentElement.getAttribute('data-theme')==='light'?'☾':'☀';
   var hash=location.hash.replace('#','');
   var match=[].slice.call(document.querySelectorAll('.toggle button')).filter(function(b){{return(b.getAttribute('onclick')||'').indexOf("'"+hash+"'")>=0;}})[0];
-  if(match)match.click();
+  if(match) {{
+    match.click();
+  }} else if(hash.indexOf('storm-row-')===0) {{
+    var row=document.getElementById(hash);
+    if(row) {{
+      var card=row.closest('.basin-card');
+      var basinBtn=card&&[].slice.call(document.querySelectorAll('.toggle button')).filter(function(b){{return(b.getAttribute('onclick')||'').indexOf("'"+card.id+"'")>=0;}})[0];
+      if(basinBtn)basinBtn.click();
+      toggleTrack(hash.slice('storm-row-'.length));
+      setTimeout(function(){{
+        row.scrollIntoView({{behavior:'smooth',block:'center'}});
+        row.classList.add('storm-highlight');
+        setTimeout(function(){{row.classList.remove('storm-highlight');}},2500);
+      }},60);
+    }}
+  }}
   var activeCard=document.querySelector('.basin-card.active');
   if(activeCard)_renderPaceChart(activeCard.id);
 }});
@@ -782,15 +862,21 @@ function toggleTrack(slug){{
   if(btn)btn.classList.add('open');
   if(!_trMaps[slug]){{_trMaps[slug]=true;setTimeout(function(){{_buildMap(slug);}},25);}}
 }}
+function _hideTrackSkeleton(slug){{
+  var sk=document.getElementById('trskel-'+slug);
+  if(sk)sk.style.display='none';
+}}
 function _buildMap(slug){{
   var d=ACE_TRACKS[slug];
   var el=document.getElementById('trmap-'+slug);
-  if(!d||!d.points||!d.points.length||!el||el._leaflet_id)return;
+  if(!d||!d.points||!d.points.length||!el||el._leaflet_id){{_hideTrackSkeleton(slug);return;}}
   var map=L.map(el,{{zoomControl:true,attributionControl:true}});
-  L.tileLayer('https://{{s}}.basemaps.cartocdn.com/dark_all/{{z}}/{{x}}/{{y}}{{r}}.png',{{
+  var tiles=L.tileLayer('https://{{s}}.basemaps.cartocdn.com/dark_all/{{z}}/{{x}}/{{y}}{{r}}.png',{{
     attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>',
     subdomains:'abcd',maxZoom:10
   }}).addTo(map);
+  tiles.on('load',function(){{_hideTrackSkeleton(slug);}});
+  setTimeout(function(){{_hideTrackSkeleton(slug);}},4000);
   var pts=d.points,lls=pts.map(function(p){{return[p.lat,p.lon];}});
   for(var i=0;i<pts.length-1;i++){{
     L.polyline([[pts[i].lat,pts[i].lon],[pts[i+1].lat,pts[i+1].lon]],{{color:_tc(pts[i].status,pts[i].wind),weight:5,opacity:1}}).addTo(map);
