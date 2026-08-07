@@ -1431,7 +1431,7 @@ def fetch_nhc_disturbances(basin_key):
 # ===============================================================================
 
 NHC_BIN_PREFIXES = {
-    'atlantic': ('AL',),
+    'atlantic': ('AT',),
     'pacific':  ('EP', 'CP'),
 }
 
