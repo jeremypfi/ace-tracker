@@ -151,6 +151,40 @@ def get_noaa_classification(ace, basin_key):
 
 
 
+def get_season_projection(current_ace, basin_key, as_of_date=None):
+    """Compute the daily ACE rate needed for the rest of the season to reach
+    each not-yet-reached NOAA classification threshold by season end (Nov 30).
+
+    Returns a list of {'label', 'threshold', 'daily_rate'} dicts, ordered from
+    nearest to farthest threshold. Empty if the season has already ended or
+    every threshold has already been reached.
+    """
+    if as_of_date is None:
+        as_of_date = datetime.now().date()
+    season_end = datetime(as_of_date.year, 11, 30).date()
+    days_remaining = (season_end - as_of_date).days
+    if days_remaining <= 0:
+        return []
+
+    thresholds = BASINS[basin_key]['noaa_thresholds']
+    milestones = [
+        ('Near Normal', thresholds['below_normal']),
+        ('Above Normal', thresholds['near_normal_upper']),
+        ('Extremely Active', thresholds['above_normal_upper']),
+    ]
+    projection = []
+    for label, threshold in milestones:
+        if current_ace >= threshold:
+            continue
+        projection.append({
+            'label': label,
+            'threshold': threshold,
+            'daily_rate': round((threshold - current_ace) / days_remaining, 2),
+        })
+    return projection
+
+
+
 def finalize_storm(storm):
     ace = 0.0
     for wind in storm['wind_readings']:
