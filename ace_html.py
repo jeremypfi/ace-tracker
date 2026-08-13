@@ -502,7 +502,7 @@ def generate_dashboard_html(basin_data):
 <link rel="icon" type="image/png" href="ace.png">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous" />
 <title>Hurricane ACE Dashboard | aceofcanes.com</title>
-<script>(function(){{try{{var t=localStorage.getItem('ace-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light');}}catch(e){{}}}})();</script>
+<script>(function(){{try{{var t=localStorage.getItem('ace-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light');else if(!t&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches)document.documentElement.setAttribute('data-theme','light');}}catch(e){{}}}})();</script>
 <style>
   :root {{
     --bg:#0a1628; --card:#132238; --box:#1a2d4a; --accent:#4fc3f7; --accent2:#29b6f6;
@@ -1115,7 +1115,7 @@ def generate_history_html(basin_data):
 <meta name="twitter:image" content="https://aceofcanes.com/ace_preview.png">
 <link rel="icon" type="image/png" href="ace.png">
 <title>Season History (1991–present) | aceofcanes.com</title>
-<script>(function(){{try{{var t=localStorage.getItem('ace-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light');}}catch(e){{}}}})();</script>
+<script>(function(){{try{{var t=localStorage.getItem('ace-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light');else if(!t&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches)document.documentElement.setAttribute('data-theme','light');}}catch(e){{}}}})();</script>
 <style>
   :root {{
     --bg:#0a1628; --card:#132238; --box:#1a2d4a; --accent:#4fc3f7;
