@@ -12,7 +12,7 @@ disable-model-invocation: false
 python3 test_ace_tracker.py
 ```
 
-All 25 tests must pass. If any fail: fix before committing.
+All 48 tests must pass. If any fail: fix before committing.
 
 ## 2. Run the Full Tracker
 

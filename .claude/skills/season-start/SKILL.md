@@ -60,4 +60,4 @@ When the first named storm forms, run the tracker and verify:
 python3 test_ace_tracker.py
 ```
 
-All 25 tests must still pass.
+All 48 tests must still pass.
