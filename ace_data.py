@@ -1518,7 +1518,10 @@ def fetch_active_storm_cones(basin_key, storm_details):
         try:
             ts = datetime.fromisoformat(update_time.replace('Z', '+00:00'))
             time_code = ts.strftime('%d%H%M')
-            bin4 = storm_id[:4].upper()
+            # NHC's storm_graphics folder uses the ATCF basin+number for EP/CP storms,
+            # but 'AT' (not 'AL') for Atlantic storms, e.g. al032026 -> AT03.
+            graphics_prefix = 'AT' if basin_key == 'atlantic' else storm_id[:2].upper()
+            bin4 = graphics_prefix + storm_id[2:4].upper()
             atcf_id = storm_id.upper()
             url = (f'https://www.nhc.noaa.gov/storm_graphics/{bin4}/refresh/'
                    f'{atcf_id}_5day_cone+png/{time_code}_5day_cone.png')
