@@ -113,8 +113,6 @@ ace-tracker/
 ├── sitemap.xml             # Sitemap for search engine indexing
 ├── CLAUDE.md               # Project instructions for Claude Code
 ├── CONTRIBUTING.md         # Contribution guidelines
-├── docs/
-│   └── ROADMAP.md          # Planned features and roadmap
 ├── images/                 # Reference/marketing images
 ├── .claude/skills/          # /pre-commit, /season-start, /verify-data
 ├── .github/

@@ -21,7 +21,7 @@ This project is a hurricane tracking tool that:
 - Downloads public hurricane data from NOAA via the Tropycal library
 - Generates Excel spreadsheets locally in `data/`
 - Generates HTML dashboards locally in `data/`
-- Publishes HTML dashboards to a public GitHub Pages site (https://aceofcanes.com) via GitHub Actions every 6 hours during hurricane season
+- Publishes HTML dashboards to a public GitHub Pages site (https://aceofcanes.com) via GitHub Actions every 3 hours during hurricane season
 
 **What this tool does NOT do:**
 - ❌ Collect personal information
@@ -36,7 +36,7 @@ This project relies on third-party Python packages (see `requirements.txt`):
 - `tropycal` — hurricane data library (HURDAT2 + NHC best track)
 - `openpyxl` — Excel file generation
 - `shapely`, `cartopy` — geographic calculations (via Tropycal)
-- `setuptools<82` — pinned due to Tropycal dependency on `pkg_resources`
+- `setuptools<84` — pinned due to Tropycal dependency on `pkg_resources`
 
 Dependency updates are automated via Dependabot (weekly, grouped minor/patch PRs).
 
@@ -81,4 +81,4 @@ The license provides the software "as is" without warranty.
 
 ---
 
-**Last Updated:** May 31, 2026
+**Last Updated:** August 12, 2026
