@@ -63,4 +63,4 @@ pip3 install -r requirements.txt
 
 ## Known Issue
 
-Tropycal `_version.py` uses `pkg_resources`, removed in setuptools 82+. Pinned `setuptools<82` in `requirements.txt`. Revisit when tropycal ships a fix.
+Tropycal `_version.py` uses `pkg_resources`, removed in setuptools 82+. Pinned `setuptools<84` in `requirements.txt`. Revisit when tropycal ships a fix.
