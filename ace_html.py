@@ -18,6 +18,7 @@ from ace_data import (
     get_category,
     get_noaa_classification,
     get_season_projection,
+    rank_current_season,
     fetch_nhc_disturbances,
     fetch_active_storm_cones,
 )
@@ -391,10 +392,7 @@ def generate_dashboard_html(basin_data):
         if preseason:
             lower_section = _preseason_html(bd['basin_key'], yearly_totals, current_year)
         else:
-            all_years = list(yearly_totals.items()) + [(current_year, current_ace)]
-            all_years.sort(key=lambda x: x[1], reverse=True)
-            rank = next(i + 1 for i, (y, _) in enumerate(all_years) if y == current_year)
-            total_seasons = len(all_years)
+            rank, total_seasons = rank_current_season(yearly_totals, current_year, current_ace)
             storm_html, track_data = storm_rows_html(current, cone_images)
             all_track_data.update(track_data)
             lower_section = f'''
@@ -438,10 +436,7 @@ def generate_dashboard_html(basin_data):
         <div class="stat-box major-box"><div class="stat-label">Major Hurricanes</div><div class="stat-value">0</div></div>
       </div>'''
         else:
-            all_years = list(yearly_totals.items()) + [(current_year, current_ace)]
-            all_years.sort(key=lambda x: x[1], reverse=True)
-            rank = next(i + 1 for i, (y, _) in enumerate(all_years) if y == current_year)
-            total_seasons = len(all_years)
+            rank, total_seasons = rank_current_season(yearly_totals, current_year, current_ace)
             stats_grid = f'''
       <div class="stats-grid">
         <div class="stat-box ace-total">

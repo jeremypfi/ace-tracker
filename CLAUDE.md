@@ -35,7 +35,7 @@ Same thresholds for both Atlantic and Eastern Pacific:
 
 ```bash
 python3 ace_tracker.py        # generates HTML files in data/
-python3 test_ace_tracker.py   # 48 tests — ALL must pass before committing
+python3 test_ace_tracker.py   # 59 tests — ALL must pass before committing
 pip3 install -r requirements.txt
 ```
 
@@ -47,12 +47,12 @@ pip3 install -r requirements.txt
 
 `ace_tracker.py`: CLI entrypoint — `process_basin()` and `main()`, wiring `ace_data.py` and `ace_html.py` together. Run via `python3 ace_tracker.py`.
 
-`test_ace_tracker.py`: 48 tests across 11 classes — categorization, ACE formula, NOAA classification, storm finalization, yearly totals, similar-season matching, ACE pace chart data. Imports directly from `ace_data.py`/`ace_html.py`.
+`test_ace_tracker.py`: 59 tests across 14 classes — categorization, ACE formula, NOAA classification, storm finalization, yearly totals, similar-season matching, ACE pace chart data. Imports directly from `ace_data.py`/`ace_html.py`.
 
 ## Repository Rules
 
 - **Only @jeremypfi can approve and merge PRs** (CODEOWNERS + branch protection)
-- All 48 tests must pass before committing — run `/pre-commit` skill
+- All 59 tests must pass before committing — run `/pre-commit` skill
 - Never commit `data/*.html` — gitignored
 - **Before opening any PR:** fetch origin and merge main into the branch first:
   ```bash

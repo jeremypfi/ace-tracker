@@ -16,11 +16,15 @@ from ace_data import (
     get_category,
     is_major,
     get_noaa_classification,
+    ace_from_winds,
     finalize_storm,
     calculate_yearly_totals,
+    rank_current_season,
     find_similar_seasons,
     calculate_same_date_stats,
     calculate_ace_pace,
+    _drop_stale_storm_keys,
+    _last_track_stamp,
     SYNOPTIC_TIMES,
     ACE_STATUSES,
     MIN_NAMED_STORM_WIND,
@@ -618,6 +622,92 @@ class TestHTMLGeneration(unittest.TestCase):
         result = generate_dashboard_html(basin_data)
         self.assertIn('Test&amp;Storm', result)
         self.assertNotIn('<script>alert', result)
+
+
+class TestRankCurrentSeason(unittest.TestCase):
+    """Season ranking must not double-count the in-progress year (Sprint 0 fix)."""
+
+    def test_current_year_present_is_not_double_counted(self):
+        # parse_hurdat2 loads through the present, so yearly_totals already
+        # holds the current year — the old code appended it again.
+        totals = {2024: 100.0, 2025: 50.0, 2026: 10.0}
+        rank, total_seasons = rank_current_season(totals, 2026, 10.0)
+        self.assertEqual(total_seasons, 3)
+        self.assertEqual(rank, 3)
+
+    def test_live_total_overrides_historical_entry(self):
+        totals = {2024: 100.0, 2025: 50.0, 2026: 60.0}
+        rank, total_seasons = rank_current_season(totals, 2026, 120.0)
+        self.assertEqual(total_seasons, 3)
+        self.assertEqual(rank, 1)
+
+    def test_current_year_absent_is_added_once(self):
+        totals = {2024: 100.0, 2025: 50.0}
+        rank, total_seasons = rank_current_season(totals, 2026, 75.0)
+        self.assertEqual(total_seasons, 3)
+        self.assertEqual(rank, 2)
+
+
+class TestAceFromWinds(unittest.TestCase):
+    """Single ACE formula shared by historical and current-season paths."""
+
+    def test_matches_finalize_storm(self):
+        winds = [35, 50, 65, 100]
+        storm = finalize_storm({
+            'wind_readings': winds, 'max_wind': 100,
+            'start_date': None, 'end_date': None,
+        })
+        self.assertEqual(ace_from_winds(winds), storm['ace'])
+
+    def test_known_value(self):
+        # 50² + 50² = 5000 → 0.5 ACE
+        self.assertEqual(ace_from_winds([50, 50]), 0.5)
+
+    def test_empty_readings(self):
+        self.assertEqual(ace_from_winds([]), 0.0)
+
+
+class TestLandfallCacheInvalidation(unittest.TestCase):
+    """Current-season landfall cache entries must refresh with new advisories."""
+
+    def test_stale_bare_and_old_timestamped_keys_are_dropped(self):
+        cache = {
+            'AL012026': [('x', 'y')],              # stale legacy bare key
+            'cur:AL012026:2026081000': [('a',)],   # older advisory
+            'cur:AL012026:2026081512': [('b',)],   # current key — kept
+            'AL012025': [('keep',)],               # different storm — kept
+        }
+        changed = _drop_stale_storm_keys(cache, 'AL012026', 'cur:AL012026:2026081512', 'cur')
+        self.assertTrue(changed)
+        self.assertEqual(set(cache), {'cur:AL012026:2026081512', 'AL012025'})
+
+    def test_pruning_is_scoped_to_one_key_family(self):
+        # A cur:-family prune must never remove geo: entries (different computation).
+        cache = {
+            'geo:AL012026:2026081512': [('geo',)],
+            'cur:AL012026:2026081000': [('old',)],
+        }
+        _drop_stale_storm_keys(cache, 'AL012026', 'cur:AL012026:2026081512', 'cur')
+        self.assertIn('geo:AL012026:2026081512', cache)
+        self.assertNotIn('cur:AL012026:2026081000', cache)
+
+    def test_no_change_returns_false(self):
+        cache = {'cur:AL012026:2026081512': [('b',)]}
+        changed = _drop_stale_storm_keys(cache, 'AL012026', 'cur:AL012026:2026081512', 'cur')
+        self.assertFalse(changed)
+        self.assertEqual(len(cache), 1)
+
+    def test_last_track_stamp_formats_datetime(self):
+        class FakeStorm:
+            time = [datetime(2026, 8, 15, 12)]
+        self.assertEqual(_last_track_stamp(FakeStorm()), '2026081512')
+
+    def test_last_track_stamp_handles_missing_track(self):
+        class Broken:
+            @property
+            def time(self):
+                raise RuntimeError('no track')
+        self.assertEqual(_last_track_stamp(Broken()), 'unknown')
 
 
 def run_tests():
