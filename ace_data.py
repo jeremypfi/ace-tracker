@@ -185,11 +185,19 @@ def get_season_projection(current_ace, basin_key, as_of_date=None):
 
 
 
+def ace_from_winds(wind_readings):
+    """ACE from synoptic-time wind readings: Σ(V²max) × 10⁻⁴.
+
+    Single source of truth for the ACE formula — used for both historical
+    storms (finalize_storm) and the current season, so the dashboard and
+    history page can never disagree about the same storm.
+    """
+    return round(sum(w * w for w in wind_readings) / 10000.0, 4)
+
+
+
 def finalize_storm(storm):
-    ace = 0.0
-    for wind in storm['wind_readings']:
-        ace += (wind ** 2) / 10000.0
-    storm['ace'] = round(ace, 4)
+    storm['ace'] = ace_from_winds(storm['wind_readings'])
     storm['category'] = get_category(storm['max_wind'])
     storm['is_major'] = is_major(storm['max_wind'])
     if storm['start_date'] and storm['end_date']:
@@ -293,6 +301,34 @@ def _load_landfall_cache():
     except Exception as e:
         logger.warning(f"Could not load landfall cache: {e}")
     return {}
+
+
+
+def _last_track_stamp(storm_obj):
+    """Timestamp string of a storm's last track point.
+
+    Used in cache keys that must auto-invalidate when a new advisory adds
+    track data to an in-progress storm."""
+    try:
+        last_t = storm_obj.time[-1]
+        return last_t.strftime('%Y%m%d%H') if hasattr(last_t, 'strftime') else str(last_t)[:13]
+    except Exception:
+        return 'unknown'
+
+
+
+def _drop_stale_storm_keys(cache, storm_id, keep_key, prefix):
+    """Remove outdated cache entries for one in-progress storm, scoped to one
+    key family (`cur` or `geo`): the legacy bare-id key plus any
+    `{prefix}:{id}:{timestamp}` keys other than `keep_key`. The two families
+    cache different computations, so pruning never crosses between them.
+    Returns True if anything was removed."""
+    sid = str(storm_id)
+    stale = [k for k in cache
+             if k != keep_key and (k == sid or k.startswith(f"{prefix}:{sid}:"))]
+    for k in stale:
+        del cache[k]
+    return bool(stale)
 
 
 
@@ -519,8 +555,16 @@ def parse_hurdat2(basin_key, dataset=None):
                         # Extract synoptic-time wind readings for ACE calculation
                         wind_readings = _extract_synoptic_winds(storm_obj)
 
-                        # Landfall: use cache for completed seasons, compute otherwise
-                        cache_key = str(storm_id)
+                        # Landfall: completed seasons cache by bare id (track data
+                        # is immutable after post-season reanalysis). Current-season
+                        # storms key by id + last track time so each new advisory
+                        # invalidates the entry instead of serving stale landfalls.
+                        if storm_year < current_year:
+                            cache_key = str(storm_id)
+                        else:
+                            cache_key = f"cur:{storm_id}:{_last_track_stamp(storm_obj)}"
+                            if _drop_stale_storm_keys(lf_cache, storm_id, cache_key, 'cur'):
+                                lf_cache_dirty = True
                         if cache_key in lf_cache:
                             landfall = lf_cache[cache_key]
                         else:
@@ -556,7 +600,10 @@ def parse_hurdat2(basin_key, dataset=None):
         print(f"  ✓ Loaded {len(storms)} storms from {START_YEAR}-present via Tropycal")
         if lf_cache_dirty:
             _save_landfall_cache(lf_cache)
-            cached_pct = round(sum(1 for s in storms if str(s['id']) in lf_cache) / len(storms) * 100) if storms else 0
+            _timestamped = {k.rsplit(':', 1)[0] + ':' for k in lf_cache if k.startswith('cur:')}
+            cached_pct = round(sum(1 for s in storms
+                                   if str(s['id']) in lf_cache or f"cur:{s['id']}:" in _timestamped)
+                               / len(storms) * 100) if storms else 0
             print(f"  ✓ Landfall cache updated ({len(lf_cache)} entries, {cached_pct}% hit rate this run)")
         else:
             print(f"  ✓ Landfall cache: all {len(lf_cache)} entries served from cache (0 geocoding calls)")
@@ -633,9 +680,15 @@ def get_current_season(basin_key, dataset=None):
                         if storm_name.upper() == 'UNNAMED':
                             continue
 
-                        # Get ACE directly from Tropycal (if available)
-                        # Tropycal calculates ACE for us
-                        storm_ace = storm_obj.ace if hasattr(storm_obj, 'ace') and storm_obj.ace else 0.0
+                        # ACE via our own synoptic-time method (same as the
+                        # historical path) so the dashboard and history page
+                        # always agree. Tropycal's value is a cross-check only.
+                        storm_ace = ace_from_winds(_extract_synoptic_winds(storm_obj))
+                        tropycal_ace = storm_obj.ace if hasattr(storm_obj, 'ace') and storm_obj.ace else 0.0
+                        if tropycal_ace and abs(storm_ace - tropycal_ace) > 0.25:
+                            logger.warning(
+                                f"ACE cross-check mismatch for {storm_id}: "
+                                f"computed {storm_ace:.2f} vs Tropycal {tropycal_ace:.2f}")
 
                         # Max wind while tropical/subtropical only (same logic as primary path)
                         tropical_types = {'TD', 'TS', 'HU', 'SS', 'SD'}
@@ -701,12 +754,9 @@ def get_current_season(basin_key, dataset=None):
                         # when new track data arrives for an active storm.
                         landfall = get_landfall_locations(storm_obj)
                         if not landfall:
-                            try:
-                                last_t   = storm_obj.time[-1]
-                                last_str = last_t.strftime('%Y%m%d%H') if hasattr(last_t, 'strftime') else str(last_t)[:13]
-                            except Exception:
-                                last_str = 'unknown'
-                            geo_key = f"geo:{storm_id}:{last_str}"
+                            geo_key = f"geo:{storm_id}:{_last_track_stamp(storm_obj)}"
+                            if _drop_stale_storm_keys(cs_lf_cache, storm_id, geo_key, 'geo'):
+                                cs_lf_dirty = True
                             if geo_key in cs_lf_cache:
                                 landfall = cs_lf_cache[geo_key]
                             else:
@@ -821,6 +871,23 @@ def calculate_yearly_totals(storms):
     for year in totals:
         totals[year] = round(totals[year], 2)
     return totals
+
+
+
+def rank_current_season(yearly_totals, current_year, current_ace):
+    """Rank the in-progress season against history without double-counting.
+
+    `yearly_totals` already contains the current year (parse_hurdat2 loads
+    storms through the present), so the live total must OVERRIDE that entry
+    rather than be appended alongside it — appending duplicates the year,
+    inflates the season count by one, and can report the wrong rank.
+
+    Returns (rank, total_seasons).
+    """
+    merged = {**yearly_totals, current_year: current_ace}
+    ordered = sorted(merged.items(), key=lambda x: x[1], reverse=True)
+    rank = next(i + 1 for i, (y, _) in enumerate(ordered) if y == current_year)
+    return rank, len(ordered)
 
 
 
@@ -1119,10 +1186,7 @@ def generate_insights(basin_key, current, yearly_totals, historical_storms, year
             insights.append(f"📈 Most Similar Seasons: {similar_links}{label}")
 
     # 4. Historical ranking — pace rank (same-date) + full-season rank
-    all_years_full = list(yearly_totals.items()) + [(current_year, current_ace)]
-    all_years_full.sort(key=lambda x: x[1], reverse=True)
-    full_rank = next(i + 1 for i, (y, _) in enumerate(all_years_full) if y == current_year)
-    total_seasons = len(all_years_full)
+    full_rank, total_seasons = rank_current_season(yearly_totals, current_year, current_ace)
 
     if sd:
         sd_with_current = dict(sd['yearly_ace'])
@@ -1264,11 +1328,7 @@ def generate_discord_text(basin_key, current, yearly_totals, insights):
     lines.append("")
 
     # Historical rank
-    all_years = list(yearly_totals.items())
-    all_years.append((current_year, current_ace))
-    all_years.sort(key=lambda x: x[1], reverse=True)
-    rank = next(i + 1 for i, (y, _) in enumerate(all_years) if y == current_year)
-    total_seasons = len(all_years)
+    rank, total_seasons = rank_current_season(yearly_totals, current_year, current_ace)
     lines.append(f"Historical Rank: #{rank} of {total_seasons} (since {START_YEAR})")
 
     # Top 3 similar seasons

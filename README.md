@@ -92,7 +92,7 @@ Generates in `data/`:
 python3 test_ace_tracker.py
 ```
 
-All 48 tests must pass before committing. Use the `/pre-commit` skill in Claude Code for the full checklist.
+All 59 tests must pass before committing. Use the `/pre-commit` skill in Claude Code for the full checklist.
 
 ---
 
@@ -103,7 +103,7 @@ ace-tracker/
 ├── ace_data.py             # Data fetch, ACE calc, plain-text report generation
 ├── ace_html.py             # Dashboard + history HTML rendering
 ├── ace_tracker.py          # CLI entrypoint — wires ace_data.py + ace_html.py together
-├── test_ace_tracker.py     # 48 unit + smoke tests
+├── test_ace_tracker.py     # 59 unit + smoke tests
 ├── requirements.txt        # Python dependencies
 ├── ace.png                 # Site logo (favicon + OG image)
 ├── ace_preview.png         # Social share preview image (copied into data/ at publish time)
