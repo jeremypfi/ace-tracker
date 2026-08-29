@@ -75,6 +75,11 @@ MIN_NAMED_STORM_WIND = 34  # knots
 
 MAX_STORMS_DISCORD = 10  # Maximum storms shown in Discord update before summarizing
 
+# Curated deterministic models for the spaghetti-plot overlay on active storms.
+# Verified against get_operational_forecasts() output — the full model list runs
+# to ~280 members/models, which would be unreadable clutter on the map.
+SPAGHETTI_MODELS = ['AVNO', 'EMX', 'UKX', 'CMC', 'HWRF', 'HMON', 'NVGM', 'OFCL']
+
 
 # ===============================================================================
 # BACKUP DATA (used when network is unavailable)
@@ -621,6 +626,42 @@ def parse_hurdat2(basin_key, dataset=None):
 # CURRENT SEASON from Tropycal
 # ===============================================================================
 
+def _extract_spaghetti_tracks(storm_obj):
+    """Latest-cycle forecast track per curated model, for the active-storm map overlay.
+
+    Returns {model_id: [{'lat', 'lon'}, ...]}, omitting models that are absent
+    or return no forward-looking (fhr >= 0) points for this storm/cycle — ICON
+    was observed doing this during testing.
+    """
+    tracks_by_model = {}
+    try:
+        forecasts = storm_obj.get_operational_forecasts()
+    except Exception as e:
+        logger.debug(f"Could not fetch operational forecasts: {e}")
+        return tracks_by_model
+
+    for model in SPAGHETTI_MODELS:
+        cycles = forecasts.get(model)
+        if not cycles:
+            continue
+        try:
+            latest_cycle = max(cycles.keys())
+            fc = cycles[latest_cycle]
+            lats, lons, fhrs = fc.get('lat', []), fc.get('lon', []), fc.get('fhr', [])
+            points = [
+                {'lat': round(float(lats[i]), 1), 'lon': round(float(lons[i]), 1)}
+                for i in range(len(lats))
+                if i < len(fhrs) and fhrs[i] >= 0
+            ]
+            if points:
+                tracks_by_model[model] = points
+        except Exception as e:
+            logger.debug(f"Could not parse {model} forecast: {e}")
+            continue
+
+    return tracks_by_model
+
+
 def get_current_season(basin_key, dataset=None):
     """Fetch current season data using Tropycal.
 
@@ -764,6 +805,10 @@ def get_current_season(basin_key, dataset=None):
                                 cs_lf_cache[geo_key] = landfall
                                 cs_lf_dirty = True
 
+                        # Spaghetti model tracks only matter (and are only
+                        # worth the extra Tropycal call) while a storm is active.
+                        spaghetti = _extract_spaghetti_tracks(storm_obj) if is_active else {}
+
                         # Store storm data
                         storms[storm_name] = storm_ace
                         storm_details[storm_name] = {
@@ -773,6 +818,7 @@ def get_current_season(basin_key, dataset=None):
                             'is_active': is_active,
                             'start_date': start_date_str,
                             'landfall': landfall,
+                            'spaghetti': spaghetti,
                         }
 
                     except Exception as e:

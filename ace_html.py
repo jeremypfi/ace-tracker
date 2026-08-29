@@ -275,6 +275,7 @@ def generate_dashboard_html(basin_data):
             is_major = wind >= 96
             is_active = d.get('is_active', False)
             track_points = d.get('track_points', [])
+            spaghetti = d.get('spaghetti', {})
             start_date = d.get('start_date', '—')
             slug = name.lower().replace(' ', '-')
 
@@ -286,6 +287,7 @@ def generate_dashboard_html(basin_data):
                 'max_wind': wind,
                 'category': cat,
                 'points': track_points,
+                'spaghetti': spaghetti,
             }
 
             landfall = d.get('landfall', [])
@@ -334,11 +336,19 @@ def generate_dashboard_html(basin_data):
                 f'</div>'
             )
 
+            spaghetti_toggle = (
+                f'<label class="spaghetti-toggle">'
+                f'<input type="checkbox" id="sptoggle-{slug}" checked onchange="_toggleSpaghetti(\'{slug}\')">'
+                f' Show model forecast tracks</label>'
+                f'<div class="track-legend spaghetti-legend" id="splegend-{slug}"></div>'
+            ) if spaghetti else ''
+
             map_div = (
                 f'<div class="track-map-wrap">'
                 f'<div class="track-map" id="trmap-{slug}"></div>'
                 f'<div class="track-map-skeleton" id="trskel-{slug}"><div class="skeleton-spinner"></div></div>'
                 f'</div>'
+                f'{spaghetti_toggle}'
             ) if track_points else (
                 '<p style="color:var(--muted);font-size:0.82em;text-align:center;padding:8px 0">No track data available</p>')
 
@@ -635,6 +645,9 @@ def generate_dashboard_html(basin_data):
   .track-legend {{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }}
   .legend-item {{ display:flex; align-items:center; gap:4px; font-size:0.72em; color:var(--muted); }}
   .legend-dot {{ width:9px; height:9px; border-radius:50%; flex-shrink:0; }}
+  .spaghetti-toggle {{ display:flex; align-items:center; gap:6px; font-size:0.78em; color:var(--muted); margin-top:8px; cursor:pointer; }}
+  .spaghetti-legend {{ margin-top:6px; }}
+  .spaghetti-legend .legend-dot {{ width:14px; height:3px; border-radius:2px; }}
   .nhc-link {{ font-size:0.78em; color:var(--muted); text-align:right; margin-top:6px; }}
   .nhc-link a {{ color:var(--accent); text-decoration:none; }}
   .nhc-link a:hover {{ text-decoration:underline; }}
@@ -842,7 +855,11 @@ function _restylePaceCharts(){{
   }});
 }}
 var _trMaps={{}};
+var _trSpagLayers={{}};
+var _trMapObjs={{}};
 var _SC={{TD:'#9e9e9e',TS:'#81d4fa',SS:'#81d4fa'}};
+var _SPAG_COLORS={{AVNO:'#29b6f6',EMX:'#ab47bc',UKX:'#66bb6a',CMC:'#8d6e63',HWRF:'#ec407a',HMON:'#7e57c2',NVGM:'#26c6da',OFCL:'#ffffff'}};
+var _SPAG_LABELS={{AVNO:'GFS',EMX:'ECMWF',UKX:'UKMET',CMC:'CMC',HWRF:'HWRF',HMON:'HMON',NVGM:'Navy',OFCL:'NHC Official'}};
 function _tc(st,w){{
   if(st==='HU'){{if(w>=137)return'#b71c1c';if(w>=113)return'#ef5350';if(w>=96)return'#ff8a65';if(w>=83)return'#ffb74d';return'#ffe082';}}
   return _SC[st]||'#9e9e9e';
@@ -882,7 +899,34 @@ function _buildMap(slug){{
     mk.bindTooltip('<b>'+d.name+'</b><br>'+p.time+'<br>'+p.status+' \xb7 '+p.wind+'kt',{{direction:'top',offset:[0,-6]}});
     if(last&&d.active)mk.bindPopup('<b>Current Position</b><br>'+p.time+'<br>'+p.status+' \xb7 '+p.wind+'kt',{{maxWidth:160}}).openPopup();
   }});
-  if(lls.length)map.fitBounds(L.latLngBounds(lls),{{padding:[50,50],maxZoom:6}});
+  var boundsPts=lls.slice();
+  var spagGroup=L.layerGroup();
+  var legendHtml='';
+  if(d.spaghetti){{
+    Object.keys(d.spaghetti).forEach(function(model){{
+      var mpts=d.spaghetti[model];
+      if(!mpts||!mpts.length)return;
+      var mlls=mpts.map(function(p){{return[p.lat,p.lon];}});
+      var color=_SPAG_COLORS[model]||'#ffffff',label=_SPAG_LABELS[model]||model;
+      L.polyline(mlls,{{color:color,weight:model==='OFCL'?3:2,opacity:0.85,dashArray:model==='OFCL'?null:'4,4'}})
+        .bindTooltip(label,{{sticky:true}}).addTo(spagGroup);
+      L.circleMarker(mlls[mlls.length-1],{{radius:3,color:color,fillColor:color,fillOpacity:1,weight:1}}).addTo(spagGroup);
+      boundsPts=boundsPts.concat(mlls);
+      legendHtml+='<div class="legend-item"><div class="legend-dot" style="background:'+color+'"></div>'+label+'</div>';
+    }});
+  }}
+  spagGroup.addTo(map);
+  _trSpagLayers[slug]=spagGroup;
+  _trMapObjs[slug]=map;
+  var legendEl=document.getElementById('splegend-'+slug);
+  if(legendEl)legendEl.innerHTML=legendHtml;
+  if(boundsPts.length)map.fitBounds(L.latLngBounds(boundsPts),{{padding:[50,50],maxZoom:6}});
+}}
+function _toggleSpaghetti(slug){{
+  var cb=document.getElementById('sptoggle-'+slug);
+  var group=_trSpagLayers[slug],map=_trMapObjs[slug];
+  if(!cb||!group||!map)return;
+  if(cb.checked)group.addTo(map);else map.removeLayer(group);
 }}
 </script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script>
