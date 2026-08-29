@@ -866,7 +866,7 @@ function _buildMap(slug){{
   var el=document.getElementById('trmap-'+slug);
   if(!d||!d.points||!d.points.length||!el||el._leaflet_id){{_hideTrackSkeleton(slug);return;}}
   var map=L.map(el,{{zoomControl:true,attributionControl:true}});
-  var tiles=L.tileLayer('https://{{s}}.basemaps.cartocdn.com/dark_all/{{z}}/{{x}}/{{y}}{{r}}.png',{{
+  var tiles=L.tileLayer('https://{{s}}.basemaps.cartocdn.com/dark_all/{{z}}/{{x}}/{{y}}{{r}}.png?key=cb1_2ju7_1_dab4d1e9c4e0819a594bda11',{{
     attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>',
     subdomains:'abcd',maxZoom:10
   }}).addTo(map);
