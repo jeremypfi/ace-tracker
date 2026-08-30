@@ -275,7 +275,10 @@ def generate_dashboard_html(basin_data):
             is_major = wind >= 96
             is_active = d.get('is_active', False)
             track_points = d.get('track_points', [])
-            spaghetti = d.get('spaghetti', {})
+            # spaghetti was fetched under the pre-cross-check is_active heuristic
+            # (ace_data.py), so suppress it here if is_active was since corrected
+            # to False — a dissipated storm's stale forecast isn't worth showing.
+            spaghetti = d.get('spaghetti', {}) if is_active else {}
             start_date = d.get('start_date', '—')
             slug = name.lower().replace(' ', '-')
 
@@ -878,6 +881,18 @@ function _hideTrackSkeleton(slug){{
   var sk=document.getElementById('trskel-'+slug);
   if(sk)sk.style.display='none';
 }}
+function _unwrapLon(prevLon,lon){{
+  while(lon-prevLon>180)lon-=360;
+  while(lon-prevLon<-180)lon+=360;
+  return lon;
+}}
+function _unwrapSeries(lls){{
+  var out=[lls[0].slice()];
+  for(var i=1;i<lls.length;i++){{
+    out.push([lls[i][0],_unwrapLon(out[i-1][1],lls[i][1])]);
+  }}
+  return out;
+}}
 function _buildMap(slug){{
   var d=ACE_TRACKS[slug];
   var el=document.getElementById('trmap-'+slug);
@@ -889,9 +904,9 @@ function _buildMap(slug){{
   }}).addTo(map);
   tiles.on('load',function(){{_hideTrackSkeleton(slug);}});
   setTimeout(function(){{_hideTrackSkeleton(slug);}},4000);
-  var pts=d.points,lls=pts.map(function(p){{return[p.lat,p.lon];}});
+  var pts=d.points,lls=_unwrapSeries(pts.map(function(p){{return[p.lat,p.lon];}}));
   for(var i=0;i<pts.length-1;i++){{
-    L.polyline([[pts[i].lat,pts[i].lon],[pts[i+1].lat,pts[i+1].lon]],{{color:_tc(pts[i].status,pts[i].wind),weight:5,opacity:1}}).addTo(map);
+    L.polyline([lls[i],lls[i+1]],{{color:_tc(pts[i].status,pts[i].wind),weight:5,opacity:1}}).addTo(map);
   }}
   pts.forEach(function(p,i){{
     var c=_tc(p.status,p.wind),last=(i===pts.length-1);
@@ -906,7 +921,11 @@ function _buildMap(slug){{
     Object.keys(d.spaghetti).forEach(function(model){{
       var mpts=d.spaghetti[model];
       if(!mpts||!mpts.length)return;
-      var mlls=mpts.map(function(p){{return[p.lat,p.lon];}});
+      // Anchor to the storm's last known position so this model's series
+      // unwraps in the same longitude frame as the BTK track and any other
+      // model — otherwise each series could independently drift to opposite
+      // sides of the antimeridian and the combined bounds would be wrong.
+      var mlls=_unwrapSeries([lls[lls.length-1]].concat(mpts.map(function(p){{return[p.lat,p.lon];}}))).slice(1);
       var color=_SPAG_COLORS[model]||'#ffffff',label=_SPAG_LABELS[model]||model;
       L.polyline(mlls,{{color:color,weight:model==='OFCL'?3:2,opacity:0.85,dashArray:model==='OFCL'?null:'4,4'}})
         .bindTooltip(label,{{sticky:true}}).addTo(spagGroup);

@@ -1585,13 +1585,19 @@ def fetch_active_storm_cones(basin_key, storm_details):
     filename embeds the forecast advisory's update time, which we read from
     CurrentStorms.json rather than guessing.
 
+    While fetching, also cross-checks the 48h last-track-point 'is_active' heuristic
+    against NHC's live active-storm list and mutates storm_details in place to
+    correct it — the heuristic alone leaves dissipated storms marked active for up
+    to 48h after their final advisory (#95). If the fetch fails, is_active is left
+    untouched (fail open) rather than losing active-storm UI to a transient outage.
+
     Returns a dict of storm_name -> relative path (e.g. 'cones/ep042026.png'),
     or {} if nothing is active or the fetch fails.
     """
     import urllib.request
 
-    active_names = {name.upper() for name, d in storm_details.items() if d.get('is_active')}
-    if not active_names:
+    candidate_names = {name.upper() for name, d in storm_details.items() if d.get('is_active')}
+    if not candidate_names:
         return {}
 
     try:
@@ -1605,6 +1611,23 @@ def fetch_active_storm_cones(basin_key, storm_details):
         return {}
 
     prefixes = NHC_BIN_PREFIXES.get(basin_key, ())
+
+    live_active_names = {
+        (storm.get('name') or '').upper()
+        for storm in data.get('activeStorms', [])
+        if (storm.get('binNumber') or '').startswith(prefixes)
+    }
+
+    for stale_name in candidate_names - live_active_names:
+        for orig_name, details in storm_details.items():
+            if orig_name.upper() == stale_name:
+                details['is_active'] = False
+                break
+
+    active_names = candidate_names & live_active_names
+    if not active_names:
+        return {}
+
     cone_dir = os.path.join('data', 'cones')
     images = {}
 
