@@ -50,7 +50,7 @@ BASINS = {
         'all_time_single_storm_ace': {'name': 'San Ciriaco (1899)', 'ace': 73.6},
     },
     'pacific': {
-        'name': 'East &amp; Central Pacific',
+        'name': 'East & Central Pacific',
         'tropycal_basin': 'east_pacific',  # Tropycal basin name — includes both EP and CP storms
         'normal_ace': 132.0,
         'noaa_thresholds': {
@@ -90,7 +90,6 @@ SPAGHETTI_MODELS = ['AVNO', 'EMX', 'UKX', 'CMC', 'HWRF', 'HMON', 'NVGM', 'OFCL']
 
 BACKUP_DATA = {
     'atlantic': {
-        'year': 2026,
         'storms': {},
         'yearly_totals': {
             2025: 130.8, 2024: 161.6, 2023: 146.0, 2022: 95.0, 2021: 145.0, 2020: 180.0,
@@ -103,7 +102,6 @@ BACKUP_DATA = {
         }
     },
     'pacific': {
-        'year': 2026,
         'storms': {},
         'yearly_totals': {
             2025: 127.3, 2024: 75.0, 2023: 117.0, 2022: 97.0, 2021: 86.0, 2020: 137.0,
@@ -168,7 +166,7 @@ def get_season_projection(current_ace, basin_key, as_of_date=None):
     every threshold has already been reached.
     """
     if as_of_date is None:
-        as_of_date = datetime.now().date()
+        as_of_date = _utc_now().date()
     season_end = datetime(as_of_date.year, 11, 30).date()
     days_remaining = (season_end - as_of_date).days
     if days_remaining <= 0:
@@ -293,7 +291,8 @@ def _reverse_geocode(lat, lon):
                 return rec.attributes.get('NAME', None)
 
         return None
-    except Exception:
+    except Exception as e:
+        logger.warning(f"Could not reverse-geocode ({lat}, {lon}): {e}")
         return None
 
 
@@ -377,7 +376,8 @@ def get_landfall_locations(storm_obj):
                     seen.add(key)
                     locations.append((loc, cat))
         return locations
-    except Exception:
+    except Exception as e:
+        logger.warning(f"Could not read HURDAT2 landfall markers for {getattr(storm_obj, 'id', '?')}: {e}")
         return []
 
 
@@ -455,7 +455,8 @@ def _detect_landfall_from_track(storm_obj):
 
         return locations
 
-    except Exception:
+    except Exception as e:
+        logger.warning(f"Could not detect landfall from track for {getattr(storm_obj, 'id', '?')}: {e}")
         return []
 
 
@@ -467,6 +468,31 @@ def _detect_landfall_from_track(storm_obj):
 def _tropycal_basin_name(basin_key):
     """Get Tropycal basin name from configuration."""
     return BASINS[basin_key]['tropycal_basin']
+
+
+
+def _utc_now():
+    """Current UTC time as a naive datetime.
+
+    Storm timestamps from Tropycal are UTC but tz-naive, so this stays naive
+    too (safe to subtract/compare against them and against other naive
+    `datetime(y, m, d)` values) while still reflecting UTC wall-clock time —
+    plain `datetime.now()` uses local server time, which causes off-by-one-day
+    season-boundary bugs when run outside UTC (GitHub Actions runners happen
+    to default to UTC, which is why this was never caught in CI).
+    """
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+
+def _portable_strftime(dt, fmt):
+    """strftime wrapper supporting %-m/%-d (no leading zero) portably.
+
+    The %-m/%-d modifiers are glibc-specific (work on Linux/macOS, not
+    guaranteed elsewhere), so build those fields manually instead.
+    """
+    fmt = fmt.replace('%-m', str(dt.month)).replace('%-d', str(dt.day))
+    return dt.strftime(fmt)
 
 
 
@@ -591,7 +617,7 @@ def parse_hurdat2(basin_key, dataset=None):
         lf_cache_dirty = False
 
         # Iterate through all years from START_YEAR to current
-        current_year = datetime.now().year
+        current_year = _utc_now().year
         for year in range(START_YEAR, current_year + 1):
             try:
                 season = dataset.get_season(year)
@@ -744,8 +770,8 @@ def get_current_season(basin_key, dataset=None):
     """
     basin = BASINS[basin_key]
     tropycal_basin = _tropycal_basin_name(basin_key)
-    current_year = datetime.now().year
-    today = datetime.now().date()
+    current_year = _utc_now().year
+    today = _utc_now().date()
     if basin_key == 'atlantic':
         season_start = datetime(current_year, 6, 1).date()
     else:
@@ -827,7 +853,7 @@ def get_current_season(basin_key, dataset=None):
                                         'lon': round(float(t_lons[ti]), 1),
                                         'wind': int(t_winds[ti]),
                                         'status': str(t_types[ti]) if ti < len(t_types) else 'TS',
-                                        'time': t.strftime('%-m/%-d %HZ') if hasattr(t, 'strftime') else str(t),
+                                        'time': _portable_strftime(t, '%-m/%-d %HZ') if hasattr(t, 'strftime') else str(t),
                                     })
                         except Exception as _te:
                             logger.warning(f"Could not extract track for {storm_name}: {_te}")
@@ -850,7 +876,7 @@ def get_current_season(basin_key, dataset=None):
                             st = storm_obj.time[0]
                             if hasattr(st, 'to_pydatetime'):
                                 st = st.to_pydatetime()
-                            start_date_str = st.strftime('%-m/%-d')
+                            start_date_str = _portable_strftime(st, '%-m/%-d')
                         except Exception:
                             pass
 
@@ -932,13 +958,20 @@ def get_current_season(basin_key, dataset=None):
 
 
 def _backup_current(basin_key):
+    """Fallback when Tropycal is unavailable/off-season. Yields the *real*
+    current year (not a hardcoded one, which would go stale every January —
+    see #98) with zero storms, plus an 'is_backup' flag so the dashboard can
+    show a visible staleness banner instead of presenting this silently as
+    live data.
+    """
     backup = BACKUP_DATA[basin_key]
     storms = backup['storms']
     total = round(sum(storms.values()), 4)
     # Build storm_details from backup (no max_wind available)
     detail = {name: {'ace': ace, 'max_wind': 0} for name, ace in storms.items()}
-    print(f"  ⚠ Using backup data for {backup['year']} season ({len(storms)} storms, ACE={total:.2f})")
-    return {'year': backup['year'], 'storms': storms, 'storm_details': detail, 'total': total}
+    year = _utc_now().year
+    print(f"  ⚠ Using backup data for {year} season ({len(storms)} storms, ACE={total:.2f})")
+    return {'year': year, 'storms': storms, 'storm_details': detail, 'total': total, 'is_backup': True}
 
 
 
@@ -1097,7 +1130,7 @@ def calculate_same_date_stats(historical_storms, basin_key, target_date=None):
     day_of_season, and date_label.  Returns None if no data is available.
     """
     if target_date is None:
-        target_date = datetime.now()
+        target_date = _utc_now()
 
     if basin_key == 'atlantic':
         ssm, ssd = 6, 1   # June 1
@@ -1106,7 +1139,7 @@ def calculate_same_date_stats(historical_storms, basin_key, target_date=None):
 
     target_season_start = datetime(target_date.year, ssm, ssd)
     day_of_season = max(0, (target_date - target_season_start).days)
-    date_label = target_date.strftime('%b %-d')
+    date_label = _portable_strftime(target_date, '%b %-d')
     current_year = target_date.year
 
     # Group historical storms by year, excluding current season
@@ -1190,7 +1223,7 @@ def calculate_ace_pace(historical_storms, basin_key, as_of_date=None):
     Returns None if there is no historical data to build a climatology from.
     """
     if as_of_date is None:
-        as_of_date = datetime.now()
+        as_of_date = _utc_now()
 
     if basin_key == 'atlantic':
         ssm, ssd = 6, 1   # June 1
@@ -1235,7 +1268,7 @@ def calculate_ace_pace(historical_storms, basin_key, as_of_date=None):
     last_year = current_year - 1
     last_season = cumulative_curve(last_year, storms_by_year[last_year]) if last_year in storms_by_year else None
 
-    day_labels = [(season_start + timedelta(days=d)).strftime('%b %-d') for d in range(total_days + 1)]
+    day_labels = [_portable_strftime(season_start + timedelta(days=d), '%b %-d') for d in range(total_days + 1)]
 
     return {
         'day_labels': day_labels,
@@ -1694,7 +1727,7 @@ def fetch_active_storm_cones(basin_key, storm_details):
     if not active_names:
         return {}
 
-    cone_dir = os.path.join('data', 'cones')
+    cone_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'cones')
     images = {}
 
     for storm in data.get('activeStorms', []):

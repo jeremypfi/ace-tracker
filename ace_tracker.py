@@ -20,7 +20,7 @@ Author: Built with Claude for JP
 
 import os
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 from ace_data import (
     BASINS,
@@ -79,7 +79,7 @@ def process_basin(basin_key):
     # a NOAA HURDAT2 formatting glitch went unnoticed for days in Sept 2026 —
     # every layer caught the exception and substituted zeros). Fail the run
     # instead and leave the last known-good dashboard in place.
-    today = datetime.now().date()
+    today = datetime.now(timezone.utc).date()
     season_start_month, season_start_day = (6, 1) if basin_key == 'atlantic' else (5, 15)
     season_start = datetime(today.year, season_start_month, season_start_day).date()
     season_end = datetime(today.year, 11, 30).date()
