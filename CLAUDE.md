@@ -35,7 +35,7 @@ Same thresholds for both Atlantic and Eastern Pacific:
 
 ```bash
 python3 ace_tracker.py        # generates HTML files in data/
-python3 test_ace_tracker.py   # 59 tests — ALL must pass before committing
+python3 test_ace_tracker.py   # 67 tests — ALL must pass before committing
 python3 verify_pr.py          # unit tests + syntax check + live tracker run in one pass/fail summary
 python3 verify_pr.py --fast   # unit tests + syntax check only, skips the live tracker run
 pip3 install -r requirements.txt
@@ -49,12 +49,12 @@ pip3 install -r requirements.txt
 
 `ace_tracker.py`: CLI entrypoint — `process_basin()` and `main()`, wiring `ace_data.py` and `ace_html.py` together. Run via `python3 ace_tracker.py`.
 
-`test_ace_tracker.py`: 59 tests across 14 classes — categorization, ACE formula, NOAA classification, storm finalization, yearly totals, similar-season matching, ACE pace chart data. Imports directly from `ace_data.py`/`ace_html.py`.
+`test_ace_tracker.py`: 67 tests across 16 classes — categorization, ACE formula, NOAA classification, storm finalization, yearly totals, similar-season matching, ACE pace chart data, on-this-day/highest-ACE-storm lookups. Imports directly from `ace_data.py`/`ace_html.py`.
 
 ## Repository Rules
 
 - **Only @jeremypfi can approve and merge PRs** (CODEOWNERS + branch protection)
-- All 59 tests must pass before committing — run `/pre-commit` skill
+- All 67 tests must pass before committing — run `/pre-commit` skill
 - Never commit `data/*.html` — gitignored
 - **Before opening any PR:** fetch origin and merge main into the branch first:
   ```bash
@@ -65,4 +65,4 @@ pip3 install -r requirements.txt
 
 ## Known Issue
 
-Tropycal `_version.py` uses `pkg_resources`, removed in setuptools 82+. Pinned `setuptools<84` in `requirements.txt`. Revisit when tropycal ships a fix.
+Tropycal `_version.py` uses `pkg_resources`, removed in setuptools 82+. Pinned `setuptools<85` in `requirements.txt`. Revisit when tropycal ships a fix.
