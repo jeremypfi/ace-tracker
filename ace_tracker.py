@@ -20,13 +20,14 @@ Author: Built with Claude for JP
 
 import os
 import logging
-import tropycal.tracks as tracks
+from datetime import datetime
 
 from ace_data import (
     BASINS,
     BACKUP_DATA,
     START_YEAR,
     _tropycal_basin_name,
+    _build_track_dataset,
     parse_hurdat2,
     get_current_season,
     calculate_yearly_totals,
@@ -67,10 +68,26 @@ def process_basin(basin_key):
     tropycal_basin = _tropycal_basin_name(basin_key)
     try:
         print(f"Loading {tropycal_basin} data via Tropycal (shared across historical + current season)...")
-        shared_dataset = tracks.TrackDataset(basin=tropycal_basin, source='hurdat', include_btk=True)
+        shared_dataset = _build_track_dataset(basin_key)
     except Exception as e:
         logger.warning(f"Could not build shared TrackDataset for {basin_key}: {e}")
         shared_dataset = None
+
+    # A dataset-build failure during the active season means we have no way
+    # to get real current-season data. Continuing on would silently overwrite
+    # the live dashboard with an empty/fallback season (this is exactly how
+    # a NOAA HURDAT2 formatting glitch went unnoticed for days in Sept 2026 —
+    # every layer caught the exception and substituted zeros). Fail the run
+    # instead and leave the last known-good dashboard in place.
+    today = datetime.now().date()
+    season_start_month, season_start_day = (6, 1) if basin_key == 'atlantic' else (5, 15)
+    season_start = datetime(today.year, season_start_month, season_start_day).date()
+    season_end = datetime(today.year, 11, 30).date()
+    if shared_dataset is None and season_start <= today <= season_end:
+        raise RuntimeError(
+            f"Failed to build TrackDataset for {basin_key} during its active season "
+            f"({season_start} to {season_end}) — refusing to publish empty/fallback "
+            f"data over the live dashboard.")
 
     # Get historical data
     historical_storms = parse_hurdat2(basin_key, dataset=shared_dataset)
