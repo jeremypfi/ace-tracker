@@ -612,6 +612,24 @@ class TestHTMLGeneration(unittest.TestCase):
         self.assertIn('<!DOCTYPE html>', result)
         self.assertIn('Arthur', result)
 
+    def test_wind_unit_toggle_present(self):
+        """Dashboard renders the wind unit toggle button and JS, and marks
+        every wind-speed display site with a canonical data-kt value so
+        the toggle can convert them client-side."""
+        basin_data = self._make_basin_data()
+        result = generate_dashboard_html(basin_data)
+        self.assertIn('id="unitBtn"', result)
+        self.assertIn('function toggleWindUnit()', result)
+        self.assertIn('function applyWindUnit()', result)
+        # Storm table cell (bare number, unit shown via column header)
+        self.assertIn("class='wind-val' data-kt='40'", result)
+        # Peak Intensity meta-box (number + unit inline)
+        self.assertIn('class="wind-val-unit" data-kt="40"', result)
+        # Sortable column header carries labels for all 3 units
+        self.assertIn('data-mph-label="Wind (mph)"', result)
+        # Per-point intensity bar tooltip data, used to rebuild the title on toggle
+        self.assertIn('data-wind-kt="40"', result)
+
     def test_history_html_generates(self):
         """generate_history_html() runs without error and returns non-empty HTML."""
         basin_data = self._make_basin_data()
