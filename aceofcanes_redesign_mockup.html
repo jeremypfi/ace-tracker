@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0a0e1a">
+<title>Hurricane ACE Dashboard | aceofcanes.com (Redesign Mockup)</title>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0a0e1a;
+  --bg-card: #131a2b;
+  --bg-card-inner: #0e1422;
+  --border: #232e47;
+  --atl: #ff7043;          /* solid Atlantic accent (darker end of old gradient) */
+  --atl-dim: rgba(255,112,67,0.14);
+  --pac: #00c2a0;          /* solid Pacific accent */
+  --pac-dim: rgba(0,194,160,0.14);
+  --text: #e8edf5;
+  --text-sec: #aab6c9;
+  --text-muted: #8b9bb0;   /* raised from #475569 -> passes 4.5:1 on cards */
+  /* Status palette: reserved for classification only, never basin identity */
+  --status-below: #4ade80;
+  --status-near: #facc15;
+  --status-above: #fb923c;
+  --status-extreme: #f87171;
+  --focus: #4fc3f7;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+html { scroll-behavior: smooth; }
+body {
+  font-family:'Inter',system-ui,sans-serif;
+  background:var(--bg);
+  color:var(--text);
+  min-height:100vh;
+  padding:28px 18px 80px;
+  font-size:15px;
+  line-height:1.5;
+}
+.wrap { max-width:1180px; margin:0 auto; }
+
+/* Visible focus everywhere (A11Y-06) */
+:focus-visible { outline:2px solid var(--focus); outline-offset:2px; border-radius:4px; }
+button { font:inherit; color:inherit; background:none; border:none; cursor:pointer; }
+
+/* ---------- Header ---------- */
+header { text-align:center; margin-bottom:26px; position:relative; }
+.logo {
+  font-family:'Oswald',sans-serif;
+  font-size:clamp(26px,4vw,34px);
+  font-weight:700;
+  letter-spacing:3px;
+  display:flex; align-items:center; justify-content:center; gap:12px;
+  text-transform:uppercase;
+}
+.hurricane-icon { font-size:36px; display:inline-block; animation:spin 8s linear infinite; }
+@keyframes spin { from{transform:rotate(0)} to{transform:rotate(360deg)} }
+/* A11Y-01: reduced motion kills spin + pulse */
+@media (prefers-reduced-motion: reduce) {
+  .hurricane-icon, .pulse-dot { animation:none !important; }
+  html { scroll-behavior:auto; }
+}
+.updated { font-size:13px; color:var(--text-muted); margin-top:6px; }
+.updated .rel { color:var(--text-sec); font-weight:600; }
+.theme-toggle {
+  position:absolute; right:0; top:0;
+  width:40px; height:40px; border-radius:10px;
+  border:1px solid var(--border); background:var(--bg-card);
+  font-size:18px; line-height:1;
+}
+
+/* ---------- Basin tabs ---------- */
+.tabs { display:flex; gap:10px; justify-content:center; margin-bottom:22px; }
+.tab {
+  font-family:'Oswald',sans-serif; font-size:16px; letter-spacing:2px; text-transform:uppercase;
+  padding:11px 30px; border-radius:12px; border:1px solid var(--border);
+  color:var(--text-sec); background:var(--bg-card); font-weight:600;
+}
+.tab[aria-selected="true"].atl { background:linear-gradient(135deg,#e8552e,#ff8c5a); color:#fff; border-color:transparent; }
+.tab[aria-selected="true"].pac { background:linear-gradient(135deg,#009e83,#00d9b4); color:#04211c; border-color:transparent; }
+
+/* ---------- Active storm pill (UX-04) ---------- */
+.active-pill {
+  display:flex; align-items:center; gap:10px;
+  background:var(--pac-dim); border:1px solid var(--pac);
+  border-radius:999px; padding:9px 18px; margin:0 auto 22px; width:fit-content;
+  font-size:14px; font-weight:600; color:var(--text);
+}
+.pulse-dot { width:9px; height:9px; border-radius:50%; background:var(--pac); animation:pulse 2s ease-in-out infinite; }
+@keyframes pulse { 0%,100%{opacity:1; box-shadow:0 0 0 0 rgba(0,194,160,.5)} 50%{opacity:.6; box-shadow:0 0 0 6px rgba(0,194,160,0)} }
+.active-pill a { color:var(--pac); text-decoration:none; }
+.active-pill a:hover { text-decoration:underline; }
+
+/* ---------- Panel / grid ---------- */
+.panel { display:none; }
+.panel.show { display:block; }
+.grid { display:grid; grid-template-columns:5fr 4fr; gap:20px; }
+@media (max-width: 920px){ .grid { grid-template-columns:1fr; } }
+.card { background:var(--bg-card); border:1px solid var(--border); border-radius:16px; padding:22px; }
+.card h2 {
+  font-family:'Oswald',sans-serif; font-size:15px; font-weight:600;
+  letter-spacing:2px; text-transform:uppercase; color:var(--text-sec); margin-bottom:14px;
+}
+
+/* ---------- Hero: season ACE + pace chart (UX-01, signature element) ---------- */
+.hero { grid-column:1 / -1; display:grid; grid-template-columns:260px 1fr; gap:26px; align-items:center; }
+@media (max-width: 720px){ .hero { grid-template-columns:1fr; } }
+.season-label { font-size:12px; color:var(--text-muted); text-transform:uppercase; letter-spacing:1.5px; }
+.season-ace {
+  font-family:'Oswald',sans-serif; font-size:76px; font-weight:700; line-height:1;
+  color:var(--atl);                        /* COLOR-01: solid, not gradient text */
+  text-shadow:0 0 34px rgba(255,112,67,.28);
+}
+.panel.pac-panel .season-ace { color:var(--pac); text-shadow:0 0 34px rgba(0,194,160,.28); }
+.classification {
+  display:inline-flex; align-items:center; gap:7px; margin-top:10px;
+  font-size:13px; font-weight:600; padding:5px 13px; border-radius:999px;
+  background:rgba(74,222,128,.12); color:var(--status-below); border:1px solid rgba(74,222,128,.35);
+}
+.pace-note { margin-top:12px; font-size:13.5px; color:var(--text-sec); max-width:230px; }
+.pace-note strong { color:var(--text); }
+
+.chart-box { position:relative; }
+.chart-title { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:8px; flex-wrap:wrap; gap:6px; }
+.chart-title h3 { font-family:'Oswald',sans-serif; font-size:14px; letter-spacing:1.5px; text-transform:uppercase; color:var(--text-sec); font-weight:600; }
+.legend { display:flex; gap:16px; font-size:12px; color:var(--text-muted); }
+.legend span { display:inline-flex; align-items:center; gap:6px; }
+.swatch { width:16px; height:3px; border-radius:2px; display:inline-block; }
+svg.pace { width:100%; height:auto; display:block; }
+
+/* ---------- Stat cards with vs-avg sublines (LAYOUT-04) ---------- */
+.stats { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; grid-column:1/-1; }
+@media (max-width:720px){ .stats { grid-template-columns:repeat(2,1fr); } }
+.stat { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; padding:16px 18px; }
+.stat .k { font-size:12px; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px; }
+.stat .v { font-family:'Oswald',sans-serif; font-size:34px; font-weight:700; line-height:1.15; }
+.stat .sub { font-size:12.5px; color:var(--text-muted); margin-top:3px; }
+.stat .sub b { color:var(--text-sec); font-weight:600; }
+
+/* ---------- Similar seasons (LAYOUT-05) ---------- */
+.chips { display:flex; gap:10px; flex-wrap:wrap; }
+.chip {
+  font-family:'Oswald',sans-serif; font-size:16px; font-weight:600; letter-spacing:1px;
+  padding:8px 16px; border-radius:10px; background:var(--bg-card-inner);
+  border:1px solid var(--border); color:var(--text); text-decoration:none;
+}
+.chip:hover { border-color:var(--atl); }
+.chip small { display:block; font-family:'Inter'; font-size:11px; color:var(--text-muted); letter-spacing:0; font-weight:400; }
+
+/* ---------- Storm table (LAYOUT-01, A11Y-03/04) ---------- */
+table { width:100%; border-collapse:collapse; font-size:14px; }
+th { text-align:left; font-size:11.5px; text-transform:uppercase; letter-spacing:1px; color:var(--text-muted); padding:8px 10px; border-bottom:1px solid var(--border); }
+th button { display:inline-flex; align-items:center; gap:5px; text-transform:inherit; letter-spacing:inherit; font-size:inherit; color:inherit; font-weight:600; }
+td { padding:0; border-bottom:1px solid var(--border); }
+.row-btn {
+  display:grid; grid-template-columns:22px 1fr 90px 70px; align-items:center; gap:8px;
+  width:100%; padding:12px 10px; text-align:left; font-size:14px;
+}
+.row-btn:hover { background:var(--bg-card-inner); }
+.row-btn .chev { transition:transform .18s; color:var(--text-muted); font-size:12px; }
+.row-btn[aria-expanded="true"] .chev { transform:rotate(90deg); }
+.row-btn .name { font-weight:600; }
+.row-btn .name .live { color:var(--pac); font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:1px; margin-left:8px; }
+.row-btn .num { font-family:'Oswald',sans-serif; font-size:17px; text-align:right; }
+.row-btn .pct { color:var(--text-muted); font-size:13px; text-align:right; }
+.detail { padding:6px 12px 16px 40px; font-size:13.5px; color:var(--text-sec); background:var(--bg-card-inner); }
+.detail dl { display:grid; grid-template-columns:auto 1fr; gap:4px 14px; }
+.detail dt { color:var(--text-muted); }
+.detail dd { color:var(--text); }
+.legend-once { margin-top:14px; padding-top:12px; border-top:1px solid var(--border); font-size:12px; color:var(--text-muted); display:flex; gap:14px; flex-wrap:wrap; }
+.legend-once i { font-style:normal; display:inline-flex; align-items:center; gap:5px; }
+.dot { width:10px; height:10px; border-radius:3px; display:inline-block; }
+
+/* ---------- Insights, grouped (LAYOUT-02) ---------- */
+.insight-group { margin-bottom:16px; }
+.insight-group h3 { font-family:'Oswald',sans-serif; font-size:12.5px; letter-spacing:2px; text-transform:uppercase; color:var(--text-muted); margin-bottom:8px; }
+.insight-group ul { list-style:none; }
+.insight-group li { padding:7px 0; border-bottom:1px solid var(--border); font-size:14px; color:var(--text-sec); }
+.insight-group li:last-child { border-bottom:none; }
+.insight-group li b { color:var(--text); font-weight:600; }
+details.more summary { cursor:pointer; font-size:13.5px; color:var(--focus); padding:8px 0; list-style:none; }
+details.more summary::-webkit-details-marker { display:none; }
+
+/* ---------- What is ACE (UX-02) ---------- */
+.ace-explainer summary {
+  cursor:pointer; display:flex; align-items:center; gap:8px;
+  font-family:'Oswald',sans-serif; font-size:14px; letter-spacing:1.5px; text-transform:uppercase;
+  color:var(--text-sec); list-style:none; font-weight:600;
+}
+.ace-explainer summary::-webkit-details-marker { display:none; }
+.ace-explainer .chev { transition:transform .18s; font-size:12px; color:var(--text-muted); }
+.ace-explainer[open] .chev { transform:rotate(90deg); }
+.ace-explainer p { margin-top:12px; font-size:14px; color:var(--text-sec); }
+
+footer { text-align:center; margin-top:34px; font-size:12.5px; color:var(--text-muted); }
+footer a { color:var(--text-sec); }
+.mock-banner {
+  background:var(--atl-dim); border:1px solid var(--atl); color:var(--text);
+  border-radius:10px; padding:8px 14px; font-size:13px; text-align:center; margin-bottom:20px;
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+<div class="mock-banner">Redesign mockup: sample data for July 2, 2026. Each change is tagged with its ticket ID from the backlog file.</div>
+
+<header>
+  <div class="logo"><span class="hurricane-icon" aria-hidden="true">&#127788;</span> ACE OF CANES</div>
+  <p class="updated">Updated <span class="rel" id="relTime">2 hours ago</span> &middot; July 02, 2026 22:03 UTC</p>
+  <button class="theme-toggle" aria-label="Switch to light mode" aria-pressed="false" title="Switch to light mode">&#9788;&#65039;</button>
+</header>
+
+<div class="tabs" role="tablist" aria-label="Basin">
+  <button class="tab atl" role="tab" aria-selected="true" id="tab-atl" aria-controls="panel-atl" onclick="switchTab('atl')">Atlantic</button>
+  <button class="tab pac" role="tab" aria-selected="false" id="tab-pac" aria-controls="panel-pac" onclick="switchTab('pac')">East Pacific</button>
+</div>
+
+<div class="active-pill" role="status">
+  <span class="pulse-dot" aria-hidden="true"></span>
+  1 active storm: <a href="#pacific" onclick="switchTab('pac')">Tropical Storm Douglas (35 kt)</a> in the East Pacific
+</div>
+
+<!-- ================= ATLANTIC ================= -->
+<section class="panel show" id="panel-atl" role="tabpanel" aria-labelledby="tab-atl">
+  <div class="grid">
+
+    <div class="card hero">
+      <div>
+        <div class="season-label">2026 Atlantic Season ACE</div>
+        <div class="season-ace">2.1</div>
+        <span class="classification">Below Normal to date</span>
+        <p class="pace-note">Running at <strong>64% of climatological pace</strong> for July 2. A slow start, but 91% of seasonal ACE typically occurs after August 1.</p>
+      </div>
+      <div class="chart-box">
+        <div class="chart-title">
+          <h3>Season pace vs. 1991&ndash;2020 climatology</h3>
+          <div class="legend">
+            <span><i class="swatch" style="background:var(--atl)"></i>2026 actual</span>
+            <span><i class="swatch" style="background:#3d4d6b"></i>Climatology</span>
+            <span><i class="swatch" style="background:#2a3550;height:10px;opacity:.6"></i>Remaining avg season</span>
+          </div>
+        </div>
+        <svg class="pace" viewBox="0 0 640 240" role="img" aria-label="Chart of 2026 cumulative ACE versus climatological average. 2026 is at 2.1 units on July 2, slightly below the average pace of 3.3. The climatological curve rises steeply from mid August to a season total near 123.">
+          <!-- gridlines -->
+          <g stroke="#1b2438" stroke-width="1">
+            <line x1="46" y1="20" x2="46" y2="200"/><line x1="46" y1="200" x2="620" y2="200"/>
+            <line x1="46" y1="155" x2="620" y2="155" stroke-dasharray="3 4"/>
+            <line x1="46" y1="110" x2="620" y2="110" stroke-dasharray="3 4"/>
+            <line x1="46" y1="65" x2="620" y2="65" stroke-dasharray="3 4"/>
+            <line x1="46" y1="20" x2="620" y2="20" stroke-dasharray="3 4"/>
+          </g>
+          <g fill="#8b9bb0" font-size="10.5" font-family="Inter">
+            <text x="38" y="204" text-anchor="end">0</text>
+            <text x="38" y="159" text-anchor="end">31</text>
+            <text x="38" y="114" text-anchor="end">62</text>
+            <text x="38" y="69" text-anchor="end">93</text>
+            <text x="38" y="24" text-anchor="end">124</text>
+            <text x="46" y="218">Jun 1</text>
+            <text x="150" y="218">Jul 1</text>
+            <text x="258" y="218">Aug 1</text>
+            <text x="366" y="218">Sep 1</text>
+            <text x="470" y="218">Oct 1</text>
+            <text x="574" y="218">Nov 1</text>
+          </g>
+          <!-- climatology curve, full season -->
+          <path d="M46,199.5 C120,198.6 200,196 258,190 C310,183 340,168 380,132 C420,96 460,64 505,42 C545,28 590,22 620,20.5" fill="none" stroke="#3d4d6b" stroke-width="2.5"/>
+          <!-- remaining season shading -->
+          <path d="M158,196.9 C200,196 258,190 310,183 L310,200 L158,200 Z" fill="#2a3550" opacity=".35"/>
+          <!-- 2026 actual -->
+          <path d="M46,200 C90,199.8 120,199.4 158,196.9" fill="none" stroke="var(--atl)" stroke-width="3.5" stroke-linecap="round"/>
+          <circle cx="158" cy="196.9" r="5" fill="var(--atl)"/>
+          <g font-family="Inter" font-size="11" font-weight="600">
+            <text x="168" y="192" fill="var(--atl)">2.1 &middot; Jul 2</text>
+            <text x="168" y="206" fill="#8b9bb0" font-weight="400">avg pace: 3.3</text>
+          </g>
+        </svg>
+      </div>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><div class="k">Named storms</div><div class="v">1</div><div class="sub">avg by Jul 2: <b>1.9</b></div></div>
+      <div class="stat"><div class="k">Hurricanes</div><div class="v">0</div><div class="sub">avg by Jul 2: <b>0.4</b></div></div>
+      <div class="stat"><div class="k">Major hurricanes</div><div class="v">0</div><div class="sub">avg by Jul 2: <b>0.1</b></div></div>
+      <div class="stat"><div class="k">2025 final ACE</div><div class="v">128.4</div><div class="sub">Above Normal season</div></div>
+    </div>
+
+    <div class="card">
+      <h2>Storms &middot; 2026</h2>
+      <table>
+        <thead>
+          <tr>
+            <th scope="col" style="width:22px"><span class="sr-only"></span></th>
+            <th scope="col">Storm</th>
+            <th scope="col" aria-sort="descending" style="text-align:right"><button aria-label="Sort by ACE, currently descending">ACE &#9662;</button></th>
+            <th scope="col" style="text-align:right">% Season</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td colspan="4">
+            <button class="row-btn" aria-expanded="true" aria-controls="det-arthur" onclick="toggleRow(this,'det-arthur')">
+              <span class="chev" aria-hidden="true">&#9656;</span>
+              <span class="name">Arthur <span style="color:var(--text-muted);font-weight:400">&middot; TS</span></span>
+              <span class="num">2.1</span>
+              <span class="pct">100%</span>
+            </button>
+            <div class="detail" id="det-arthur">
+              <dl>
+                <dt>Formed</dt><dd>Jun 22, 2026</dd>
+                <dt>Peak intensity</dt><dd>50 kt &middot; 998 mb (Tropical Storm)</dd>
+                <dt>Duration at TS+</dt><dd>3.25 days</dd>
+              </dl>
+            </div>
+          </td></tr>
+        </tbody>
+      </table>
+      <!-- Category legend appears ONCE per table, not per storm (LAYOUT-01) -->
+      <div class="legend-once" aria-label="Intensity color key">
+        <i><span class="dot" style="background:#5c6b85"></span>TD</i>
+        <i><span class="dot" style="background:#4fc3f7"></span>TS</i>
+        <i><span class="dot" style="background:var(--status-near)"></span>Cat 1&ndash;2</i>
+        <i><span class="dot" style="background:var(--status-above)"></span>Cat 3</i>
+        <i><span class="dot" style="background:var(--status-extreme)"></span>Cat 4&ndash;5</i>
+      </div>
+    </div>
+
+    <div>
+      <div class="card" style="margin-bottom:20px">
+        <h2>Similar seasons at this point</h2>
+        <div class="chips">
+          <a class="chip" href="#history-2014">2014<small>final ACE 67</small></a>
+          <a class="chip" href="#history-2009">2009<small>final ACE 53</small></a>
+          <a class="chip" href="#history-1994">1994<small>final ACE 32</small></a>
+        </div>
+        <p style="margin-top:12px;font-size:13px;color:var(--text-muted)">Seasons with the closest cumulative ACE on July 2. All three finished Below Normal.</p>
+      </div>
+
+      <div class="card">
+        <h2>Season insights</h2>
+        <div class="insight-group">
+          <h3>Pace</h3>
+          <ul>
+            <li>Ranks <b>38th of 51</b> seasons for ACE through July 2</li>
+            <li><b>64%</b> of the climatological pace to date</li>
+          </ul>
+        </div>
+        <div class="insight-group">
+          <h3>Notables</h3>
+          <ul>
+            <li>ACE leader: <b>Arthur</b> (2.1, 100% of season)</li>
+            <li>Longest-lived storm: <b>Arthur</b>, 3.25 days</li>
+          </ul>
+        </div>
+        <details class="more">
+          <summary>More stats</summary>
+          <div class="insight-group" style="margin-top:8px">
+            <ul>
+              <li>First named storm formed <b>10 days later</b> than the median</li>
+              <li>2025 season finished with <b>128.4 ACE</b> (Above Normal)</li>
+            </ul>
+          </div>
+        </details>
+      </div>
+    </div>
+
+    <div class="card" style="grid-column:1/-1">
+      <details class="ace-explainer">
+        <summary><span class="chev" aria-hidden="true">&#9656;</span> What is ACE?</summary>
+        <p>Accumulated Cyclone Energy measures the combined strength and duration of tropical storms and hurricanes. It's calculated by squaring a storm's maximum sustained wind speed (in knots) every six hours while it's at tropical storm strength or greater, then dividing by 10,000. A long-lived major hurricane generates far more ACE than a brief tropical storm, which makes ACE a better measure of overall season activity than storm counts alone.</p>
+      </details>
+    </div>
+
+  </div>
+</section>
+
+<!-- ================= PACIFIC (structure identical; abbreviated for mockup) ================= -->
+<section class="panel pac-panel" id="panel-pac" role="tabpanel" aria-labelledby="tab-pac">
+  <div class="grid">
+    <div class="card hero">
+      <div>
+        <div class="season-label">2026 East Pacific Season ACE</div>
+        <div class="season-ace">14.8</div>
+        <span class="classification" style="background:rgba(250,204,21,.12);color:var(--status-near);border-color:rgba(250,204,21,.35)">Near Normal to date</span>
+        <p class="pace-note">Running at <strong>96% of climatological pace</strong> for July 2, with Douglas currently active.</p>
+      </div>
+      <div class="chart-box">
+        <div class="chart-title"><h3>Season pace vs. climatology</h3></div>
+        <svg class="pace" viewBox="0 0 640 240" role="img" aria-label="Chart of 2026 East Pacific cumulative ACE versus climatology. 2026 is at 14.8 units, near the average pace of 15.4.">
+          <g stroke="#1b2438" stroke-width="1"><line x1="46" y1="20" x2="46" y2="200"/><line x1="46" y1="200" x2="620" y2="200"/></g>
+          <path d="M46,199 C140,192 240,172 340,128 C440,84 540,44 620,30" fill="none" stroke="#3d4d6b" stroke-width="2.5"/>
+          <path d="M46,199.5 C90,197 130,190 172,181" fill="none" stroke="var(--pac)" stroke-width="3.5" stroke-linecap="round"/>
+          <circle cx="172" cy="181" r="5" fill="var(--pac)"/>
+          <text x="182" y="178" fill="var(--pac)" font-family="Inter" font-size="11" font-weight="600">14.8 &middot; Jul 2</text>
+        </svg>
+      </div>
+    </div>
+    <div class="card" style="grid-column:1/-1">
+      <h2>Storms &middot; 2026</h2>
+      <table>
+        <tbody>
+          <tr><td colspan="4">
+            <button class="row-btn" aria-expanded="false" aria-controls="det-douglas" onclick="toggleRow(this,'det-douglas')">
+              <span class="chev" aria-hidden="true">&#9656;</span>
+              <span class="name">Douglas <span class="live">&#9679; Active</span></span>
+              <span class="num">1.2</span>
+              <span class="pct">8%</span>
+            </button>
+            <div class="detail" id="det-douglas" hidden>
+              <dl>
+                <dt>Current intensity</dt><dd>35 kt &middot; 1004 mb (Tropical Storm)</dd>
+                <dt>NHC forecast cone</dt><dd><a href="#" style="color:var(--pac)">View latest cone graphic</a> (alt text includes advisory time)</dd>
+              </dl>
+            </div>
+          </td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<footer>
+  Data: NHC / HURDAT2 &middot; Climatology: 1991&ndash;2020 &middot; <a href="#">history.html</a> &middot; <a href="#">about</a>
+</footer>
+</div>
+
+<script>
+function switchTab(id){
+  const isAtl = id === 'atl';
+  document.getElementById('panel-atl').classList.toggle('show', isAtl);
+  document.getElementById('panel-pac').classList.toggle('show', !isAtl);
+  document.getElementById('tab-atl').setAttribute('aria-selected', isAtl);
+  document.getElementById('tab-pac').setAttribute('aria-selected', !isAtl);
+  history.replaceState(null,'', isAtl ? '#atlantic' : '#pacific'); // UX-05: shareable tab state
+}
+if (location.hash === '#pacific') switchTab('pac');
+
+function toggleRow(btn, detailId){
+  const open = btn.getAttribute('aria-expanded') === 'true';
+  btn.setAttribute('aria-expanded', String(!open));
+  document.getElementById(detailId).hidden = open;
+}
+
+// UX-03: relative freshness computed client-side
+(function(){
+  const updated = new Date('2026-07-02T22:03:00Z');
+  const mins = Math.max(1, Math.round((Date.now() - updated) / 60000));
+  const el = document.getElementById('relTime');
+  if (mins < 60) el.textContent = mins + ' min ago';
+  else if (mins < 1440) el.textContent = Math.round(mins/60) + ' hours ago';
+  else el.textContent = Math.round(mins/1440) + ' days ago';
+})();
+</script>
+</body>
+</html>

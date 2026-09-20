@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>aceofcanes.com — Full Redesign Mockup (fake data)</title>
+<style>
+  :root, [data-theme="dark"] {
+    --bg: #0d1b2a; --card: #16263a; --box: #1c2f47; --border: #2c4361;
+    --text: #e8eef5; --muted: #a7bccf; --strong: #ffffff;
+    --atl: #ff6b6b; --atl-solid: #e05252; --pac: #26d4b6;
+    --ok: #58c78d; --warn: #ffc46b; --bad: #ff6b6b;
+    --shadow: 0 4px 18px rgba(0,0,0,.35);
+  }
+  [data-theme="light"] {
+    --bg: #f2f6fa; --card: #ffffff; --box: #eaf1f8; --border: #c9d8e6;
+    --text: #1a2d4a; --muted: #46596b; --strong: #0b1a30;
+    --atl: #c62828; --atl-solid: #c62828; --pac: #00796b;
+    --ok: #2e7d4f; --warn: #9a5b00; --bad: #c62828;
+    --shadow: 0 4px 14px rgba(30,60,90,.12);
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.5;
+  }
+  :focus-visible { outline: 2px solid var(--atl); outline-offset: 2px; }
+  .skip { position: absolute; left: -9999px; }
+  .skip:focus { left: 12px; top: 12px; background: var(--card); padding: 8px 14px; border-radius: 8px; z-index: 10; }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 20px 16px 60px 16px; }
+
+  /* header */
+  header.site { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .logo { width: 40px; height: 40px; border-radius: 50%; background: conic-gradient(from 0deg, var(--atl-solid), transparent 70%); position: relative; }
+  .logo::after { content: ""; position: absolute; inset: 12px; border-radius: 50%; background: var(--bg); }
+  h1 { font-size: 22px; margin: 0; color: var(--strong); }
+  .updated { font-size: 12.5px; color: var(--muted); }
+  .hdr-right { margin-left: auto; display: flex; gap: 10px; align-items: center; }
+  .btn {
+    min-height: 44px; min-width: 44px; padding: 8px 16px; border-radius: 22px; cursor: pointer;
+    border: 1px solid var(--border); background: var(--card); color: var(--text); font-size: 14px;
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px; text-decoration: none;
+  }
+
+  /* active storm pill */
+  .pill {
+    display: inline-flex; align-items: center; gap: 9px; font-size: 14px; font-weight: 600;
+    padding: 9px 18px; border-radius: 24px; margin: 18px 0 4px 0; cursor: pointer;
+    background: var(--box); border: 1.5px solid var(--atl-solid); color: var(--text);
+  }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--bad); animation: pulse 1.6s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+
+  /* development potential banner */
+  .devbanner {
+    margin: 14px 0; border-left: 4px solid var(--warn); background: var(--box);
+    border-radius: 0 10px 10px 0; padding: 12px 16px; font-size: 14px;
+  }
+  .devbanner .hd { font-weight: 700; color: var(--warn); font-size: 13px; text-transform: uppercase; letter-spacing: .05em; }
+  .devbanner .pct { font-weight: 800; color: var(--strong); }
+  .meter { height: 6px; border-radius: 3px; background: var(--border); margin-top: 6px; overflow: hidden; max-width: 320px; }
+  .meter > span { display: block; height: 100%; background: var(--warn); }
+
+  /* tabs */
+  [role="tablist"] { display: flex; gap: 8px; margin: 18px 0 0 0; }
+  [role="tab"] {
+    min-height: 44px; padding: 10px 22px; border-radius: 12px 12px 0 0; font-size: 15px; font-weight: 700;
+    border: 1px solid var(--border); border-bottom: none; background: var(--box); color: var(--muted); cursor: pointer;
+  }
+  [role="tab"][aria-selected="true"].atl { background: var(--atl-solid); color: #fff; border-color: var(--atl-solid); }
+  [role="tab"][aria-selected="true"].pac { background: var(--pac); color: #072a24; border-color: var(--pac); }
+  [role="tabpanel"] { border: 1px solid var(--border); border-radius: 0 14px 14px 14px; background: var(--card); padding: 20px; }
+  [hidden] { display: none !important; }
+
+  /* hero row */
+  .hero { display: flex; gap: 20px; align-items: stretch; flex-wrap: wrap; }
+  .ace-big { flex: 1; min-width: 240px; }
+  .ace-big .n { font-size: 56px; font-weight: 800; color: var(--atl); line-height: 1; }
+  .ace-big .cap { color: var(--muted); font-size: 13px; margin-top: 4px; }
+  .badge { display: inline-block; font-size: 12px; font-weight: 800; padding: 4px 12px; border-radius: 14px; margin-top: 8px; background: var(--ok); color: #08251a; }
+  [data-theme="light"] .badge { color: #fff; }
+  .pace { flex: 2; min-width: 280px; background: var(--box); border-radius: 12px; padding: 14px; }
+  .pace .t { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 6px; }
+  .pace svg { width: 100%; height: 110px; }
+
+  /* stat cards */
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-top: 18px; }
+  .stat { background: var(--box); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; }
+  .stat .l { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  .stat .v { font-size: 28px; font-weight: 800; color: var(--strong); }
+  .stat .s { font-size: 12px; color: var(--muted); }
+  .stat .s b { color: var(--text); }
+
+  /* similar seasons card */
+  .simcard { margin-top: 18px; background: var(--box); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
+  .simcard .t { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  .chips { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+  .chip {
+    min-height: 44px; display: inline-flex; align-items: center; gap: 8px; font-size: 14px;
+    padding: 8px 16px; border-radius: 22px; border: 1px solid var(--border); background: var(--card);
+    color: var(--text); text-decoration: none; cursor: pointer;
+  }
+  .chip b { color: var(--atl); }
+
+  /* insights: quick facts + drill down */
+  .insights { margin-top: 18px; }
+  .insights h3, .storms h3 { font-size: 15px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 10px 0; }
+  .fact-group { margin-bottom: 12px; }
+  .fact-group .g { font-size: 12px; font-weight: 800; color: var(--atl); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 4px; }
+  .fact { font-size: 14.5px; padding: 3px 0; }
+  details.more { margin-top: 8px; }
+  details.more summary {
+    min-height: 44px; display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
+    font-size: 14px; font-weight: 600; color: var(--atl); list-style: none; padding: 8px 4px;
+  }
+  details.more summary::before { content: "▸"; transition: transform .15s; }
+  details.more[open] summary::before { transform: rotate(90deg); }
+  details.more .fact { color: var(--muted); }
+
+  /* storms table */
+  .storms { margin-top: 22px; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); font-size: 14.5px; }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+  th button { background: none; border: none; color: inherit; font: inherit; cursor: pointer; min-height: 44px; display: inline-flex; align-items: center; gap: 5px; }
+  .row-btn {
+    background: none; border: none; color: var(--strong); font-weight: 700; font-size: 14.5px;
+    cursor: pointer; min-height: 44px; display: inline-flex; align-items: center; gap: 8px; padding: 0;
+  }
+  .row-btn::before { content: "▸"; color: var(--atl); transition: transform .15s; }
+  .row-btn[aria-expanded="true"]::before { transform: rotate(90deg); }
+  .cat { font-size: 11px; font-weight: 800; padding: 3px 10px; border-radius: 12px; color: #14202e; display: inline-block; }
+  .cat.ts { background: #62b6f0; } .cat.h1 { background: #ffd166; } .cat.active-tag { background: var(--bad); color: #fff; }
+  .detail { background: var(--box); }
+  .detail td { padding: 16px; }
+  .detail .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 700px) { .detail .grid { grid-template-columns: 1fr; } }
+  .mapbox {
+    background: repeating-linear-gradient(45deg, var(--card), var(--card) 12px, var(--box) 12px, var(--box) 24px);
+    border: 1px dashed var(--border); border-radius: 10px; height: 180px;
+    display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 13px; text-align: center;
+  }
+  .ibar { height: 10px; border-radius: 5px; background: linear-gradient(90deg, #62b6f0 0 40%, #ffd166 40% 70%, var(--bad) 70% 100%); margin: 6px 0 2px 0; }
+  .legend { margin-top: 12px; font-size: 12.5px; color: var(--muted); display: flex; gap: 14px; flex-wrap: wrap; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; }
+
+  /* mobile cards for storms */
+  @media (max-width: 640px) {
+    table thead { display: none; }
+    table, tbody, tr, td { display: block; width: 100%; }
+    tr.srow { border: 1px solid var(--border); border-radius: 12px; margin-bottom: 10px; padding: 6px 10px; background: var(--card); }
+    td { border: none; padding: 4px 8px; }
+    td[data-l]::before { content: attr(data-l) ": "; color: var(--muted); font-size: 12px; }
+  }
+
+  /* tooltip — hover, touch, and keyboard reachable */
+  .tip { position: relative; cursor: help; border-bottom: 1px dotted var(--muted); }
+  .tip:hover::after, .tip:focus-visible::after {
+    content: attr(data-tip); position: absolute; left: 0; bottom: 130%; z-index: 5;
+    width: 230px; background: var(--card); color: var(--text); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 12px; font-size: 12.5px; font-weight: 400; box-shadow: var(--shadow);
+  }
+
+  footer { margin-top: 30px; font-size: 13px; color: var(--muted); border-top: 1px solid var(--border); padding-top: 16px; }
+  footer a { color: var(--atl); }
+  .mocknote { background: var(--warn); color: #26200f; font-size: 13px; font-weight: 600; padding: 8px 14px; border-radius: 8px; margin-bottom: 16px; }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="wrap">
+  <p class="mocknote">MOCKUP — fake data. Interactive: theme toggle, tabs, storm rows, "More stats", similar-season chips.</p>
+
+  <header class="site">
+    <div class="logo" aria-hidden="true"></div>
+    <div>
+      <h1>Hurricane ACE Dashboard</h1>
+      <div class="updated">Updated <time datetime="2026-08-15T18:00:00Z">Aug 15, 18:00 UTC</time> · <span id="rel">2 hours ago</span></div>
+    </div>
+    <div class="hdr-right">
+      <a class="btn" href="#history">Season History</a>
+      <button class="btn" id="themeBtn" aria-pressed="true" aria-label="Switch to light mode" onclick="toggleTheme()">☀︎</button>
+    </div>
+  </header>
+
+  <main id="main">
+    <!-- Active storm pill: only when a storm is genuinely active per NHC live feed (fixes the 48h-stale bug) -->
+    <button class="pill" onclick="openStorm('hernan')"><span class="dot" aria-hidden="true"></span> 1 active storm: Hurricane Hernan — 85 kt · view track &amp; cone</button>
+
+    <!-- Development potential callout (kept + promoted) -->
+    <div class="devbanner" role="status">
+      <div class="hd">⚠ Development potential — NHC Tropical Weather Outlook</div>
+      <div>Disturbance <b>AL92</b> (central Atlantic): <span class="pct">60%</span> chance of formation in 7 days · <span class="pct">30%</span> in 48 hours</div>
+      <div class="meter" aria-hidden="true"><span style="width:60%"></span></div>
+    </div>
+
+    <!-- Basin tabs -->
+    <div role="tablist" aria-label="Basin">
+      <button role="tab" class="atl" id="tab-atl" aria-selected="true" aria-controls="panel-atl" onclick="pick('atl')">Atlantic</button>
+      <button role="tab" class="pac" id="tab-pac" aria-selected="false" aria-controls="panel-pac" onclick="pick('pac')">E/C Pacific</button>
+    </div>
+
+    <!-- ATLANTIC -->
+    <section role="tabpanel" id="panel-atl" aria-labelledby="tab-atl">
+      <div class="hero">
+        <div class="ace-big">
+          <div class="n">14.6</div>
+          <div class="cap">Season ACE · 12% of normal · #34 of 37 seasons</div>
+          <span class="badge">Below Normal</span>
+        </div>
+        <div class="pace">
+          <div class="t">Cumulative ACE vs 1991–2020 average · 41% of climatological pace</div>
+          <svg viewBox="0 0 300 100" role="img" aria-label="2026 cumulative ACE is 14.6, well below the climatological average of 35 for mid-August.">
+            <path d="M0,95 C80,92 150,80 220,55 C260,40 290,20 300,10" fill="none" stroke="currentColor" opacity=".35" stroke-width="2" stroke-dasharray="4 4"/>
+            <path d="M0,97 C90,96 170,92 240,84" fill="none" stroke="var(--atl)" stroke-width="3"/>
+            <circle cx="240" cy="84" r="4" fill="var(--atl)"/>
+            <text x="244" y="80" font-size="9" fill="currentColor">today</text>
+          </svg>
+        </div>
+      </div>
+
+      <!-- Quick facts: stat cards with climatological averages -->
+      <div class="stats">
+        <div class="stat"><div class="l">Named Storms</div><div class="v">4</div><div class="s">avg by Aug 15: <b>4.9</b></div></div>
+        <div class="stat"><div class="l">Hurricanes</div><div class="v">1</div><div class="s">avg by Aug 15: <b>1.8</b></div></div>
+        <div class="stat"><div class="l">Major Hurricanes</div><div class="v">0</div><div class="s">avg by Aug 15: <b>0.7</b></div></div>
+        <div class="stat"><div class="l">Season ACE</div><div class="v">14.6</div><div class="s">avg by Aug 15: <b>35.2</b></div></div>
+        <div class="stat"><div class="l">Active Now</div><div class="v">1</div><div class="s">Hurricane Hernan</div></div>
+        <div class="stat"><div class="l">Days Left in Season</div><div class="v">107</div><div class="s">ends Nov 30</div></div>
+      </div>
+
+      <!-- Similar seasons card -->
+      <div class="simcard">
+        <div class="t">Most similar seasons at this date</div>
+        <div class="chips">
+          <a class="chip" href="#history">🌀 <b>2014</b> · finished 66.7 ACE</a>
+          <a class="chip" href="#history">🌀 <b>1994</b> · finished 32.0 ACE</a>
+          <a class="chip" href="#history">🌀 <b>2013</b> · finished 36.1 ACE</a>
+        </div>
+      </div>
+
+      <!-- Insights: quick facts visible AND drill-down -->
+      <div class="insights">
+        <h3>Season insights</h3>
+        <div class="fact-group">
+          <div class="g">Pace</div>
+          <div class="fact">📉 Running at <b>41%</b> of a normal season's pace for mid-August.</div>
+          <div class="fact">📊 Ranked <b>#34 of 37</b> seasons since 1991 at this date.</div>
+        </div>
+        <div class="fact-group">
+          <div class="g">Notables</div>
+          <div class="fact">👑 ACE leader: <b>Hurricane Hernan</b> (9.8 — 67% of the season's total).</div>
+          <div class="fact">⏱ Longest-lived: <b>Hernan</b>, 6 days as a named storm.</div>
+        </div>
+        <details class="more">
+          <summary>More stats &amp; neat facts</summary>
+          <div class="fact">🗓 "What would it take?" — reaching Near Normal (73 ACE) needs ~0.55 ACE/day the rest of the season.</div>
+          <div class="fact">🌡 Latest first-hurricane date since 2013.</div>
+          <div class="fact">🎯 If the season ended today it would rank 36th of 37.</div>
+          <div class="fact">🐟 3 of 4 storms have been fish storms (no landfall).</div>
+          <div class="fact">📅 On this date in 2005: Katrina had not yet formed — it would 8 days later.</div>
+        </details>
+      </div>
+
+      <!-- Storms table -->
+      <div class="storms">
+        <h3>2026 Storms</h3>
+        <table>
+          <thead>
+            <tr>
+              <th scope="col" aria-sort="descending"><button aria-label="Sort by date, currently descending">Storm ▾</button></th>
+              <th scope="col"><button aria-label="Sort by peak wind">Peak</button></th>
+              <th scope="col"><button aria-label="Sort by ACE">ACE</button></th>
+              <th scope="col">Landfall</th>
+              <th scope="col">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="srow">
+              <td><button class="row-btn" id="btn-hernan" aria-expanded="false" aria-controls="d-hernan" onclick="flip('hernan')">Hernan</button></td>
+              <td data-l="Peak"><span class="cat h1">H1 · 85 kt</span></td>
+              <td data-l="ACE">9.8</td>
+              <td data-l="Landfall">—</td>
+              <td data-l="Status"><span class="cat active-tag">ACTIVE</span></td>
+            </tr>
+            <tr class="detail" id="d-hernan" hidden>
+              <td colspan="5">
+                <div class="grid">
+                  <div>
+                    <b>Hurricane Hernan</b> · Aug 9 – present · peak 85 kt / 972 mb<br>
+                    <span style="font-size:13px;color:var(--muted)">Intensity over time</span>
+                    <div class="ibar" role="img" aria-label="Intensity progression from tropical storm to category 1 hurricane"></div>
+                    <div class="mapbox" style="margin-top:10px">Interactive track map (Leaflet — loads on first expand)</div>
+                  </div>
+                  <div>
+                    <span style="font-size:13px;color:var(--muted)">NHC forecast cone · advisory 18:00 UTC Aug 15</span>
+                    <div class="mapbox">NHC cone graphic<br>(shown for active storms only)</div>
+                    <div style="font-size:13px;margin-top:8px"><a href="#" style="color:var(--atl)">NHC advisory ↗</a> · <a href="#" style="color:var(--atl)">Share this storm 🔗</a></div>
+                  </div>
+                </div>
+              </td>
+            </tr>
+            <tr class="srow">
+              <td><button class="row-btn" aria-expanded="false" aria-controls="d-lala" onclick="flip('lala')">Lala</button></td>
+              <td data-l="Peak"><span class="cat ts">TS · 45 kt</span></td>
+              <td data-l="ACE">2.1</td>
+              <td data-l="Landfall">—</td>
+              <td data-l="Status"><span class="tip" tabindex="0" data-tip="A storm that never made landfall and just pissed off fish">Fish storm 🐟</span></td>
+            </tr>
+            <tr class="detail" id="d-lala" hidden>
+              <td colspan="5"><div class="mapbox">Track map — TS Lala · Aug 2–5 · peak 45 kt</div></td>
+            </tr>
+            <tr class="srow">
+              <td><button class="row-btn" aria-expanded="false" aria-controls="d-kiko" onclick="flip('kiko')">Kiko</button></td>
+              <td data-l="Peak"><span class="cat ts">TS · 50 kt</span></td>
+              <td data-l="ACE">1.9</td>
+              <td data-l="Landfall">Outer Banks, NC</td>
+              <td data-l="Status">Dissipated</td>
+            </tr>
+            <tr class="detail" id="d-kiko" hidden>
+              <td colspan="5"><div class="mapbox">Track map — TS Kiko · Jul 18–21 · landfall Outer Banks, NC</div></td>
+            </tr>
+          </tbody>
+        </table>
+        <!-- legend rendered ONCE per table -->
+        <div class="legend">
+          <span><i style="background:#62b6f0"></i>Tropical Storm</span>
+          <span><i style="background:#ffd166"></i>Hurricane (Cat 1–2)</span>
+          <span><i style="background:var(--bad)"></i>Major (Cat 3+)</span>
+          <span>🐟 Fish storm = no landfall</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- PACIFIC (simplified) -->
+    <section role="tabpanel" id="panel-pac" aria-labelledby="tab-pac" hidden>
+      <div class="hero">
+        <div class="ace-big">
+          <div class="n" style="color:var(--pac)">58.3</div>
+          <div class="cap">Season ACE · 44% of normal · #22 of 37 seasons</div>
+          <span class="badge">Below Normal</span>
+        </div>
+        <div class="pace"><div class="t">Cumulative ACE vs average</div>
+          <svg viewBox="0 0 300 100"><path d="M0,95 C90,85 180,60 300,15" fill="none" stroke="currentColor" opacity=".35" stroke-width="2" stroke-dasharray="4 4"/><path d="M0,96 C90,88 180,72 240,58" fill="none" stroke="var(--pac)" stroke-width="3"/><circle cx="240" cy="58" r="4" fill="var(--pac)"/></svg>
+        </div>
+      </div>
+      <div class="stats">
+        <div class="stat"><div class="l">Named Storms</div><div class="v">9</div><div class="s">avg by Aug 15: <b>10.1</b></div></div>
+        <div class="stat"><div class="l">Hurricanes</div><div class="v">3</div><div class="s">avg by Aug 15: <b>4.6</b></div></div>
+        <div class="stat"><div class="l">Majors</div><div class="v">1</div><div class="s">avg by Aug 15: <b>2.3</b></div></div>
+      </div>
+      <p style="color:var(--muted);font-size:14px;margin-top:16px">…same layout as Atlantic (mockup abbreviated).</p>
+    </section>
+  </main>
+
+  <footer>
+    <p><b>What is ACE?</b> <a href="#">Accumulated Cyclone Energy explained ▸</a></p>
+    <p>Data: NOAA HURDAT2 · NHC · CPC. Not maintained by meteorologists — see the <a href="#">NHC</a> for official guidance. Updated every 3 hours in season.</p>
+    <p>Enjoying the tracker this season? <a href="#">Support on Ko-fi ☕</a></p>
+  </footer>
+</div>
+
+<script>
+  function toggleTheme() {
+    var h = document.documentElement, b = document.getElementById('themeBtn');
+    var dark = h.getAttribute('data-theme') !== 'light';
+    h.setAttribute('data-theme', dark ? 'light' : 'dark');
+    b.textContent = dark ? '☾' : '☀︎';
+    b.setAttribute('aria-pressed', String(!dark));
+    b.setAttribute('aria-label', dark ? 'Switch to dark mode' : 'Switch to light mode');
+  }
+  function pick(which) {
+    var atl = which === 'atl';
+    document.getElementById('tab-atl').setAttribute('aria-selected', atl);
+    document.getElementById('tab-pac').setAttribute('aria-selected', !atl);
+    document.getElementById('panel-atl').hidden = !atl;
+    document.getElementById('panel-pac').hidden = atl;
+    history.replaceState(null, '', atl ? '#atlantic' : '#pacific');
+  }
+  function flip(id) {
+    var d = document.getElementById('d-' + id);
+    var b = document.getElementById('btn-' + id) || document.querySelector('[aria-controls="d-' + id + '"]');
+    var open = d.hidden;
+    d.hidden = !open;
+    b.setAttribute('aria-expanded', String(open));
+  }
+  function openStorm(id) {
+    pick('atl');
+    var d = document.getElementById('d-' + id);
+    if (d.hidden) flip(id);
+    d.scrollIntoView({ block: 'center' });
+  }
+  if (location.hash === '#pacific') pick('pac');
+</script>
+</body>
+</html>
