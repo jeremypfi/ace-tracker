@@ -47,7 +47,6 @@ BASINS = {
         'avg_named_storms': 14,
         'avg_hurricanes': 7,
         'avg_major_hurricanes': 3,
-        'all_time_single_storm_ace': {'name': 'San Ciriaco (1899)', 'ace': 73.6},
     },
     'pacific': {
         'name': 'East & Central Pacific',
@@ -61,7 +60,6 @@ BASINS = {
         'avg_named_storms': 15,
         'avg_hurricanes': 8,
         'avg_major_hurricanes': 4,
-        'all_time_single_storm_ace': {'name': 'Fico (1978)', 'ace': 62.8},
     }
 }
 
@@ -1090,6 +1088,19 @@ def find_similar_seasons(target_ace, yearly_totals, exclude_year=None):
 
 
 
+def find_highest_ace_storm(historical_storms):
+    """The single storm with the highest ACE since START_YEAR.
+
+    Computed dynamically from already-loaded data rather than a hardcoded
+    reference value — a hardcoded "all-time" constant is exactly what went
+    stale for the Pacific basin (see #117). Returns None if no data.
+    """
+    if not historical_storms:
+        return None
+    return max(historical_storms, key=lambda s: s['ace'])
+
+
+
 def find_storms_on_this_day(historical_storms, target_date=None):
     """Historical storms whose active track (start_date through end_date)
     covered target_date's calendar month/day in a past year.
@@ -1443,14 +1454,22 @@ def generate_insights(basin_key, current, yearly_totals, historical_storms, year
         last_year_total = yearly_totals[last_year]
         insights.append(f"📅 Last Year ({last_year}) Final Total: {last_year_total:.1f} ACE")
 
-    # 11. All-time single-storm record comparison
-    record = basin['all_time_single_storm_ace']
-    if storms:
+    # 11. Highest single-storm ACE since START_YEAR. Computed dynamically
+    # from historical_storms rather than a hardcoded reference value -- the
+    # previous hardcoded Pacific constant (Fico 1978, 62.8) had gone stale;
+    # Ioke (2006, 85.3) is actually the higher storm. See #117. Framed as
+    # "since START_YEAR" rather than "all-time" since pre-satellite-era
+    # (pre-1970s) intensity estimates aren't a reliable apples-to-apples
+    # comparison to modern storms.
+    record = find_highest_ace_storm(historical_storms)
+    if storms and record:
         leader_name = max(storms, key=storms.get)
         leader_ace = storms[leader_name]
         pct_of_record = leader_ace / record['ace'] * 100
         if pct_of_record > 50:
-            insights.append(f"🎯 {leader_name} at {pct_of_record:.0f}% of all-time single-storm record ({record['name']}: {record['ace']})")
+            insights.append(
+                f"🎯 {leader_name} at {pct_of_record:.0f}% of the highest single-storm ACE "
+                f"since {START_YEAR} ({record['name']} {record['year']}: {record['ace']:.1f})")
 
     # 12. On this day in hurricane history
     if historical_storms:
