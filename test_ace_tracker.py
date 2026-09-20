@@ -21,6 +21,7 @@ from ace_data import (
     calculate_yearly_totals,
     rank_current_season,
     find_similar_seasons,
+    find_highest_ace_storm,
     find_storms_on_this_day,
     calculate_same_date_stats,
     calculate_ace_pace,
@@ -376,6 +377,33 @@ class TestSameDateStats(unittest.TestCase):
         storms = self._make_storms()
         result = calculate_same_date_stats(storms, 'atlantic', datetime(2026, 6, 28))
         self.assertNotIn(2026, result['yearly_ace'])
+
+
+class TestHighestAceStorm(unittest.TestCase):
+    """Tests for find_highest_ace_storm() — the dynamic replacement for the
+    hardcoded all-time-record constant that went stale (#117)."""
+
+    def test_returns_highest_ace_storm(self):
+        storms = [
+            finalize_storm({
+                'id': 'EP061978', 'name': 'Fico', 'year': 1978,
+                'max_wind': 140, 'wind_readings': [140] * 10,
+                'start_date': datetime(1978, 7, 9), 'end_date': datetime(1978, 7, 23),
+                'landfall': [],
+            }),
+            finalize_storm({
+                'id': 'CP012006', 'name': 'Ioke', 'year': 2006,
+                'max_wind': 160, 'wind_readings': [160] * 14,
+                'start_date': datetime(2006, 8, 20), 'end_date': datetime(2006, 9, 6),
+                'landfall': [],
+            }),
+        ]
+        result = find_highest_ace_storm(storms)
+        self.assertEqual(result['name'], 'Ioke')
+
+    def test_returns_none_for_empty_input(self):
+        self.assertIsNone(find_highest_ace_storm([]))
+        self.assertIsNone(find_highest_ace_storm(None))
 
 
 class TestStormsOnThisDay(unittest.TestCase):
