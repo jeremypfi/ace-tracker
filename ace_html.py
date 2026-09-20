@@ -86,7 +86,7 @@ def _year_storm_list_html(storms_list):
 # ===============================================================================
 
 def _season_progress_html(basin_key, season_year):
-    today = datetime.now().date()
+    today = datetime.now(timezone.utc).date()
     if basin_key == 'atlantic':
         start = datetime(season_year, 6, 1).date()
         end = datetime(season_year, 11, 30).date()
@@ -126,7 +126,7 @@ def _preseason_html(basin_key, yearly_totals, current_year):
     avg_ace = sum(totals) / len(totals) if totals else 0
     max_year = max(yearly_totals, key=yearly_totals.get)
     min_year = min(yearly_totals, key=yearly_totals.get)
-    above_count = sum(1 for v in totals if v >= 127)
+    above_count = sum(1 for v in totals if v >= basin['noaa_thresholds']['near_normal_upper'])
     total_seasons = len(totals)
     last_year = current_year - 1
     last_ace = yearly_totals.get(last_year, 0)
@@ -178,6 +178,19 @@ def _ace_pace_html(pace, basin_key):
 # ===============================================================================
 # NHC ALERT BANNER
 # ===============================================================================
+
+def _stale_data_banner_html():
+    """Warning banner shown when live data was unavailable and the dashboard
+    is falling back to placeholder data (see BACKUP_DATA, #98)."""
+    return (
+        '<div class="nhc-alert">'
+        '<div class="nhc-alert-hdr">⚠ Live storm data is temporarily unavailable</div>'
+        '<div class="nhc-dist-desc">Showing placeholder data for this season — '
+        'named storms and ACE totals below are not current. Check back shortly.</div>'
+        '</div>'
+    )
+
+
 
 def _nhc_alert_html(disturbances):
     """Render the NHC tropical disturbance alert banner."""
@@ -400,7 +413,7 @@ def generate_dashboard_html(basin_data):
         hurricanes = sum(1 for d in details.values() if d.get('max_wind', 0) >= 64)
         majors = sum(1 for d in details.values() if d.get('max_wind', 0) >= 96)
 
-        preseason = not current['storms'] and current_year == datetime.now().year
+        preseason = not current['storms'] and current_year == datetime.now(timezone.utc).year
 
         if preseason:
             lower_section = _preseason_html(bd['basin_key'], yearly_totals, current_year)
@@ -467,6 +480,7 @@ def generate_dashboard_html(basin_data):
 
         disturbances   = fetch_nhc_disturbances(bd['basin_key'])
         nhc_alert      = _nhc_alert_html(disturbances)
+        stale_banner   = _stale_data_banner_html() if current.get('is_backup') else ''
 
         ace_pace = bd.get('ace_pace')
         pace_section = _ace_pace_html(ace_pace, bd['basin_key'])
@@ -475,8 +489,9 @@ def generate_dashboard_html(basin_data):
 
         sections.append(f'''
     <div class="basin-card{' active' if not sections else ''}" id="{bd['basin_key']}">
-      <h2>{basin['name']} — {current_year} Season</h2>
+      <h2>{html_escape(basin['name'])} — {current_year} Season</h2>
       {_season_progress_html(bd['basin_key'], current_year)}
+      {stale_banner}
       {nhc_alert}
       {stats_grid}
       {pace_section}
@@ -1044,13 +1059,13 @@ def generate_history_html(basin_data):
         majors = sum(1 for d in details.values() if d.get('max_wind', 0) >= 96)
         leader = max(current_storms, key=current_storms.get) if current_storms else '—'
         # Add current year row if season is active or has storm activity
-        today = datetime.now().date()
+        today = datetime.now(timezone.utc).date()
         if bd['basin_key'] == 'atlantic':
             _season_start = datetime(current_year, 6, 1).date()
         else:
             _season_start = datetime(current_year, 5, 15).date()
         _season_end = datetime(current_year, 11, 30).date()
-        _in_active_season = _season_start <= today <= _season_end and current_year == datetime.now().year
+        _in_active_season = _season_start <= today <= _season_end and current_year == datetime.now(timezone.utc).year
         if current_ace > 0 or named > 0 or _in_active_season:
             current_storms_list = sorted(
                 [{'name': n, 'ace': round(d.get('ace', 0), 2),
@@ -1148,7 +1163,7 @@ def generate_history_html(basin_data):
 
         basin_sections.append(f'''
     <div class="basin-card{' active' if not basin_sections else ''}" id="{bd['basin_key']}">
-      <h2>{basin['name']} — All Seasons ({START_YEAR}–{current_year})</h2>
+      <h2>{html_escape(basin['name'])} — All Seasons ({START_YEAR}–{current_year})</h2>
       <p class="season-note">{total_seasons} seasons &nbsp;·&nbsp; ● = currently active &nbsp;·&nbsp; <span style="border-left:3px solid #f9a825;padding-left:4px;">gold border</span> = top 5 all-time ACE &nbsp;·&nbsp; click headers to sort</p>
       <div class="table-wrap">
         <table class="hist-table">
