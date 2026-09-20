@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>aceofcanes.com — Redesign Direction Mockups (A / B / C)</title>
+<style>
+  /* ============ shared tokens, theme via data-theme ============ */
+  :root, [data-theme="dark"] {
+    --bg: #0d1b2a; --card: #16263a; --box: #1c2f47; --border: #2c4361;
+    --text: #e8eef5; --muted: #9db2c8; --strong: #ffffff;
+    --atl: #ff7043; --pac: #00c2a0;
+    --ok: #4caf7d; --warn: #ffb74d; --bad: #ef5350;
+    --shadow: 0 4px 18px rgba(0,0,0,.35);
+  }
+  [data-theme="light"] {
+    --bg: #f2f6fa; --card: #ffffff; --box: #eaf1f8; --border: #c9d8e6;
+    --text: #1a2d4a; --muted: #4d6470; --strong: #0b1a30;
+    --atl: #d84315; --pac: #00796b;
+    --ok: #2e7d4f; --warn: #b26a00; --bad: #c62828;
+    --shadow: 0 4px 14px rgba(30,60,90,.12);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.5; padding: 24px; transition: background .2s, color .2s;
+  }
+  .top {
+    display: flex; justify-content: space-between; align-items: center;
+    max-width: 1100px; margin: 0 auto 8px auto;
+  }
+  .top h1 { font-size: 22px; margin: 0; }
+  .theme-btn {
+    min-height: 44px; padding: 8px 18px; border-radius: 22px; cursor: pointer;
+    border: 1px solid var(--border); background: var(--card); color: var(--text);
+    font-size: 15px;
+  }
+  .intro { max-width: 1100px; margin: 0 auto 28px auto; color: var(--muted); font-size: 14px; }
+  .variant { max-width: 1100px; margin: 0 auto 48px auto; }
+  .variant > h2 {
+    font-size: 18px; border-bottom: 2px solid var(--border);
+    padding-bottom: 8px; margin-bottom: 4px;
+  }
+  .variant > p.note { color: var(--muted); font-size: 13px; margin-top: 4px; }
+  .board { display: grid; grid-template-columns: 2fr 1fr; gap: 18px; margin-top: 16px; }
+  @media (max-width: 800px) { .board { grid-template-columns: 1fr; } }
+  .panel { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px; }
+  .panel h4 { margin: 0 0 12px 0; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+
+  /* shared mock atoms */
+  .pill {
+    display: inline-flex; align-items: center; gap: 8px; font-size: 13px;
+    padding: 6px 14px; border-radius: 20px; margin-bottom: 14px;
+  }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--bad); animation: pulse 1.6s infinite; }
+  @media (prefers-reduced-motion: reduce) { .dot { animation: none; } }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .stat { border-radius: 10px; padding: 12px 14px; }
+  .stat .label { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  .stat .value { font-size: 26px; font-weight: 700; color: var(--strong); }
+  .stat .sub { font-size: 11.5px; color: var(--muted); }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .chip { font-size: 12.5px; padding: 5px 12px; border-radius: 16px; border: 1px solid var(--border); background: var(--box); }
+  .chip b { color: var(--strong); }
+  .storm-card { border-radius: 10px; padding: 12px 14px; margin-top: 12px; display: flex; justify-content: space-between; align-items: center; }
+  .storm-card .name { font-weight: 700; color: var(--strong); }
+  .storm-card .meta { font-size: 12px; color: var(--muted); }
+  .cat { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 12px; color: #14202e; }
+  .og {
+    border-radius: 10px; aspect-ratio: 1200/630; padding: 20px 24px;
+    display: flex; flex-direction: column; justify-content: space-between;
+    color: #fff; background: linear-gradient(135deg, #14283f 0%, #1d3a5c 100%);
+    border: 1px solid var(--border);
+  }
+  .og .site { font-size: 12px; letter-spacing: .1em; text-transform: uppercase; opacity: .8; }
+  .og .headline { font-size: 22px; font-weight: 800; line-height: 1.25; }
+  .og .row { display: flex; gap: 18px; font-size: 13px; }
+  .og .row b { display: block; font-size: 19px; }
+  .storm-page { border: 1px dashed var(--border); border-radius: 10px; padding: 14px; margin-top: 12px; font-size: 13px; }
+  .storm-page .crumb { color: var(--muted); font-size: 11.5px; }
+  .storm-page .title { font-size: 17px; font-weight: 800; color: var(--strong); margin: 4px 0 8px 0; }
+  .mapbox { background: var(--box); border-radius: 8px; height: 74px; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 12px; margin-top: 8px; }
+
+  /* ============ Variant A — Refined Current ============ */
+  .vA .pill { background: var(--box); border: 1px solid var(--atl); }
+  .vA .stat { background: var(--box); border: 1px solid var(--border); }
+  .vA .stat .value { color: var(--atl); }
+  .vA .basin-hdr {
+    background: linear-gradient(90deg, var(--atl), #ff9e6d);
+    color: #1a1a2e; font-weight: 800; padding: 10px 16px; border-radius: 10px 10px 0 0;
+    display: flex; justify-content: space-between; font-size: 15px;
+  }
+  .vA .storm-card { background: var(--box); border: 1px solid var(--border); }
+  .vA .cat { background: var(--warn); }
+
+  /* ============ Variant B — Data-Dense Clean ============ */
+  .vB .panel { border-radius: 6px; }
+  .vB .pill { background: transparent; border: 1px solid var(--bad); border-radius: 4px; }
+  .vB .stats { grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); }
+  .vB .stat { background: var(--card); border-radius: 0; }
+  .vB .stat .value { font-size: 22px; font-family: "SF Mono", Menlo, monospace; }
+  .vB .basin-hdr {
+    border-left: 4px solid var(--atl); padding: 8px 12px; font-weight: 700;
+    font-size: 14px; text-transform: uppercase; letter-spacing: .05em;
+    display: flex; justify-content: space-between;
+  }
+  .vB .storm-card { border: 1px solid var(--border); border-radius: 4px; background: var(--card); }
+  .vB .chip { border-radius: 4px; }
+  .vB .cat { border-radius: 3px; background: var(--warn); }
+  .vB .og { background: #101c2b; border-radius: 4px; }
+
+  /* ============ Variant C — Bold Cards ============ */
+  .vC .panel { border-radius: 18px; box-shadow: var(--shadow); border: none; }
+  .vC .pill { background: linear-gradient(90deg, var(--bad), #ff8a65); color: #fff; font-weight: 700; }
+  .vC .pill .dot { background: #fff; }
+  .vC .stat { background: var(--box); border-radius: 16px; box-shadow: var(--shadow); }
+  .vC .stat .value { font-size: 30px; }
+  .vC .basin-hdr {
+    background: var(--atl); color: #fff; font-weight: 800; padding: 12px 18px;
+    border-radius: 16px; font-size: 16px; display: flex; justify-content: space-between;
+    box-shadow: var(--shadow);
+  }
+  .vC .storm-card { background: var(--box); border-radius: 16px; box-shadow: var(--shadow); }
+  .vC .chip { border-radius: 20px; background: var(--box); border: none; box-shadow: var(--shadow); }
+  .vC .cat { border-radius: 14px; background: var(--warn); }
+  .vC .og { border-radius: 18px; background: linear-gradient(135deg, #ff7043 0%, #b23c17 100%); }
+</style>
+</head>
+<body>
+  <div class="top">
+    <h1>aceofcanes.com — redesign directions</h1>
+    <button class="theme-btn" id="themeBtn" aria-pressed="true" aria-label="Switch to light mode" onclick="toggleTheme()">☀ / ☾ Toggle theme</button>
+  </div>
+  <p class="intro">Three visual directions for the Phase 4 redesign wave. Use the toggle to compare dark and light mode — the theme toggle remains a permanent site feature in every direction. Each direction shows the same five new elements: active-storm pill, stat cards with climatological averages, similar-seasons chips, mobile storm card, OG social card, and the storm-page concept. Pick one direction; elements can be mixed if desired.</p>
+
+  <!-- ================= VARIANT A ================= -->
+  <section class="variant vA">
+    <h2>Direction A — Refined Current</h2>
+    <p class="note">Evolution of today's look: keeps the basin gradients and rounded cards, tightens spacing, solid accent numerals (per COLOR-01), AA-compliant muted text.</p>
+    <div class="board">
+      <div class="panel">
+        <h4>Dashboard</h4>
+        <span class="pill"><span class="dot"></span> 1 active storm: Hurricane Hernan (85 kt) →</span>
+        <div class="basin-hdr"><span>Atlantic 2026</span><span>ACE 3.1</span></div>
+        <div class="stats" style="margin-top:12px">
+          <div class="stat"><div class="label">Named Storms</div><div class="value">3</div><div class="sub">avg by Aug 15: 4.9</div></div>
+          <div class="stat"><div class="label">Hurricanes</div><div class="value">0</div><div class="sub">avg by Aug 15: 1.8</div></div>
+          <div class="stat"><div class="label">Majors</div><div class="value">0</div><div class="sub">avg by Aug 15: 0.7</div></div>
+        </div>
+        <div class="chips"><span class="chip">Similar seasons:</span><span class="chip"><b>2014</b> · 66.7</span><span class="chip"><b>1994</b> · 32.0</span><span class="chip"><b>2013</b> · 36.1</span></div>
+        <div class="storm-card"><div><div class="name">TS Lala</div><div class="meta">45 kt peak · 2.1 ACE · active 3 days</div></div><span class="cat">TS</span></div>
+      </div>
+      <div class="panel">
+        <h4>OG share card + storm page</h4>
+        <div class="og"><div class="site">aceofcanes.com</div><div class="headline">Atlantic 2026:<br>3.1 ACE — 3% of normal</div><div class="row"><span><b>3</b> named</span><span><b>0</b> hurricanes</span><span><b>#36</b> of 37</span></div></div>
+        <div class="storm-page"><div class="crumb">2026 Atlantic › Storms</div><div class="title">Tropical Storm Lala</div><div class="meta">Peak 45 kt · ACE 2.1 · Aug 9–12 · No landfall</div><div class="mapbox">track map</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= VARIANT B ================= -->
+  <section class="variant vB">
+    <h2>Direction B — Data-Dense Clean</h2>
+    <p class="note">Flat, tight, monospace numerals, square corners, single accent per basin as a rail. Reads like an instrument panel; most information per screen.</p>
+    <div class="board">
+      <div class="panel">
+        <h4>Dashboard</h4>
+        <span class="pill"><span class="dot"></span> ACTIVE: HERNAN 85KT</span>
+        <div class="basin-hdr"><span>Atlantic 2026</span><span>ACE 3.1 / 3%</span></div>
+        <div class="stats" style="margin-top:12px">
+          <div class="stat"><div class="label">Named</div><div class="value">3</div><div class="sub">avg 4.9</div></div>
+          <div class="stat"><div class="label">Hurr</div><div class="value">0</div><div class="sub">avg 1.8</div></div>
+          <div class="stat"><div class="label">Major</div><div class="value">0</div><div class="sub">avg 0.7</div></div>
+        </div>
+        <div class="chips"><span class="chip">SIMILAR:</span><span class="chip"><b>2014</b> 66.7</span><span class="chip"><b>1994</b> 32.0</span><span class="chip"><b>2013</b> 36.1</span></div>
+        <div class="storm-card"><div><div class="name">LALA</div><div class="meta">45kt · ACE 2.1 · 3d</div></div><span class="cat">TS</span></div>
+      </div>
+      <div class="panel">
+        <h4>OG share card + storm page</h4>
+        <div class="og"><div class="site">ACEOFCANES.COM</div><div class="headline">ATL 2026 — ACE 3.1<br>3% OF NORMAL</div><div class="row"><span><b>3</b> NAMED</span><span><b>0</b> HURR</span><span><b>#36</b>/37</span></div></div>
+        <div class="storm-page"><div class="crumb">2026 ATL / STORMS</div><div class="title">LALA — TS</div><div class="meta">PEAK 45KT · ACE 2.1 · AUG 9–12</div><div class="mapbox">track map</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= VARIANT C ================= -->
+  <section class="variant vC">
+    <h2>Direction C — Bold Cards</h2>
+    <p class="note">Bigger radii, soft shadows, large numerals, gradient reserved for the active-storm pill and share card. Friendliest on mobile; most visual change.</p>
+    <div class="board">
+      <div class="panel">
+        <h4>Dashboard</h4>
+        <span class="pill"><span class="dot"></span> Hurricane Hernan is active — 85 kt</span>
+        <div class="basin-hdr"><span>Atlantic 2026</span><span>ACE 3.1</span></div>
+        <div class="stats" style="margin-top:14px">
+          <div class="stat"><div class="label">Named Storms</div><div class="value">3</div><div class="sub">avg by now: 4.9</div></div>
+          <div class="stat"><div class="label">Hurricanes</div><div class="value">0</div><div class="sub">avg by now: 1.8</div></div>
+          <div class="stat"><div class="label">Majors</div><div class="value">0</div><div class="sub">avg by now: 0.7</div></div>
+        </div>
+        <div class="chips"><span class="chip">Similar: </span><span class="chip"><b>2014</b> → 66.7</span><span class="chip"><b>1994</b> → 32.0</span><span class="chip"><b>2013</b> → 36.1</span></div>
+        <div class="storm-card"><div><div class="name">Tropical Storm Lala</div><div class="meta">Peaked at 45 kt · 2.1 ACE · 3 days</div></div><span class="cat">TS</span></div>
+      </div>
+      <div class="panel">
+        <h4>OG share card + storm page</h4>
+        <div class="og"><div class="site">aceofcanes.com</div><div class="headline">Atlantic is at 3%<br>of a normal season</div><div class="row"><span><b>3.1</b> ACE</span><span><b>3</b> named</span><span><b>#36</b> of 37</span></div></div>
+        <div class="storm-page"><div class="crumb">2026 Atlantic</div><div class="title">Tropical Storm Lala</div><div class="meta">Peak 45 kt · ACE 2.1 · Aug 9–12 · Fish storm</div><div class="mapbox">track map</div></div>
+      </div>
+    </div>
+  </section>
+
+<script>
+  function toggleTheme() {
+    var h = document.documentElement, b = document.getElementById('themeBtn');
+    var dark = h.getAttribute('data-theme') !== 'light';
+    h.setAttribute('data-theme', dark ? 'light' : 'dark');
+    b.setAttribute('aria-pressed', String(!dark));
+    b.setAttribute('aria-label', dark ? 'Switch to dark mode' : 'Switch to light mode');
+  }
+</script>
+</body>
+</html>
