@@ -474,7 +474,7 @@ def generate_dashboard_html(basin_data):
             all_pace_data[bd['basin_key']] = ace_pace
 
         sections.append(f'''
-    <div class="basin-card" id="{bd['basin_key']}">
+    <div class="basin-card{' active' if not sections else ''}" id="{bd['basin_key']}">
       <h2>{basin['name']} — {current_year} Season</h2>
       {_season_progress_html(bd['basin_key'], current_year)}
       {nhc_alert}
@@ -623,7 +623,7 @@ def generate_dashboard_html(basin_data):
   @keyframes storm-highlight-flash {{ 0%,15% {{ background:var(--accent); }} 100% {{ background:transparent; }} }}
   .lf-cell {{ font-size:0.85em; color:var(--text); }}
   .dash-fish {{ color:var(--muted); font-style:italic; cursor:help; }}
-  .global-tip {{ display:none; position:fixed; background:var(--card-bg,#1a1a2e); color:var(--text); border:1px solid var(--border); padding:5px 11px; border-radius:6px; font-size:0.82em; pointer-events:none; z-index:9999; max-width:320px; line-height:1.4; box-shadow:0 2px 8px rgba(0,0,0,0.4); }}
+  .global-tip {{ display:none; position:fixed; top:0; left:0; background:var(--box); color:var(--text); border:1px solid var(--border); padding:5px 11px; border-radius:6px; font-size:0.82em; pointer-events:none; z-index:9999; max-width:320px; line-height:1.4; box-shadow:0 2px 8px rgba(0,0,0,0.4); }}
   .active-pulse {{ display:inline-block; width:7px; height:7px; border-radius:50%; background:#4caf50; box-shadow:0 0 0 0 rgba(76,175,80,0.7); animation:trpulse 1.5s infinite; flex-shrink:0; }}
   @keyframes trpulse {{ 0%{{box-shadow:0 0 0 0 rgba(76,175,80,0.7);}} 70%{{box-shadow:0 0 0 6px rgba(76,175,80,0);}} 100%{{box-shadow:0 0 0 0 rgba(76,175,80,0);}} }}
   tr.active-storm-row {{ border-left:3px solid #4caf50; }}
@@ -694,7 +694,6 @@ def generate_dashboard_html(basin_data):
   <p class="kofi-link"><a href="https://ko-fi.com/aceofcanes" target="_blank" rel="noopener noreferrer">☕ Support this project on Ko-fi</a></p>
 </div>
 <script>
-document.querySelectorAll('.basin-card')[0]?.classList.add('active');
 function show(id,btn) {{
   document.querySelectorAll('.basin-card').forEach(c=>c.classList.remove('active'));
   document.querySelectorAll('.toggle button').forEach(b=>b.classList.remove('active'));
@@ -954,10 +953,30 @@ function _toggleSpaghetti(slug){{
 <script>
 (function(){{
   var tip=document.getElementById('global-tip');
+  function posFromEvent(e){{
+    if(e.touches&&e.touches[0])return {{x:e.touches[0].clientX,y:e.touches[0].clientY}};
+    if(typeof e.clientX==='number'&&(e.clientX||e.clientY))return {{x:e.clientX,y:e.clientY}};
+    var r=e.currentTarget.getBoundingClientRect();
+    return {{x:r.left+r.width/2,y:r.top}};
+  }}
+  function move(e){{
+    var p=posFromEvent(e),w=tip.offsetWidth,h=tip.offsetHeight;
+    var x=Math.min(p.x+14,window.innerWidth-w-8);
+    var y=Math.max(p.y-h-8,8);
+    tip.style.transform='translate('+x+'px,'+y+'px)';
+  }}
   function show(e){{var t=e.currentTarget.getAttribute('data-tip');if(!t)return;tip.textContent=t;tip.style.display='block';move(e);}}
-  function move(e){{var x=e.clientX,y=e.clientY,w=tip.offsetWidth,h=tip.offsetHeight;tip.style.left=Math.min(x+14,window.innerWidth-w-8)+'px';tip.style.top=Math.max(y-h-8,8)+'px';}}
   function hide(){{tip.style.display='none';}}
-  document.querySelectorAll('[data-tip]').forEach(function(el){{el.addEventListener('mouseenter',show);el.addEventListener('mousemove',move);el.addEventListener('mouseleave',hide);}});
+  document.querySelectorAll('[data-tip]').forEach(function(el){{
+    el.addEventListener('mouseenter',show);
+    el.addEventListener('mousemove',move);
+    el.addEventListener('mouseleave',hide);
+    el.addEventListener('touchstart',show,{{passive:true}});
+    el.addEventListener('touchend',hide);
+    if(!el.hasAttribute('tabindex'))el.setAttribute('tabindex','0');
+    el.addEventListener('focus',show);
+    el.addEventListener('blur',hide);
+  }});
 }})();
 </script>
 <!-- Cloudflare Web Analytics --><script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{{"token": "775dfcf117b94ff59e3c118c330d02aa"}}'></script><!-- End Cloudflare Web Analytics -->
@@ -1035,7 +1054,8 @@ def generate_history_html(basin_data):
         if current_ace > 0 or named > 0 or _in_active_season:
             current_storms_list = sorted(
                 [{'name': n, 'ace': round(d.get('ace', 0), 2),
-                  'category': get_category(d.get('max_wind', 0)), 'max_wind': d.get('max_wind', 0)}
+                  'category': get_category(d.get('max_wind', 0)), 'max_wind': d.get('max_wind', 0),
+                  'landfall': d.get('landfall', [])}
                  for n, d in details.items()
                  if get_category(d.get('max_wind', 0)) != 'TD'],
                 key=lambda x: x['ace'], reverse=True
@@ -1127,7 +1147,7 @@ def generate_history_html(basin_data):
         )
 
         basin_sections.append(f'''
-    <div class="basin-card" id="{bd['basin_key']}">
+    <div class="basin-card{' active' if not basin_sections else ''}" id="{bd['basin_key']}">
       <h2>{basin['name']} — All Seasons ({START_YEAR}–{current_year})</h2>
       <p class="season-note">{total_seasons} seasons &nbsp;·&nbsp; ● = currently active &nbsp;·&nbsp; <span style="border-left:3px solid #f9a825;padding-left:4px;">gold border</span> = top 5 all-time ACE &nbsp;·&nbsp; click headers to sort</p>
       <div class="table-wrap">
@@ -1274,7 +1294,7 @@ def generate_history_html(basin_data):
   .ys-lf {{ display:block; font-size:0.82em; font-weight:400; color:var(--muted); font-style:italic; margin-top:1px; }}
   .ys-fish {{ color:var(--muted); opacity:0.7; cursor:help; }}
   .ys-cat {{ color:var(--muted); font-size:0.9em; cursor:help; text-decoration:underline dotted; text-underline-offset:2px; }}
-  .global-tip {{ display:none; position:fixed; background:var(--card-bg,#1a1a2e); color:var(--text); border:1px solid var(--border); padding:5px 11px; border-radius:6px; font-size:0.82em; pointer-events:none; z-index:9999; max-width:320px; line-height:1.4; box-shadow:0 2px 8px rgba(0,0,0,0.4); }}
+  .global-tip {{ display:none; position:fixed; top:0; left:0; background:var(--box); color:var(--text); border:1px solid var(--border); padding:5px 11px; border-radius:6px; font-size:0.82em; pointer-events:none; z-index:9999; max-width:320px; line-height:1.4; box-shadow:0 2px 8px rgba(0,0,0,0.4); }}
   .ys-ace {{ color:var(--accent); font-weight:bold; text-align:right; }}
   .ys-bar {{ height:4px; background:var(--gauge-bg); border-radius:2px; }}
   .ys-bar-fill {{ height:100%; background:var(--accent); border-radius:2px; }}
@@ -1315,7 +1335,6 @@ def generate_history_html(basin_data):
   <p class="kofi-link"><a href="https://ko-fi.com/aceofcanes" target="_blank" rel="noopener noreferrer">☕ Support this project on Ko-fi</a></p>
 </div>
 <script>
-document.querySelectorAll('.basin-card')[0]?.classList.add('active');
 function show(id,btn) {{
   document.querySelectorAll('.basin-card').forEach(c=>c.classList.remove('active'));
   document.querySelectorAll('.toggle button').forEach(b=>b.classList.remove('active'));
@@ -1372,10 +1391,30 @@ function toggleYear(key){{
 <script>
 (function(){{
   var tip=document.getElementById('global-tip');
+  function posFromEvent(e){{
+    if(e.touches&&e.touches[0])return {{x:e.touches[0].clientX,y:e.touches[0].clientY}};
+    if(typeof e.clientX==='number'&&(e.clientX||e.clientY))return {{x:e.clientX,y:e.clientY}};
+    var r=e.currentTarget.getBoundingClientRect();
+    return {{x:r.left+r.width/2,y:r.top}};
+  }}
+  function move(e){{
+    var p=posFromEvent(e),w=tip.offsetWidth,h=tip.offsetHeight;
+    var x=Math.min(p.x+14,window.innerWidth-w-8);
+    var y=Math.max(p.y-h-8,8);
+    tip.style.transform='translate('+x+'px,'+y+'px)';
+  }}
   function show(e){{var t=e.currentTarget.getAttribute('data-tip');if(!t)return;tip.textContent=t;tip.style.display='block';move(e);}}
-  function move(e){{var x=e.clientX,y=e.clientY,w=tip.offsetWidth,h=tip.offsetHeight;tip.style.left=Math.min(x+14,window.innerWidth-w-8)+'px';tip.style.top=Math.max(y-h-8,8)+'px';}}
   function hide(){{tip.style.display='none';}}
-  document.querySelectorAll('[data-tip]').forEach(function(el){{el.addEventListener('mouseenter',show);el.addEventListener('mousemove',move);el.addEventListener('mouseleave',hide);}});
+  document.querySelectorAll('[data-tip]').forEach(function(el){{
+    el.addEventListener('mouseenter',show);
+    el.addEventListener('mousemove',move);
+    el.addEventListener('mouseleave',hide);
+    el.addEventListener('touchstart',show,{{passive:true}});
+    el.addEventListener('touchend',hide);
+    if(!el.hasAttribute('tabindex'))el.setAttribute('tabindex','0');
+    el.addEventListener('focus',show);
+    el.addEventListener('blur',hide);
+  }});
 }})();
 </script>
 <!-- Cloudflare Web Analytics --><script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{{"token": "775dfcf117b94ff59e3c118c330d02aa"}}'></script><!-- End Cloudflare Web Analytics -->
