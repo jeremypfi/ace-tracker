@@ -14,7 +14,7 @@ python3 verify_pr.py
 
 Runs the unit tests, a syntax check, and a full tracker run in one pass —
 prints `OK: ...` on success, or the full diagnostic output for whichever
-check failed. All 59 unit tests must pass; the tracker run must generate
+check failed. All 67 unit tests must pass; the tracker run must generate
 both Excel files (`data/ACE_Tracker_Atlantic.xlsx`, `data/ACE_Tracker_Pacific.xlsx`)
 and the HTML dashboard (`data/ACE_Dashboard.html`) with no errors or NaN
 values. Use `python3 verify_pr.py --fast` to skip the live tracker run

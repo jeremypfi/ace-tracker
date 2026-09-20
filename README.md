@@ -32,11 +32,15 @@ Updated every 3 hours during hurricane season (Eastern Pacific: May 15 – Nov 3
 - **NHC development alert** — amber banner appears when NHC is tracking an area with Medium (≥40%) or High (≥70%) formation chances, with direct link to the NHC Tropical Weather Outlook
 - **Honest season comparisons** — Season Insights show both same-date historical averages (what's typical by this point in the season) and full-season averages, so early-season numbers aren't misleadingly compared against totals that take six months to accumulate
 - **Storm track maps** — interactive Leaflet maps per storm with intensity color-coding; expandable inline on the dashboard, with a loading indicator while tiles load
+- **Spaghetti model tracks** — active storms overlay multi-model forecast tracks on the storm map, toggleable per storm
+- **Wind speed unit toggle** — switch the dashboard between knots, mph, and km/h; persisted across visits, defaults to knots
 - **Shareable storm links** — copy a direct link to any storm on the dashboard via the 🔗 button on each row; opening the link auto-switches basin and expands that storm
 - **NHC forecast cone** — active storms show their official 5-day forecast cone graphic, fetched from NHC once per run and served from our own domain (not hotlinked)
 - **Season history page** — all seasons 1991–present in a sortable table with classification badges, top-5 highlights, per-year storm accordions with landfall data, and a long-term average row
 - **Similar seasons** — finds the 3 closest historical seasons by ACE accumulated through the same date
 - **Pace rank** — shows where this season ranks among all historical seasons at this same calendar date, alongside the full-season rank
+- **ACE pace chart** — plots the season's cumulative ACE against historical climatology (mean and 25th/75th percentile band) and last year's pace
+- **On this day in hurricane history** — Season Insights surface the strongest historical storm (by ACE) active on today's calendar date in a past season
 - **NOAA classifications** — Below Normal / Near Normal / Above Normal / Extremely Active
 - **Season projection widget** — shows the daily ACE rate needed for the rest of the season to reach each remaining NOAA classification by Nov 30
 
@@ -65,7 +69,7 @@ A long-lived major hurricane contributes far more ACE than a brief tropical stor
 
 ### Requirements
 
-- Python 3.10 or higher
+- Python 3.10, 3.11, or 3.12 (3.13+ isn't supported yet — see Troubleshooting)
 - Internet connection (for fetching live data)
 
 ### Installation
@@ -89,10 +93,11 @@ Generates in `data/`:
 ### Run tests
 
 ```bash
-python3 test_ace_tracker.py
+python3 test_ace_tracker.py     # unit + smoke tests
+python3 verify_pr.py            # unit tests + syntax check + a full live tracker run
 ```
 
-All 59 tests must pass before committing. Use the `/pre-commit` skill in Claude Code for the full checklist.
+All 67 tests must pass before committing. Use the `/pre-commit` skill in Claude Code for the full checklist.
 
 ---
 
@@ -103,7 +108,8 @@ ace-tracker/
 ├── ace_data.py             # Data fetch, ACE calc, plain-text report generation
 ├── ace_html.py             # Dashboard + history HTML rendering
 ├── ace_tracker.py          # CLI entrypoint — wires ace_data.py + ace_html.py together
-├── test_ace_tracker.py     # 59 unit + smoke tests
+├── test_ace_tracker.py     # 67 unit + smoke tests
+├── verify_pr.py            # Consolidated PR check: tests + syntax check + a live tracker run
 ├── requirements.txt        # Python dependencies
 ├── ace.png                 # Site logo (favicon + OG image)
 ├── ace_preview.png         # Social share preview image (copied into data/ at publish time)
@@ -174,7 +180,7 @@ The tracker falls back to `BACKUP_DATA` automatically. You'll see:
 The `landfall_cache.json` is built on the first run and cached by GitHub Actions. The first run after a fresh clone will geocode all historical storms (~1 min extra). Every subsequent run reads from cache.
 
 **`pkg_resources` deprecation warning**
-Tropycal uses `pkg_resources` which is deprecated in setuptools 81+. `requirements.txt` pins `setuptools<84` as a workaround. Monitor [Tropycal releases](https://github.com/tropycal/tropycal/releases) for a fix.
+Tropycal uses `pkg_resources` which is deprecated in setuptools 81+ and removed in setuptools 82+. `requirements.txt` pins `setuptools<85` as a workaround, and CI excludes Python 3.13+ for the same reason. Monitor [Tropycal releases](https://github.com/tropycal/tropycal/releases) for a fix.
 
 ---
 
