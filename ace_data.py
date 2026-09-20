@@ -1101,6 +1101,66 @@ def find_highest_ace_storm(historical_storms):
 
 
 
+def find_longest_lived_storm(historical_storms):
+    """The storm with the longest duration since START_YEAR. None if no
+    storm has duration data (e.g. missing start/end dates)."""
+    dated = [s for s in historical_storms if s.get('duration_days', 0) > 0]
+    if not dated:
+        return None
+    return max(dated, key=lambda s: s['duration_days'])
+
+
+
+# Saffir-Simpson-plus-TS/TD ordering, for ranking landfall intensity strings
+# produced by get_category().
+_CATEGORY_RANK = {'TD': 0, 'TS': 1, 'Cat 1': 2, 'Cat 2': 3, 'Cat 3': 4, 'Cat 4': 5, 'Cat 5': 6}
+
+
+def find_strongest_landfall(historical_storms):
+    """The highest-category storm landfall since START_YEAR.
+
+    Ties (e.g. multiple Cat 5 landfalls across different storms/years) are
+    common, so this reports a `tied_count` of how many other landfalls
+    share the top category rather than silently picking one arbitrarily.
+    Returns None if no storm has landfall data.
+    """
+    hits = [(storm, loc, cat) for storm in historical_storms
+            for loc, cat in storm.get('landfall', [])]
+    if not hits:
+        return None
+    best_rank = max(_CATEGORY_RANK.get(cat, -1) for _, _, cat in hits)
+    best_hits = [h for h in hits if _CATEGORY_RANK.get(h[2], -1) == best_rank]
+    storm, loc, cat = best_hits[0]
+    return {
+        'name': storm['name'], 'year': storm['year'],
+        'location': loc, 'category': cat,
+        'tied_count': len(best_hits) - 1,
+    }
+
+
+
+def find_earliest_forming_storm(historical_storms):
+    """The storm that formed earliest in the calendar year since
+    START_YEAR (e.g. a rare January/February formation), ranked by
+    day-of-year rather than day-into-season so pre-season storms compare
+    correctly. None if no storm has a start date."""
+    dated = [s for s in historical_storms if s.get('start_date')]
+    if not dated:
+        return None
+    return min(dated, key=lambda s: s['start_date'].timetuple().tm_yday)
+
+
+
+def find_latest_forming_storm(historical_storms):
+    """The storm that formed latest in the calendar year since START_YEAR
+    (e.g. a rare December formation). None if no storm has a start date."""
+    dated = [s for s in historical_storms if s.get('start_date')]
+    if not dated:
+        return None
+    return max(dated, key=lambda s: s['start_date'].timetuple().tm_yday)
+
+
+
 def find_storms_on_this_day(historical_storms, target_date=None):
     """Historical storms whose active track (start_date through end_date)
     covered target_date's calendar month/day in a past year.

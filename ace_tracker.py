@@ -11,6 +11,7 @@ ace_data.py; dashboard/history HTML rendering lives in ace_html.py.
 Output:
 - data/ACE_Dashboard.html  — current season dashboard (deployed to aceofcanes.com)
 - data/history.html        — all-seasons history page
+- data/records.html        — all-time-since-1991 storm records page
 
 Usage:
     python3 ace_tracker.py
@@ -37,7 +38,7 @@ from ace_data import (
     generate_discord_text,
     generate_console_report,
 )
-from ace_html import generate_dashboard_html, generate_history_html
+from ace_html import generate_dashboard_html, generate_history_html, generate_records_html
 
 # logging.basicConfig() lives in ace_data.py, which every import path here
 # (directly or via ace_html) already pulls in — see the comment there.
@@ -126,6 +127,7 @@ def process_basin(basin_key):
         'yearly_stats': yearly_stats,
         'insights': insights,
         'ace_pace': ace_pace,
+        'historical_storms': historical_storms,
     }
 
 
@@ -179,6 +181,17 @@ def main():
         except (OSError, PermissionError) as e:
             logger.error(f"Failed to save history page {history_path}: {e}")
             print(f"  ✗ Error: Could not save history page")
+
+        records_html = generate_records_html(basin_results)
+        records_path = os.path.join(OUTPUT_FOLDER, 'records.html')
+        try:
+            with open(records_path, 'w', encoding='utf-8') as f:
+                f.write(records_html)
+            output_files.append(records_path)
+            print(f"  ✓ Records page saved to: {records_path}")
+        except (OSError, PermissionError) as e:
+            logger.error(f"Failed to save records page {records_path}: {e}")
+            print(f"  ✗ Error: Could not save records page")
 
     print("\n" + "=" * 50)
     print("All done! Dashboard updated.")

@@ -22,6 +22,10 @@ from ace_data import (
     rank_current_season,
     find_similar_seasons,
     find_highest_ace_storm,
+    find_longest_lived_storm,
+    find_strongest_landfall,
+    find_earliest_forming_storm,
+    find_latest_forming_storm,
     find_storms_on_this_day,
     calculate_same_date_stats,
     calculate_ace_pace,
@@ -31,7 +35,7 @@ from ace_data import (
     ACE_STATUSES,
     MIN_NAMED_STORM_WIND,
 )
-from ace_html import generate_dashboard_html, generate_history_html
+from ace_html import generate_dashboard_html, generate_history_html, generate_records_html
 
 
 class TestStormCategories(unittest.TestCase):
@@ -406,6 +410,81 @@ class TestHighestAceStorm(unittest.TestCase):
         self.assertIsNone(find_highest_ace_storm(None))
 
 
+class TestBasinRecords(unittest.TestCase):
+    """Tests for the records-page helpers (#63): longest-lived storm,
+    strongest landfall, and earliest/latest-forming storm."""
+
+    def _make_storms(self):
+        return [
+            finalize_storm({
+                'id': 'AL012003', 'name': 'Ana', 'year': 2003,
+                'max_wind': 40, 'wind_readings': [40, 40],
+                'start_date': datetime(2003, 4, 20), 'end_date': datetime(2003, 4, 24),
+                'landfall': [],
+            }),
+            finalize_storm({
+                'id': 'AL122005', 'name': 'Katrina', 'year': 2005,
+                'max_wind': 150, 'wind_readings': [150, 150],
+                'start_date': datetime(2005, 8, 23), 'end_date': datetime(2005, 8, 30),
+                'landfall': [('Louisiana', 'Cat 3'), ('Florida', 'Cat 1')],
+            }),
+            finalize_storm({
+                'id': 'EP092018', 'name': 'Willa', 'year': 2018,
+                'max_wind': 140, 'wind_readings': [140, 140],
+                'start_date': datetime(2018, 10, 20), 'end_date': datetime(2018, 10, 24),
+                'landfall': [('Sinaloa', 'Cat 5')],
+            }),
+            finalize_storm({
+                'id': 'AL222005', 'name': 'Zeta', 'year': 2005,
+                'max_wind': 55, 'wind_readings': [55] * 20,
+                'start_date': datetime(2005, 12, 30), 'end_date': datetime(2006, 1, 20),
+                'landfall': [],
+            }),
+        ]
+
+    def test_longest_lived_storm(self):
+        result = find_longest_lived_storm(self._make_storms())
+        self.assertEqual(result['name'], 'Zeta')
+
+    def test_longest_lived_ignores_zero_duration(self):
+        storms = [{'name': 'NoDuration', 'duration_days': 0, 'ace': 5}]
+        self.assertIsNone(find_longest_lived_storm(storms))
+
+    def test_strongest_landfall_picks_highest_category(self):
+        result = find_strongest_landfall(self._make_storms())
+        self.assertEqual(result['name'], 'Willa')
+        self.assertEqual(result['category'], 'Cat 5')
+        self.assertEqual(result['location'], 'Sinaloa')
+        self.assertEqual(result['tied_count'], 0)
+
+    def test_strongest_landfall_counts_ties(self):
+        storms = self._make_storms() + [finalize_storm({
+            'id': 'EP102018', 'name': 'Vito', 'year': 2018,
+            'max_wind': 140, 'wind_readings': [140],
+            'start_date': datetime(2018, 10, 1), 'end_date': datetime(2018, 10, 3),
+            'landfall': [('Jalisco', 'Cat 5')],
+        })]
+        result = find_strongest_landfall(storms)
+        self.assertEqual(result['tied_count'], 1)
+
+    def test_strongest_landfall_none_without_landfall_data(self):
+        storms = [finalize_storm({
+            'id': 'X', 'name': 'Fish', 'year': 2020, 'max_wind': 50,
+            'wind_readings': [50], 'start_date': datetime(2020, 6, 1),
+            'end_date': datetime(2020, 6, 3), 'landfall': [],
+        })]
+        self.assertIsNone(find_strongest_landfall(storms))
+
+    def test_earliest_and_latest_forming_storm(self):
+        storms = self._make_storms()
+        self.assertEqual(find_earliest_forming_storm(storms)['name'], 'Ana')
+        self.assertEqual(find_latest_forming_storm(storms)['name'], 'Zeta')
+
+    def test_forming_storm_none_without_start_date(self):
+        self.assertIsNone(find_earliest_forming_storm([{'start_date': None}]))
+        self.assertIsNone(find_latest_forming_storm([{'start_date': None}]))
+
+
 class TestStormsOnThisDay(unittest.TestCase):
     """Tests for find_storms_on_this_day() — the 'on this day' history insight."""
 
@@ -666,6 +745,17 @@ class TestHTMLGeneration(unittest.TestCase):
         self.assertIn('<!DOCTYPE html>', result)
         self.assertIn('All Seasons', result)
         self.assertIn('2005', result)
+
+    def test_records_html_generates(self):
+        """generate_records_html() runs without error, returns non-empty
+        HTML, and surfaces records derived from the fixture's storms (#63)."""
+        basin_data = self._make_basin_data()
+        result = generate_records_html(basin_data)
+        self.assertIsInstance(result, str)
+        self.assertIn('<!DOCTYPE html>', result)
+        # Katrina (2005) is the fixture's highest-ACE and only-landfall storm
+        self.assertIn('Katrina', result)
+        self.assertIn('Records Since', result)
 
     def test_leaflet_sri_hashes_present(self):
         """Dashboard HTML contains the correct full SRI hashes for Leaflet.

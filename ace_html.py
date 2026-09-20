@@ -21,6 +21,12 @@ from ace_data import (
     rank_current_season,
     fetch_nhc_disturbances,
     fetch_active_storm_cones,
+    find_highest_ace_storm,
+    find_longest_lived_storm,
+    find_strongest_landfall,
+    find_earliest_forming_storm,
+    find_latest_forming_storm,
+    _portable_strftime,
 )
 
 logger = logging.getLogger(__name__)
@@ -552,7 +558,7 @@ def generate_dashboard_html(basin_data):
   .header-actions {{ grid-column:3; justify-self:end; display:flex; gap:6px; align-items:center; }}
   .theme-btn, .unit-btn {{ background:transparent; border:1px solid var(--accent); color:var(--accent); border-radius:20px; padding:4px 10px; cursor:pointer; font-size:0.9em; }}
   .updated {{ text-align:center; color:var(--muted); font-size:0.8em; margin-bottom:8px; }}
-  .nav-link {{ text-align:center; margin-bottom:12px; }}
+  .nav-link {{ text-align:center; margin-bottom:12px; display:flex; justify-content:center; gap:8px; flex-wrap:wrap; }}
   .nav-link a {{ color:var(--accent); text-decoration:none; font-size:0.85em; border:1px solid var(--accent); border-radius:20px; padding:4px 14px; }}
   .nav-link a:hover {{ background:var(--accent); color:var(--bg); }}
   .ace-explain {{ background:var(--box); border-radius:8px; padding:10px 14px; margin-bottom:14px; font-size:0.85em; }}
@@ -693,7 +699,7 @@ def generate_dashboard_html(basin_data):
   </div>
 </div>
 <div class="updated">Updated: {now.strftime('%B %d, %Y at %H:%M UTC')}</div>
-<div class="nav-link"><a href="history.html">📊 Season History ({START_YEAR}–present)</a></div>
+<div class="nav-link"><a href="history.html">📊 Season History ({START_YEAR}–present)</a><a href="records.html">🏆 Records</a></div>
 <details class="ace-explain">
   <summary>What is ACE? <span class="ace-explain-hint">(tap to expand)</span></summary>
   <p>Accumulated Cyclone Energy (ACE) measures total hurricane season activity by combining storm intensity and duration. A major hurricane that lasts two weeks contributes far more than a brief tropical storm. NOAA uses seasonal ACE totals to classify years as <b>Below Normal</b> (&lt;73), <b>Near Normal</b> (73–126), <b>Above Normal</b> (126–159), or <b>Extremely Active</b> (159+).</p>
@@ -1282,7 +1288,7 @@ def generate_history_html(basin_data):
   .logo {{ height:1.5em; width:auto; vertical-align:middle; }}
   .theme-btn {{ grid-column:3; justify-self:end; background:transparent; border:1px solid var(--accent); color:var(--accent); border-radius:20px; padding:4px 10px; cursor:pointer; font-size:0.9em; }}
   .updated {{ text-align:center; color:var(--muted); font-size:0.8em; margin-bottom:8px; }}
-  .nav-link {{ text-align:center; margin-bottom:12px; }}
+  .nav-link {{ text-align:center; margin-bottom:12px; display:flex; justify-content:center; gap:8px; flex-wrap:wrap; }}
   .nav-link a {{ color:var(--accent); text-decoration:none; font-size:0.85em; border:1px solid var(--accent); border-radius:20px; padding:4px 14px; }}
   .nav-link a:hover {{ background:var(--accent); color:var(--bg); }}
   .ace-explain {{ background:var(--box); border-radius:8px; padding:10px 14px; margin-bottom:14px; font-size:0.85em; }}
@@ -1368,7 +1374,7 @@ def generate_history_html(basin_data):
   <button class="theme-btn" id="themeBtn" onclick="toggleTheme()">☀</button>
 </div>
 <div class="updated">Updated: {now.strftime('%B %d, %Y at %H:%M UTC')}</div>
-<div class="nav-link"><a href="index.html">← Current Season</a></div>
+<div class="nav-link"><a href="index.html">← Current Season</a><a href="records.html">🏆 Records</a></div>
 <details class="ace-explain">
   <summary>What is ACE? <span class="ace-explain-hint">(tap to expand)</span></summary>
   <p>Accumulated Cyclone Energy (ACE) measures total hurricane season activity by combining storm intensity and duration. A major hurricane that lasts two weeks contributes far more than a brief tropical storm. NOAA uses seasonal ACE totals to classify years as <b>Below Normal</b> (&lt;73), <b>Near Normal</b> (73–126), <b>Above Normal</b> (126–159), or <b>Extremely Active</b> (159+).</p>
@@ -1485,3 +1491,207 @@ function toggleYear(key){{
     return html
 
 
+
+
+# ===============================================================================
+# RECORDS PAGE
+# ===============================================================================
+
+def _record_card_html(emoji, label, value, sub):
+    sub_html = f'<div class="rc-sub">{sub}</div>' if sub else ''
+    return (
+        f'<div class="record-card">'
+        f'<div class="rc-label">{emoji} {label}</div>'
+        f'<div class="rc-value">{value}</div>'
+        f'{sub_html}'
+        f'</div>'
+    )
+
+
+def generate_records_html(basin_data):
+    """Generate the all-time-since-START_YEAR storm records page.
+
+    Records are computed dynamically from historical_storms rather than
+    hardcoded -- a hardcoded "all-time" record constant is exactly what went
+    stale for the Pacific single-storm ACE record (see #117), so this page
+    is scoped to "since START_YEAR" throughout rather than "all-time":
+    pre-satellite-era (pre-1970s) intensity estimates aren't a reliable
+    apples-to-apples comparison to modern storms.
+    """
+    now = datetime.now(timezone.utc)
+
+    basin_sections = []
+    for bd in basin_data:
+        if not bd:
+            continue
+        basin = BASINS[bd['basin_key']]
+        historical_storms = bd.get('historical_storms') or []
+
+        cards = []
+
+        highest_ace = find_highest_ace_storm(historical_storms)
+        if highest_ace:
+            cards.append(_record_card_html(
+                '🎯', 'Highest Single-Storm ACE',
+                f"{html_escape(highest_ace['name'])} ({highest_ace['year']})",
+                f"{highest_ace['ace']:.1f} ACE"))
+
+        longest = find_longest_lived_storm(historical_storms)
+        if longest:
+            cards.append(_record_card_html(
+                '⏱️', 'Longest-Lived Storm',
+                f"{html_escape(longest['name'])} ({longest['year']})",
+                f"{longest['duration_days']} days"))
+
+        landfall = find_strongest_landfall(historical_storms)
+        if landfall:
+            tied_note = ''
+            if landfall['tied_count'] > 0:
+                plural = 's' if landfall['tied_count'] > 1 else ''
+                tied_note = f" (+{landfall['tied_count']} other {landfall['category']} landfall{plural})"
+            cards.append(_record_card_html(
+                '🌊', 'Strongest Landfall',
+                f"{html_escape(landfall['name'])} ({landfall['year']})",
+                f"{landfall['category']} at {html_escape(landfall['location'])}{tied_note}"))
+
+        earliest = find_earliest_forming_storm(historical_storms)
+        if earliest:
+            cards.append(_record_card_html(
+                '📅', 'Earliest-Forming Storm',
+                f"{html_escape(earliest['name'])} ({earliest['year']})",
+                f"Formed {_portable_strftime(earliest['start_date'], '%B %-d')}"))
+
+        latest = find_latest_forming_storm(historical_storms)
+        if latest:
+            cards.append(_record_card_html(
+                '📅', 'Latest-Forming Storm',
+                f"{html_escape(latest['name'])} ({latest['year']})",
+                f"Formed {_portable_strftime(latest['start_date'], '%B %-d, %Y')}"))
+
+        basin_sections.append(f'''
+    <div class="basin-card{' active' if not basin_sections else ''}" id="{bd['basin_key']}">
+      <h2>{html_escape(basin['name'])} — Records Since {START_YEAR}</h2>
+      <p class="season-note">Scoped to {START_YEAR}–present, matching the rest of the site — pre-satellite-era storms (pre-1970s) aren't included since their intensity estimates aren't a reliable comparison to modern measurements.</p>
+      <div class="records-grid">{''.join(cards)}</div>
+    </div>''')
+
+    html = f'''<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="All-time hurricane records since 1991 for the Atlantic and Eastern Pacific: highest single-storm ACE, longest-lived storm, strongest landfall, and earliest/latest-forming named storms.">
+<meta name="theme-color" content="#4fc3f7">
+<link rel="canonical" href="https://aceofcanes.com/records.html">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="ACE Tracker">
+<meta property="og:url" content="https://aceofcanes.com/records.html">
+<meta property="og:title" content="Hurricane Records Since 1991 | aceofcanes.com">
+<meta property="og:description" content="All-time hurricane records since 1991 for the Atlantic and Eastern Pacific: highest single-storm ACE, longest-lived storm, strongest landfall, and earliest/latest-forming named storms.">
+<meta property="og:image" content="https://aceofcanes.com/ace_preview.png">
+<meta property="og:image:width" content="766">
+<meta property="og:image:height" content="976">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Hurricane Records Since 1991 | aceofcanes.com">
+<meta name="twitter:description" content="All-time hurricane records since 1991 for the Atlantic and Eastern Pacific: highest single-storm ACE, longest-lived storm, strongest landfall, and earliest/latest-forming named storms.">
+<meta name="twitter:image" content="https://aceofcanes.com/ace_preview.png">
+<link rel="icon" type="image/png" href="ace.png">
+<title>Hurricane Records Since 1991 | aceofcanes.com</title>
+<script>(function(){{try{{var t=localStorage.getItem('ace-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light');else if(!t&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches)document.documentElement.setAttribute('data-theme','light');}}catch(e){{}}}})();</script>
+<style>
+  :root {{
+    --bg:#0a1628; --card:#132238; --box:#1a2d4a; --accent:#4fc3f7;
+    --text:#e0e6ed; --text-strong:#ffffff; --muted:#78909c; --border:#1e3a5f;
+    --sources-bg:#0d1b2a;
+  }}
+  [data-theme="light"] {{
+    --bg:#f0f4f8; --card:#ffffff; --box:#e8f0fe; --accent:#0277bd;
+    --text:#1a2d4a; --text-strong:#0a1628; --muted:#607d8b; --border:#b0bec5;
+    --sources-bg:#e2ecf7;
+  }}
+  * {{ margin:0; padding:0; box-sizing:border-box; }}
+  body {{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:var(--bg); color:var(--text); padding:12px; transition:background 0.2s,color 0.2s; }}
+  .header {{ display:grid; grid-template-columns:1fr auto 1fr; align-items:center; margin:8px 0; padding:0 4px; }}
+  h1 {{ grid-column:2; color:var(--accent); font-size:1.4em; text-align:center; display:flex; align-items:center; justify-content:center; gap:8px; }}
+  .logo {{ height:1.5em; width:auto; vertical-align:middle; }}
+  .theme-btn {{ grid-column:3; justify-self:end; background:transparent; border:1px solid var(--accent); color:var(--accent); border-radius:20px; padding:4px 10px; cursor:pointer; font-size:0.9em; }}
+  .updated {{ text-align:center; color:var(--muted); font-size:0.8em; margin-bottom:8px; }}
+  .nav-link {{ text-align:center; margin-bottom:12px; display:flex; justify-content:center; gap:8px; flex-wrap:wrap; }}
+  .nav-link a {{ color:var(--accent); text-decoration:none; font-size:0.85em; border:1px solid var(--accent); border-radius:20px; padding:4px 14px; }}
+  .nav-link a:hover {{ background:var(--accent); color:var(--bg); }}
+  .toggle {{ display:flex; justify-content:center; gap:8px; margin-bottom:16px; }}
+  .toggle button {{ padding:8px 20px; border:1px solid var(--accent); background:transparent; color:var(--accent); border-radius:20px; cursor:pointer; font-size:0.9em; }}
+  .toggle button.active {{ background:var(--accent); color:var(--bg); font-weight:bold; }}
+  .basin-card {{ background:var(--card); border-radius:12px; padding:16px; margin-bottom:16px; display:none; }}
+  .basin-card.active {{ display:block; }}
+  h2 {{ color:var(--accent); font-size:1.2em; margin-bottom:6px; border-bottom:1px solid var(--border); padding-bottom:8px; }}
+  .season-note {{ color:var(--muted); font-size:0.78em; margin-bottom:14px; }}
+  .records-grid {{ display:grid; grid-template-columns:1fr; gap:10px; }}
+  @media(min-width:600px) {{ .records-grid {{ grid-template-columns:1fr 1fr; }} }}
+  .record-card {{ background:var(--box); border-radius:10px; padding:14px 16px; }}
+  .rc-label {{ color:var(--muted); font-size:0.72em; text-transform:uppercase; margin-bottom:6px; }}
+  .rc-value {{ color:var(--text-strong); font-size:1.05em; font-weight:bold; }}
+  .rc-sub {{ color:var(--muted); font-size:0.85em; margin-top:4px; }}
+  .sources {{ background:var(--sources-bg); border-top:1px solid var(--border); margin-top:24px; padding:16px 12px; border-radius:8px; }}
+  .sources h4 {{ color:var(--muted); font-size:0.8em; text-transform:uppercase; margin-bottom:8px; }}
+  .sources a {{ color:var(--accent); text-decoration:none; font-size:0.78em; }}
+  .sources a:hover {{ text-decoration:underline; }}
+  .sources p {{ color:var(--muted); font-size:0.75em; margin-top:8px; line-height:1.5; }}
+  .sources ul {{ list-style:none; padding:0; margin:0; }}
+  .sources li {{ color:var(--muted); font-size:0.78em; margin:4px 0; padding-left:12px; position:relative; }}
+  .sources li::before {{ content:"•"; position:absolute; left:0; color:var(--accent); }}
+  .disclaimer {{ margin-top:12px; padding:10px 12px; border-radius:6px; border-left:3px solid var(--muted); font-size:0.75em; color:var(--muted); line-height:1.5; }}
+  .kofi-link {{ text-align:center; margin-top:14px; font-size:0.78em; }}
+  .kofi-link a {{ color:var(--muted); text-decoration:none; }}
+  .kofi-link a:hover {{ color:var(--accent); }}
+  @media(min-width:768px) {{ body {{ max-width:960px; margin:0 auto; padding:24px; }} }}
+  @media(min-width:1100px) {{ body {{ max-width:1280px; }} }}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1><img src="ace.png" class="logo" alt="ACE"> Hurricane Records</h1>
+  <button class="theme-btn" id="themeBtn" onclick="toggleTheme()">☀</button>
+</div>
+<div class="updated">Updated: {now.strftime('%B %d, %Y at %H:%M UTC')}</div>
+<div class="nav-link"><a href="index.html">← Current Season</a><a href="history.html">Season History</a></div>
+<div class="toggle">
+  <button class="active" onclick="show('atlantic',this)">Atlantic</button>
+  <button onclick="show('pacific',this)">E/C Pacific</button>
+</div>
+{''.join(basin_sections)}
+<div class="sources">
+  <h4>Data Sources</h4>
+  <ul>
+    <li><a href="https://www.nhc.noaa.gov/data/#hurdat" target="_blank" rel="noopener noreferrer">NOAA HURDAT2</a> — Official historical best-track database (1991–present) for all storm tracks, wind speeds, and ACE calculations</li>
+  </ul>
+  <p>ACE (Accumulated Cyclone Energy) is calculated at 6-hourly synoptic times (0000/0600/1200/1800 UTC) for systems with status TS, HU, or SS and wind ≥34 kt. Formula: ACE = Σ(V²<sub>max</sub>) × 10⁻⁴. Landfall category reflects the storm's intensity at the moment of landfall, not its peak intensity.</p>
+  <p class="disclaimer">⚠️ This site is maintained by a hurricane data enthusiast — not a meteorologist, forecaster, or weather professional of any kind. All information is sourced directly from official NOAA/NHC databases. For official forecasts, watches, warnings, and life-safety information, always refer to the <a href="https://www.nhc.noaa.gov/" target="_blank" rel="noopener noreferrer">National Hurricane Center</a>.</p>
+  <p class="kofi-link"><a href="https://ko-fi.com/aceofcanes" target="_blank" rel="noopener noreferrer">☕ Support this project on Ko-fi</a></p>
+</div>
+<script>
+function show(id,btn) {{
+  document.querySelectorAll('.basin-card').forEach(c=>c.classList.remove('active'));
+  document.querySelectorAll('.toggle button').forEach(b=>b.classList.remove('active'));
+  document.getElementById(id)?.classList.add('active');
+  btn.classList.add('active');
+  try{{history.replaceState(null,'','#'+id);}}catch(e){{}}
+}}
+function toggleTheme() {{
+  var h=document.documentElement;
+  var light=h.getAttribute('data-theme')==='light';
+  h.setAttribute('data-theme',light?'dark':'light');
+  try{{localStorage.setItem('ace-theme',light?'dark':'light');}}catch(e){{}}
+  document.getElementById('themeBtn').textContent=light?'☀':'☾';
+}}
+document.addEventListener('DOMContentLoaded',function() {{
+  document.getElementById('themeBtn').textContent=document.documentElement.getAttribute('data-theme')==='light'?'☾':'☀';
+  var hash=location.hash.replace('#','');
+  var match=[].slice.call(document.querySelectorAll('.toggle button')).filter(function(b){{return(b.getAttribute('onclick')||'').indexOf("'"+hash+"'")>=0;}})[0];
+  if(match)match.click();
+}});
+</script>
+<!-- Cloudflare Web Analytics --><script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{{"token": "775dfcf117b94ff59e3c118c330d02aa"}}'></script><!-- End Cloudflare Web Analytics -->
+</body>
+</html>'''
+    return html
