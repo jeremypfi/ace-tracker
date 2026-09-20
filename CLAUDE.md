@@ -36,6 +36,8 @@ Same thresholds for both Atlantic and Eastern Pacific:
 ```bash
 python3 ace_tracker.py        # generates HTML files in data/
 python3 test_ace_tracker.py   # 59 tests — ALL must pass before committing
+python3 verify_pr.py          # unit tests + syntax check + live tracker run in one pass/fail summary
+python3 verify_pr.py --fast   # unit tests + syntax check only, skips the live tracker run
 pip3 install -r requirements.txt
 ```
 
