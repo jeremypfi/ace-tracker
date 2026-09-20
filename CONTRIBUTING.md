@@ -21,7 +21,7 @@ Thanks for your interest in contributing! This is a personal project, but contri
 1. Fork the repository
 2. Create a new branch: `git checkout -b feature-name`
 3. Make your changes
-4. Run tests: `python3 test_ace_tracker.py`
+4. Run tests: `python3 test_ace_tracker.py` (or `python3 verify_pr.py` to also run a syntax check and a full tracker run in one pass)
 5. Commit with clear message: `git commit -m "Add feature: description"`
 6. Push to your fork: `git push origin feature-name`
 7. Open a Pull Request

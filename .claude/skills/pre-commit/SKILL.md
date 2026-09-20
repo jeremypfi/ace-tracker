@@ -6,26 +6,21 @@ disable-model-invocation: false
 
 # Pre-Commit Quality Checklist
 
-## 1. Run All Tests
+## 1. Run Verification
 
 ```bash
-python3 test_ace_tracker.py
+python3 verify_pr.py
 ```
 
-All 59 tests must pass. If any fail: fix before committing.
+Runs the unit tests, a syntax check, and a full tracker run in one pass —
+prints `OK: ...` on success, or the full diagnostic output for whichever
+check failed. All 59 unit tests must pass; the tracker run must generate
+both Excel files (`data/ACE_Tracker_Atlantic.xlsx`, `data/ACE_Tracker_Pacific.xlsx`)
+and the HTML dashboard (`data/ACE_Dashboard.html`) with no errors or NaN
+values. Use `python3 verify_pr.py --fast` to skip the live tracker run
+during quick iteration.
 
-## 2. Run the Full Tracker
-
-```bash
-python3 ace_tracker.py
-```
-
-Verify:
-- Both Excel files generate: `data/ACE_Tracker_Atlantic.xlsx`, `data/ACE_Tracker_Pacific.xlsx`
-- HTML dashboard generates: `data/ACE_Dashboard.html`
-- Console output shows valid data — no zeros or NaN values
-
-## 3. Security Check
+## 2. Security Check
 
 ```bash
 git status
@@ -34,7 +29,7 @@ git diff
 
 Verify: no API keys, credentials, personal file paths, or `.env` files staged.
 
-## 4. Commit Message
+## 3. Commit Message
 
 ```
 Brief summary (50 chars or less)
