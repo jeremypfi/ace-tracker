@@ -9,8 +9,11 @@ computes Accumulated Cyclone Energy, and builds Discord/console report text.
 import os
 import json
 import logging
+import tempfile
+import urllib.request
 from datetime import datetime, timedelta, timezone
 import tropycal.tracks as tracks
+from tropycal.tracks.tools import find_latest_hurdat_files
 
 # Configured here (not just in the ace_tracker.py entrypoint) so that any
 # direct import of this module — e.g. test_ace_tracker.py, or a future
@@ -467,6 +470,77 @@ def _tropycal_basin_name(basin_key):
 
 
 
+def _sanitize_hurdat_file(url):
+    """Download a HURDAT2 master file and drop any data row whose lat/lon
+    fields aren't cleanly parseable, returning a local file path.
+
+    NOAA's master HURDAT2 file has shipped with malformed rows before (e.g.
+    a merged lat+lon field for AL211969 in the Sept 2026 revision) that crash
+    Tropycal's parser outright and take down the *entire* basin's data, not
+    just the one bad storm. Dropping a handful of bad synoptic observations
+    from a decades-old storm costs nothing; a crashed parser costs the whole
+    dashboard. Raises on download failure so the caller can fall back to
+    Tropycal's own 'fetch' path.
+    """
+    with urllib.request.urlopen(url, timeout=30) as resp:
+        raw = resp.read().decode('utf-8', errors='replace')
+
+    dropped = 0
+    kept_lines = []
+    for line in raw.splitlines():
+        tokens = line.replace(' ', '').split(',')
+        is_header = bool(tokens[0]) and tokens[0][0] in ('A', 'C', 'E')
+        if not is_header and len(tokens) >= 6:
+            lat, lon = tokens[4], tokens[5]
+            lat_ok = ('N' in lat) or ('S' in lat)
+            lon_ok = ('W' in lon) or ('E' in lon)
+            if not (lat_ok and lon_ok):
+                dropped += 1
+                continue
+        kept_lines.append(line)
+
+    if dropped:
+        logger.warning(
+            f"Dropped {dropped} malformed row(s) with unparseable lat/lon "
+            f"fields from HURDAT2 file ({url})")
+
+    fd, path = tempfile.mkstemp(prefix='hurdat2_sanitized_', suffix='.txt')
+    with os.fdopen(fd, 'w', encoding='utf-8') as f:
+        f.write('\n'.join(kept_lines))
+    return path
+
+
+
+def _build_track_dataset(basin_key):
+    """Build a Tropycal TrackDataset, pre-sanitizing the raw HURDAT2 file so
+    a single malformed upstream row can't crash the parser for the whole
+    basin (see _sanitize_hurdat_file). Falls back to Tropycal's own 'fetch'
+    if the pre-sanitize step itself fails for any reason (e.g. network
+    hiccup), preserving prior behavior.
+    """
+    tropycal_basin = _tropycal_basin_name(basin_key)
+    url_kwargs = {}
+    try:
+        atl_url, pac_url = find_latest_hurdat_files()
+        if tropycal_basin == 'north_atlantic':
+            url_kwargs['atlantic_url'] = _sanitize_hurdat_file(atl_url)
+        elif tropycal_basin == 'east_pacific':
+            url_kwargs['pacific_url'] = _sanitize_hurdat_file(pac_url)
+    except Exception as e:
+        logger.warning(
+            f"Could not pre-sanitize HURDAT2 file for {basin_key}, "
+            f"falling back to Tropycal's own fetch: {e}")
+        url_kwargs = {}
+
+    return tracks.TrackDataset(
+        basin=tropycal_basin,
+        source='hurdat',
+        include_btk=True,
+        **url_kwargs,
+    )
+
+
+
 def _extract_synoptic_winds(storm_obj):
     """Extract synoptic-time wind readings from a Tropycal Storm object.
 
@@ -508,11 +582,7 @@ def parse_hurdat2(basin_key, dataset=None):
         if dataset is None:
             logger.info(f"Loading {tropycal_basin} data from Tropycal TrackDataset...")
             print(f"Loading historical data via Tropycal (basin: {tropycal_basin})...")
-            dataset = tracks.TrackDataset(
-                basin=tropycal_basin,
-                source='hurdat',
-                include_btk=True
-            )
+            dataset = _build_track_dataset(basin_key)
 
         storms = []
 
@@ -688,11 +758,7 @@ def get_current_season(basin_key, dataset=None):
         if dataset is None:
             logger.info(f"Fetching current season data via Tropycal...")
             print(f"Fetching current season data via Tropycal...")
-            dataset = tracks.TrackDataset(
-                basin=tropycal_basin,
-                source='hurdat',
-                include_btk=True
-            )
+            dataset = _build_track_dataset(basin_key)
 
         # Load landfall cache for geo fallback results (keyed by storm_id + last track date)
         cs_lf_cache = _load_landfall_cache()
