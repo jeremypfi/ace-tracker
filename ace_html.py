@@ -48,6 +48,7 @@ def _intensity_bar_html(track_points):
         return ''
     segs = ''.join(
         f'<div class="intensity-seg" style="flex:1;background:{_track_status_color(p["status"],p["wind"])}" '
+        f'data-status="{p["status"]}" data-wind-kt="{p["wind"]}" data-time="{p["time"]}" '
         f'title="{p["status"]} {p["wind"]}kt {p["time"]}"></div>'
         for p in track_points
     )
@@ -347,7 +348,7 @@ def generate_dashboard_html(basin_data):
             meta = (
                 f'<div class="storm-meta">'
                 f'<div class="meta-box"><div class="meta-label">Started</div><div class="meta-value">{start_date}</div></div>'
-                f'<div class="meta-box"><div class="meta-label">Peak Intensity</div><div class="meta-value">{wind} kt</div><div class="meta-sub">{cat}</div></div>'
+                f'<div class="meta-box"><div class="meta-label">Peak Intensity</div><div class="meta-value"><span class="wind-val-unit" data-kt="{wind}">{wind} kt</span></div><div class="meta-sub">{cat}</div></div>'
                 f'<div class="meta-box"><div class="meta-label">ACE</div><div class="meta-value">{ace:.1f}</div><div class="meta-sub">{pct:.0f}% of season</div></div>'
                 f'</div>'
             )
@@ -370,6 +371,8 @@ def generate_dashboard_html(basin_data):
 
             panel_inner = f'{active_badge}{meta}{ibar}{legend}{map_div}{cone_img}{nhc_link}'
 
+            wind_cell = '—' if wind <= 0 else f"<span class='wind-val' data-kt='{wind}'>{wind}</span>"
+
             rows.append(
                 f'<tr class="{row_classes}" id="storm-row-{slug}">'
                 f'<td data-v="{html_escape(name)}"><button class="storm-name-btn" id="trbtn-{slug}" onclick="toggleTrack(\'{slug}\')">'
@@ -379,7 +382,7 @@ def generate_dashboard_html(basin_data):
                 f'<td data-v="{ace:.6f}">{ace:.1f}</td>'
                 f'<td data-v="{pct:.4f}">{pct:.1f}%</td>'
                 f'<td data-v="{wind}">{cat}</td>'
-                f'<td data-v="{wind}">{wind if wind > 0 else "—"}</td>'
+                f'<td data-v="{wind}">{wind_cell}</td>'
                 f'<td class="lf-cell">{lf_cell}</td>'
                 f'</tr>'
                 f'<tr class="track-row" id="track-row-{slug}">'
@@ -430,7 +433,7 @@ def generate_dashboard_html(basin_data):
             <th class="sort-th" onclick="sortDash(this,1,'n')">ACE <span class="sa">&#9660;</span></th>
             <th class="sort-th" onclick="sortDash(this,2,'n')">% <span class="sa"></span></th>
             <th class="sort-th" onclick="sortDash(this,3,'n')">Category <span class="sa"></span></th>
-            <th class="sort-th" onclick="sortDash(this,4,'n')">Wind (kt) <span class="sa"></span></th>
+            <th class="sort-th" onclick="sortDash(this,4,'n')"><span class="wind-th-label" data-kt-label="Wind (kt)" data-mph-label="Wind (mph)" data-kmh-label="Wind (km/h)">Wind (kt)</span> <span class="sa"></span></th>
             <th>Landfall</th>
           </tr></thead>
           <tbody id="storm-{bd['basin_key']}">
@@ -546,7 +549,8 @@ def generate_dashboard_html(basin_data):
   .header {{ display:grid; grid-template-columns:1fr auto 1fr; align-items:center; margin:8px 0; padding:0 4px; }}
   h1 {{ grid-column:2; color:var(--accent); font-size:1.4em; text-align:center; display:flex; align-items:center; justify-content:center; gap:8px; }}
   .logo {{ height:1.5em; width:auto; vertical-align:middle; }}
-  .theme-btn {{ grid-column:3; justify-self:end; background:transparent; border:1px solid var(--accent); color:var(--accent); border-radius:20px; padding:4px 10px; cursor:pointer; font-size:0.9em; }}
+  .header-actions {{ grid-column:3; justify-self:end; display:flex; gap:6px; align-items:center; }}
+  .theme-btn, .unit-btn {{ background:transparent; border:1px solid var(--accent); color:var(--accent); border-radius:20px; padding:4px 10px; cursor:pointer; font-size:0.9em; }}
   .updated {{ text-align:center; color:var(--muted); font-size:0.8em; margin-bottom:8px; }}
   .nav-link {{ text-align:center; margin-bottom:12px; }}
   .nav-link a {{ color:var(--accent); text-decoration:none; font-size:0.85em; border:1px solid var(--accent); border-radius:20px; padding:4px 14px; }}
@@ -683,7 +687,10 @@ def generate_dashboard_html(basin_data):
 <body>
 <div class="header">
   <h1><img src="ace.png" class="logo" alt="ACE"> Hurricane ACE Dashboard</h1>
-  <button class="theme-btn" id="themeBtn" onclick="toggleTheme()">☀</button>
+  <div class="header-actions">
+    <button class="unit-btn" id="unitBtn" onclick="toggleWindUnit()" title="Wind speed unit">kt</button>
+    <button class="theme-btn" id="themeBtn" onclick="toggleTheme()">☀</button>
+  </div>
 </div>
 <div class="updated">Updated: {now.strftime('%B %d, %Y at %H:%M UTC')}</div>
 <div class="nav-link"><a href="history.html">📊 Season History ({START_YEAR}–present)</a></div>
@@ -725,6 +732,45 @@ function toggleTheme() {{
   document.getElementById('themeBtn').textContent=light?'☀':'☾';
   _restylePaceCharts();
 }}
+var WIND_UNITS=['kt','mph','kmh'];
+var WIND_UNIT_LABELS={{kt:'kt',mph:'mph',kmh:'km/h'}};
+function _windUnit() {{
+  try{{var u=localStorage.getItem('ace-wind-unit');if(WIND_UNITS.indexOf(u)>=0)return u;}}catch(e){{}}
+  return 'kt';
+}}
+function _convertWind(kt) {{
+  var unit=_windUnit();
+  if(unit==='mph')return Math.round(kt*1.15078);
+  if(unit==='kmh')return Math.round(kt*1.852);
+  return kt;
+}}
+function _fmtWind(kt) {{
+  return _convertWind(kt)+' '+WIND_UNIT_LABELS[_windUnit()];
+}}
+function applyWindUnit() {{
+  var unit=_windUnit();
+  var btn=document.getElementById('unitBtn');
+  if(btn)btn.textContent=WIND_UNIT_LABELS[unit];
+  document.querySelectorAll('.wind-val').forEach(function(el){{
+    el.textContent=String(_convertWind(parseFloat(el.getAttribute('data-kt'))));
+  }});
+  document.querySelectorAll('.wind-val-unit').forEach(function(el){{
+    el.textContent=_fmtWind(parseFloat(el.getAttribute('data-kt')));
+  }});
+  document.querySelectorAll('.wind-th-label').forEach(function(el){{
+    el.textContent=el.getAttribute('data-'+unit+'-label')||el.textContent;
+  }});
+  document.querySelectorAll('.intensity-seg').forEach(function(el){{
+    var kt=parseFloat(el.getAttribute('data-wind-kt'));
+    if(isNaN(kt))return;
+    el.title=el.getAttribute('data-status')+' '+_fmtWind(kt)+' '+el.getAttribute('data-time');
+  }});
+}}
+function toggleWindUnit() {{
+  var next=WIND_UNITS[(WIND_UNITS.indexOf(_windUnit())+1)%WIND_UNITS.length];
+  try{{localStorage.setItem('ace-wind-unit',next);}}catch(e){{}}
+  applyWindUnit();
+}}
 function copyStormLink(e,slug) {{
   var url=location.origin+location.pathname+'#storm-row-'+slug;
   var btn=e.currentTarget;
@@ -746,6 +792,7 @@ function copyStormLink(e,slug) {{
 }}
 document.addEventListener('DOMContentLoaded',function() {{
   document.getElementById('themeBtn').textContent=document.documentElement.getAttribute('data-theme')==='light'?'☾':'☀';
+  applyWindUnit();
   var hash=location.hash.replace('#','');
   var match=[].slice.call(document.querySelectorAll('.toggle button')).filter(function(b){{return(b.getAttribute('onclick')||'').indexOf("'"+hash+"'")>=0;}})[0];
   if(match) {{
@@ -925,8 +972,8 @@ function _buildMap(slug){{
   pts.forEach(function(p,i){{
     var c=_tc(p.status,p.wind),last=(i===pts.length-1);
     var mk=L.circleMarker([p.lat,p.lon],{{radius:last?7:4,fillColor:c,color:last?'#fff':c,weight:last?2:1,fillOpacity:1,opacity:1}}).addTo(map);
-    mk.bindTooltip('<b>'+d.name+'</b><br>'+p.time+'<br>'+p.status+' \xb7 '+p.wind+'kt',{{direction:'top',offset:[0,-6]}});
-    if(last&&d.active)mk.bindPopup('<b>Current Position</b><br>'+p.time+'<br>'+p.status+' \xb7 '+p.wind+'kt',{{maxWidth:160}}).openPopup();
+    mk.bindTooltip('<b>'+d.name+'</b><br>'+p.time+'<br>'+p.status+' \xb7 '+_fmtWind(p.wind),{{direction:'top',offset:[0,-6]}});
+    if(last&&d.active)mk.bindPopup('<b>Current Position</b><br>'+p.time+'<br>'+p.status+' \xb7 '+_fmtWind(p.wind),{{maxWidth:160}}).openPopup();
   }});
   var boundsPts=lls.slice();
   var spagGroup=L.layerGroup();
