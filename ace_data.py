@@ -1090,6 +1090,37 @@ def find_similar_seasons(target_ace, yearly_totals, exclude_year=None):
 
 
 
+def find_storms_on_this_day(historical_storms, target_date=None):
+    """Historical storms whose active track (start_date through end_date)
+    covered target_date's calendar month/day in a past year.
+
+    Excludes target_date's own year — that season is shown separately on
+    the dashboard, not as a "history" fact. Sorted by ACE, strongest first.
+    """
+    if target_date is None:
+        target_date = _utc_now()
+    current_year = target_date.year
+
+    matches = []
+    for storm in historical_storms:
+        if storm['year'] == current_year:
+            continue
+        start = storm.get('start_date')
+        end = storm.get('end_date')
+        if not start or not end:
+            continue
+        d = start
+        while d.date() <= end.date():
+            if d.month == target_date.month and d.day == target_date.day:
+                matches.append(storm)
+                break
+            d += timedelta(days=1)
+
+    matches.sort(key=lambda s: s['ace'], reverse=True)
+    return matches
+
+
+
 def _storm_ace_at_cutoff(storm, cutoff):
     """ACE a storm had contributed as of `cutoff` (a naive datetime).
 
@@ -1420,6 +1451,18 @@ def generate_insights(basin_key, current, yearly_totals, historical_storms, year
         pct_of_record = leader_ace / record['ace'] * 100
         if pct_of_record > 50:
             insights.append(f"🎯 {leader_name} at {pct_of_record:.0f}% of all-time single-storm record ({record['name']}: {record['ace']})")
+
+    # 12. On this day in hurricane history
+    if historical_storms:
+        on_this_day = find_storms_on_this_day(historical_storms)
+        if on_this_day:
+            top = on_this_day[0]
+            others = len(on_this_day) - 1
+            others_label = f" (+{others} more storm{'s' if others > 1 else ''} on this date since {START_YEAR})" if others > 0 else ""
+            insights.append(
+                f"📅 On This Day in History: {top['name']} ({top['year']}) was active — "
+                f"{top['category']}, {top['ace']:.1f} ACE{others_label}"
+            )
 
     return insights
 

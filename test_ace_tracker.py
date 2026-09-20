@@ -21,6 +21,7 @@ from ace_data import (
     calculate_yearly_totals,
     rank_current_season,
     find_similar_seasons,
+    find_storms_on_this_day,
     calculate_same_date_stats,
     calculate_ace_pace,
     _drop_stale_storm_keys,
@@ -375,6 +376,71 @@ class TestSameDateStats(unittest.TestCase):
         storms = self._make_storms()
         result = calculate_same_date_stats(storms, 'atlantic', datetime(2026, 6, 28))
         self.assertNotIn(2026, result['yearly_ace'])
+
+
+class TestStormsOnThisDay(unittest.TestCase):
+    """Tests for find_storms_on_this_day() — the 'on this day' history insight."""
+
+    def _make_storms(self):
+        return [
+            # Active Aug 23 - Aug 30, 2005 — should match Aug 25 and Aug 30, not Sep 1
+            finalize_storm({
+                'id': 'AL122005', 'name': 'Katrina', 'year': 2005,
+                'max_wind': 150, 'wind_readings': [150, 150],
+                'start_date': datetime(2005, 8, 23),
+                'end_date':   datetime(2005, 8, 30),
+                'landfall':   [],
+            }),
+            # Active Aug 24 - Aug 26, 2012 — weaker storm, also matches Aug 25
+            finalize_storm({
+                'id': 'AL092012', 'name': 'Nadine', 'year': 2012,
+                'max_wind': 70, 'wind_readings': [70, 70],
+                'start_date': datetime(2012, 8, 24),
+                'end_date':   datetime(2012, 8, 26),
+                'landfall':   [],
+            }),
+            # Active Aug 25, 2026 (current year) — must be excluded as "current season"
+            finalize_storm({
+                'id': 'AL012026', 'name': 'Arthur', 'year': 2026,
+                'max_wind': 40, 'wind_readings': [40, 40],
+                'start_date': datetime(2026, 8, 25),
+                'end_date':   datetime(2026, 8, 25),
+                'landfall':   [],
+            }),
+        ]
+
+    def test_matches_storms_active_on_target_date(self):
+        storms = self._make_storms()
+        result = find_storms_on_this_day(storms, datetime(2026, 8, 25))
+        names = [s['name'] for s in result]
+        self.assertIn('Katrina', names)
+        self.assertIn('Nadine', names)
+
+    def test_excludes_dates_outside_storm_range(self):
+        storms = self._make_storms()
+        result = find_storms_on_this_day(storms, datetime(2026, 9, 1))
+        self.assertEqual(result, [])
+
+    def test_excludes_current_year(self):
+        storms = self._make_storms()
+        result = find_storms_on_this_day(storms, datetime(2026, 8, 25))
+        names = [s['name'] for s in result]
+        self.assertNotIn('Arthur', names)
+
+    def test_sorted_by_ace_descending(self):
+        storms = self._make_storms()
+        result = find_storms_on_this_day(storms, datetime(2026, 8, 25))
+        aces = [s['ace'] for s in result]
+        self.assertEqual(aces, sorted(aces, reverse=True))
+        self.assertEqual(result[0]['name'], 'Katrina')
+
+    def test_missing_dates_are_skipped(self):
+        storms = self._make_storms()
+        storms.append({'id': 'X', 'name': 'NoDate', 'year': 2020,
+                        'start_date': None, 'end_date': None, 'ace': 0})
+        result = find_storms_on_this_day(storms, datetime(2026, 8, 25))
+        names = [s['name'] for s in result]
+        self.assertNotIn('NoDate', names)
 
 
 class TestAcePace(unittest.TestCase):
