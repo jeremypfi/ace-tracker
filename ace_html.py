@@ -1649,14 +1649,14 @@ def generate_records_html(basin_data):
             cards.append(_record_card_html(
                 '📅', 'Earliest-Forming Storm',
                 f"{html_escape(earliest['name'])} ({earliest['year']})",
-                f"Formed {_portable_strftime(earliest['start_date'], '%B %-d')}"))
+                f"Formed {_portable_strftime(earliest['formation_date'], '%B %-d')}"))
 
         latest = find_latest_forming_storm(historical_storms)
         if latest:
             cards.append(_record_card_html(
                 '📅', 'Latest-Forming Storm',
                 f"{html_escape(latest['name'])} ({latest['year']})",
-                f"Formed {_portable_strftime(latest['start_date'], '%B %-d, %Y')}"))
+                f"Formed {_portable_strftime(latest['formation_date'], '%B %-d, %Y')}"))
 
         basin_sections.append(f'''
     <div class="basin-card{' active' if not basin_sections else ''}" id="{bd['basin_key']}">

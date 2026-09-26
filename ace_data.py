@@ -380,6 +380,44 @@ def get_landfall_locations(storm_obj):
 
 
 
+def _clean_landfalls(landfall):
+    """Tidy a landfall list for display: collapse 'X, X' names where the
+    region and country share a name (e.g. 'Puerto Rico, Puerto Rico'), and
+    list each place once at the strongest category it was hit, keeping the
+    order of first landfall. Also applied to cached entries, which predate it.
+    """
+    order = []
+    best = {}
+    for loc, cat in landfall or []:
+        region, sep, country = loc.partition(', ')
+        if sep and region == country:
+            loc = region
+        if loc not in best:
+            order.append(loc)
+            best[loc] = cat
+        elif _CATEGORY_RANK.get(cat, -1) > _CATEGORY_RANK.get(best[loc], -1):
+            best[loc] = cat
+    return [(loc, best[loc]) for loc in order]
+
+
+
+def _first_tropical_storm_time(storm_obj):
+    """When a system first became a tropical or subtropical storm: its first
+    track point with TS/HU/SS status. HURDAT2 tracks often begin days earlier
+    as a low, depression, or extratropical system (Alex 2016's track starts
+    Jan 7 as extratropical; it became a subtropical storm Jan 12). None for
+    a depression that never strengthened.
+    """
+    try:
+        for t, status in zip(storm_obj.time, storm_obj.type):
+            if str(status) in ACE_STATUSES:
+                return t.to_pydatetime() if hasattr(t, 'to_pydatetime') else t
+    except Exception as e:
+        logger.warning(f"Could not read formation time for {getattr(storm_obj, 'id', '?')}: {e}")
+    return None
+
+
+
 def _detect_landfall_from_track(storm_obj):
     """Geographic fallback for landfall detection when HURDAT2 'L' markers are absent.
 
@@ -670,6 +708,7 @@ def parse_hurdat2(basin_key, dataset=None):
                             landfall = get_landfall_locations(storm_obj)
                             lf_cache[cache_key] = landfall
                             lf_cache_dirty = True
+                        landfall = _clean_landfalls(landfall)
 
                         # Build storm record
                         storm_record = {
@@ -680,6 +719,7 @@ def parse_hurdat2(basin_key, dataset=None):
                             'wind_readings': wind_readings,
                             'start_date': start_date,
                             'end_date': end_date,
+                            'formation_date': _first_tropical_storm_time(storm_obj),
                             'landfall': landfall,
                         }
 
@@ -894,6 +934,7 @@ def get_current_season(basin_key, dataset=None):
                                 landfall = _detect_landfall_from_track(storm_obj)
                                 cs_lf_cache[geo_key] = landfall
                                 cs_lf_dirty = True
+                        landfall = _clean_landfalls(landfall)
 
                         # Spaghetti model tracks only matter (and are only
                         # worth the extra Tropycal call) while a storm is active.
@@ -1052,7 +1093,8 @@ def calculate_yearly_stats(storms):
                 'storms_list': [],
             }
         s = stats[year]
-        s['named_storms'] += 1
+        if storm['category'] != 'TD':
+            s['named_storms'] += 1
         if storm['max_wind'] >= 64:
             s['hurricanes'] += 1
         if storm['max_wind'] >= 96:
@@ -1139,25 +1181,34 @@ def find_strongest_landfall(historical_storms):
 
 
 
+def _formed_named_storms(historical_storms):
+    """Named storms with a known formation date (first TS/SS/HU point).
+    Depressions that never strengthened and unnamed storms are left out, so
+    the forming records only ever name a real named storm."""
+    return [s for s in historical_storms
+            if s.get('formation_date') and s.get('name', '').upper() != 'UNNAMED']
+
+
 def find_earliest_forming_storm(historical_storms):
-    """The storm that formed earliest in the calendar year since
+    """The named storm that formed earliest in the calendar year since
     START_YEAR (e.g. a rare January/February formation), ranked by
     day-of-year rather than day-into-season so pre-season storms compare
-    correctly. None if no storm has a start date."""
-    dated = [s for s in historical_storms if s.get('start_date')]
-    if not dated:
+    correctly. None if no storm has a formation date."""
+    formed = _formed_named_storms(historical_storms)
+    if not formed:
         return None
-    return min(dated, key=lambda s: s['start_date'].timetuple().tm_yday)
+    return min(formed, key=lambda s: s['formation_date'].timetuple().tm_yday)
 
 
 
 def find_latest_forming_storm(historical_storms):
-    """The storm that formed latest in the calendar year since START_YEAR
-    (e.g. a rare December formation). None if no storm has a start date."""
-    dated = [s for s in historical_storms if s.get('start_date')]
-    if not dated:
+    """The named storm that formed latest in the calendar year since
+    START_YEAR (e.g. a rare December formation). None if no storm has a
+    formation date."""
+    formed = _formed_named_storms(historical_storms)
+    if not formed:
         return None
-    return max(dated, key=lambda s: s['start_date'].timetuple().tm_yday)
+    return max(formed, key=lambda s: s['formation_date'].timetuple().tm_yday)
 
 
 
@@ -1266,14 +1317,18 @@ def calculate_same_date_stats(historical_storms, basin_key, target_date=None):
         ace = 0.0
 
         for s in yr_storms:
-            start = s.get('start_date')
-            if start is None:
+            # ACE accrues from the track start (only TS/HU/SS readings carry
+            # any), but a storm only counts as named once it has formed.
+            ace += _storm_ace_at_cutoff(s, hist_cutoff)
+
+            formed = s.get('formation_date', s.get('start_date'))
+            if formed is None or s.get('category') == 'TD':
                 continue
             # Strip timezone so comparisons work
-            if getattr(start, 'tzinfo', None):
-                start = start.replace(tzinfo=None)
+            if getattr(formed, 'tzinfo', None):
+                formed = formed.replace(tzinfo=None)
 
-            if start > hist_cutoff:
+            if formed > hist_cutoff:
                 continue  # Storm hadn't formed yet
 
             named += 1
@@ -1281,8 +1336,6 @@ def calculate_same_date_stats(historical_storms, basin_key, target_date=None):
                 hurricanes += 1
             if s['max_wind'] >= 96:
                 majors += 1
-
-            ace += _storm_ace_at_cutoff(s, hist_cutoff)
 
         sd_named[year]     = named
         sd_hurricanes[year] = hurricanes

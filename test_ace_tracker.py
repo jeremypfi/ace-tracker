@@ -11,7 +11,7 @@ Usage:
 """
 
 import unittest
-from datetime import datetime
+from datetime import datetime, timedelta
 from ace_data import (
     get_category,
     is_major,
@@ -29,6 +29,9 @@ from ace_data import (
     find_storms_on_this_day,
     calculate_same_date_stats,
     calculate_ace_pace,
+    calculate_yearly_stats,
+    _first_tropical_storm_time,
+    _clean_landfalls,
     _drop_stale_storm_keys,
     _last_track_stamp,
     SYNOPTIC_TIMES,
@@ -423,24 +426,28 @@ class TestBasinRecords(unittest.TestCase):
                 'id': 'AL012003', 'name': 'Ana', 'year': 2003,
                 'max_wind': 40, 'wind_readings': [40, 40],
                 'start_date': datetime(2003, 4, 20), 'end_date': datetime(2003, 4, 24),
+                'formation_date': datetime(2003, 4, 20),
                 'landfall': [],
             }),
             finalize_storm({
                 'id': 'AL122005', 'name': 'Katrina', 'year': 2005,
                 'max_wind': 150, 'wind_readings': [150, 150],
                 'start_date': datetime(2005, 8, 23), 'end_date': datetime(2005, 8, 30),
+                'formation_date': datetime(2005, 8, 23),
                 'landfall': [('Louisiana', 'Cat 3'), ('Florida', 'Cat 1')],
             }),
             finalize_storm({
                 'id': 'EP092018', 'name': 'Willa', 'year': 2018,
                 'max_wind': 140, 'wind_readings': [140, 140],
                 'start_date': datetime(2018, 10, 20), 'end_date': datetime(2018, 10, 24),
+                'formation_date': datetime(2018, 10, 20),
                 'landfall': [('Sinaloa', 'Cat 5')],
             }),
             finalize_storm({
                 'id': 'AL222005', 'name': 'Zeta', 'year': 2005,
                 'max_wind': 55, 'wind_readings': [55] * 20,
                 'start_date': datetime(2005, 12, 30), 'end_date': datetime(2006, 1, 20),
+                'formation_date': datetime(2005, 12, 30),
                 'landfall': [],
             }),
         ]
@@ -484,8 +491,105 @@ class TestBasinRecords(unittest.TestCase):
         self.assertEqual(find_latest_forming_storm(storms)['name'], 'Zeta')
 
     def test_forming_storm_none_without_start_date(self):
-        self.assertIsNone(find_earliest_forming_storm([{'start_date': None}]))
-        self.assertIsNone(find_latest_forming_storm([{'start_date': None}]))
+        self.assertIsNone(find_earliest_forming_storm([{'start_date': None, 'formation_date': None}]))
+        self.assertIsNone(find_latest_forming_storm([{'start_date': None, 'formation_date': None}]))
+
+
+class TestFormationDateRecords(unittest.TestCase):
+    """Earliest/latest-forming records must use the date a system first
+    became a tropical/subtropical storm, not its first HURDAT2 track point
+    (which can be days earlier as a low, depression, or extratropical system)."""
+
+    class FakeTrack:
+        def __init__(self, points):
+            self.time = [t for t, _, _ in points]
+            self.type = [ty for _, ty, _ in points]
+            self.vmax = [v for _, _, v in points]
+
+    # Real HURDAT2 track for Alex (AL012016): extratropical from Jan 7,
+    # subtropical storm at 1800 UTC Jan 12, hurricane at 1200 UTC Jan 14.
+    ALEX_2016 = [
+        (datetime(2016, 1, 7, 0), 'EX', 40),
+        (datetime(2016, 1, 10, 0), 'EX', 45),
+        (datetime(2016, 1, 12, 12), 'EX', 45),
+        (datetime(2016, 1, 12, 18), 'SS', 45),
+        (datetime(2016, 1, 14, 12), 'HU', 75),
+    ]
+
+    def _storm(self, name, year, start, formation, max_wind=50):
+        return finalize_storm({
+            'id': f'{name}{year}', 'name': name, 'year': year,
+            'max_wind': max_wind, 'wind_readings': [max_wind],
+            'start_date': start, 'end_date': start + timedelta(days=5),
+            'formation_date': formation, 'landfall': [],
+        })
+
+    def test_alex_2016_formation_is_first_subtropical_point(self):
+        formed = _first_tropical_storm_time(self.FakeTrack(self.ALEX_2016))
+        self.assertEqual(formed, datetime(2016, 1, 12, 18))
+
+    def test_td_only_track_has_no_formation(self):
+        track = self.FakeTrack([(datetime(2015, 12, 31, 0), 'TD', 30),
+                                (datetime(2015, 12, 31, 6), 'LO', 25)])
+        self.assertIsNone(_first_tropical_storm_time(track))
+
+    def test_earliest_forming_uses_formation_date(self):
+        # Alex's track starts Jan 7 but it formed Jan 12; the record must
+        # report the formation date, not the track start.
+        alex = self._storm('Alex', 2016, datetime(2016, 1, 7), datetime(2016, 1, 12, 18))
+        ana = self._storm('Ana', 2003, datetime(2003, 4, 18), datetime(2003, 4, 20, 6))
+        self.assertEqual(find_earliest_forming_storm([ana, alex])['name'], 'Alex')
+        self.assertEqual(find_earliest_forming_storm([ana, alex])['formation_date'],
+                         datetime(2016, 1, 12, 18))
+
+    def test_forming_records_skip_depressions_and_unnamed(self):
+        # "Nine" (CP092015) was a depression on Dec 31 that never became a
+        # storm; an unnamed subtropical storm isn't a named storm.
+        omeka = self._storm('Omeka', 2010, datetime(2010, 12, 16), datetime(2010, 12, 18, 12))
+        nine = self._storm('Nine', 2015, datetime(2015, 12, 27), None, max_wind=30)
+        unnamed = self._storm('Unnamed', 2023, datetime(2023, 1, 15), datetime(2023, 1, 16, 12))
+        storms = [omeka, nine, unnamed]
+        self.assertEqual(find_latest_forming_storm(storms)['name'], 'Omeka')
+        self.assertEqual(find_earliest_forming_storm(storms)['name'], 'Omeka')
+
+    def test_yearly_named_storm_count_excludes_depressions(self):
+        storms = [self._storm('Alex', 2004, datetime(2004, 7, 31), datetime(2004, 8, 1)),
+                  self._storm('Ten', 2004, datetime(2004, 9, 7), None, max_wind=30)]
+        self.assertEqual(calculate_yearly_stats(storms)[2004]['named_storms'], 1)
+
+    def test_same_date_named_count_uses_formation_date(self):
+        # A system tracked from Jun 25 that only became a storm Jul 2 had not
+        # "formed" as of Jun 28; a depression never counts.
+        storms = []
+        for year in (2023, 2024):
+            storms.append(self._storm('Late', year, datetime(year, 6, 25), datetime(year, 7, 2)))
+            storms.append(self._storm('Td', year, datetime(year, 6, 5), None, max_wind=30))
+            storms.append(self._storm('Early', year, datetime(year, 6, 10), datetime(year, 6, 11)))
+        result = calculate_same_date_stats(storms, 'atlantic', datetime(2026, 6, 28))
+        self.assertEqual(result['avg_named'], 1.0)
+
+
+class TestCleanLandfalls(unittest.TestCase):
+    """Landfall lists must not repeat a place, or repeat a name that is both
+    the region and the country (e.g. 'Puerto Rico, Puerto Rico')."""
+
+    def test_region_equal_to_country_is_collapsed(self):
+        self.assertEqual(_clean_landfalls([('Puerto Rico, Puerto Rico', 'TD')]),
+                         [('Puerto Rico', 'TD')])
+
+    def test_repeat_location_keeps_strongest_category_in_first_position(self):
+        # Irma 2017 crossed Florida twice (Cat 4, then Cat 3).
+        raw = [['Camagüey, Cuba', 'Cat 5'], ['Florida', 'Cat 4'], ['Florida', 'Cat 3']]
+        self.assertEqual(_clean_landfalls(raw),
+                         [('Camagüey, Cuba', 'Cat 5'), ('Florida', 'Cat 4')])
+        raw = [['Belize, Belize', 'TS'], ['Tamaulipas, Mexico', 'Cat 1'], ['Belize, Belize', 'Cat 1']]
+        self.assertEqual(_clean_landfalls(raw),
+                         [('Belize', 'Cat 1'), ('Tamaulipas, Mexico', 'Cat 1')])
+
+    def test_empty_and_distinct_lists_are_unchanged(self):
+        self.assertEqual(_clean_landfalls([]), [])
+        self.assertEqual(_clean_landfalls([('Texas', 'Cat 4'), ('Louisiana', 'TS')]),
+                         [('Texas', 'Cat 4'), ('Louisiana', 'TS')])
 
 
 class TestStormsOnThisDay(unittest.TestCase):
@@ -677,6 +781,7 @@ class TestHTMLGeneration(unittest.TestCase):
                 'id': 'AL012026', 'name': 'Arthur', 'year': 2026,
                 'max_wind': 40, 'wind_readings': [40, 40],
                 'start_date': datetime(2026, 6, 15),
+                'formation_date': datetime(2026, 6, 15),
                 'end_date':   datetime(2026, 6, 18),
                 'landfall':   [('Texas', 'TS')],
             }),
@@ -684,6 +789,7 @@ class TestHTMLGeneration(unittest.TestCase):
                 'id': 'AL012005', 'name': 'Katrina', 'year': 2005,
                 'max_wind': 150, 'wind_readings': [150, 150, 130, 100],
                 'start_date': datetime(2005, 8, 23),
+                'formation_date': datetime(2005, 8, 23),
                 'end_date':   datetime(2005, 8, 30),
                 'landfall':   [('Florida', 'Cat 1'), ('Louisiana', 'Cat 3')],
             }),
@@ -759,6 +865,7 @@ class TestHTMLGeneration(unittest.TestCase):
         # Katrina (2005) is the fixture's highest-ACE and only-landfall storm
         self.assertIn('Katrina', result)
         self.assertIn('Records Since', result)
+        self.assertIn('Formed August 23', result)
 
     def test_leaflet_sri_hashes_present(self):
         """Dashboard HTML contains the correct full SRI hashes for Leaflet.
