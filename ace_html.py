@@ -120,6 +120,26 @@ def _nhc_tcr_links_html(year, basin_key, is_active=False):
 
 
 
+SHARE_IMAGE_ALT = 'ACE Tracker: live hurricane season ACE for the Atlantic and E/C Pacific'
+
+
+def _season_year(basin_data):
+    """The season year the pages describe (for titles), falling back to the
+    current UTC year when no basin data is available."""
+    years = [bd['current']['year'] for bd in basin_data if bd and bd.get('current')]
+    return max(years) if years else datetime.now(timezone.utc).year
+
+
+def _share_image_meta(alt):
+    """Open Graph / Twitter image tags for the 1200x630 share card."""
+    alt = html_escape(alt)
+    return (f'<meta property="og:image" content="https://aceofcanes.com/ace_preview.png">\n'
+            f'<meta property="og:image:width" content="1200">\n'
+            f'<meta property="og:image:height" content="630">\n'
+            f'<meta property="og:image:alt" content="{alt}">\n'
+            f'<meta name="twitter:card" content="summary_large_image">')
+
+
 # ===============================================================================
 # DASHBOARD SECTIONS
 # ===============================================================================
@@ -543,29 +563,28 @@ def generate_dashboard_html(basin_data):
     _track_json = json.dumps(all_track_data).replace('</', '<\\/')
     _pace_json = json.dumps(all_pace_data).replace('</', '<\\/')
 
+    season_year = _season_year(basin_data)
+    page_title = f'{season_year} Hurricane Season ACE Tracker: Atlantic &amp; East Pacific | aceofcanes.com'
     html = f'''<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="Track the current Atlantic and Eastern Pacific hurricane season ACE (Accumulated Cyclone Energy) in real time. Updated every 6 hours during hurricane season.">
+<meta name="description" content="Track the {season_year} Atlantic and Eastern Pacific hurricane season ACE (Accumulated Cyclone Energy) in real time. Updated every 3 hours during hurricane season.">
 <meta name="theme-color" content="#4fc3f7">
 <link rel="canonical" href="https://aceofcanes.com/">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="ACE Tracker">
 <meta property="og:url" content="https://aceofcanes.com/">
-<meta property="og:title" content="Hurricane ACE Dashboard | aceofcanes.com">
-<meta property="og:description" content="Track Accumulated Cyclone Energy (ACE) for the Atlantic and Eastern Pacific hurricane seasons in real time. Updated every 6 hours from official NOAA data.">
-<meta property="og:image" content="https://aceofcanes.com/ace_preview.png">
-<meta property="og:image:width" content="766">
-<meta property="og:image:height" content="976">
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Hurricane ACE Dashboard | aceofcanes.com">
-<meta name="twitter:description" content="Track Accumulated Cyclone Energy (ACE) for the Atlantic and Eastern Pacific hurricane seasons in real time. Updated every 6 hours from official NOAA data.">
+<meta property="og:title" content="{page_title}">
+<meta property="og:description" content="Track Accumulated Cyclone Energy (ACE) for the {season_year} Atlantic and Eastern Pacific hurricane seasons in real time. Updated every 3 hours from official NOAA data.">
+{_share_image_meta(SHARE_IMAGE_ALT)}
+<meta name="twitter:title" content="{page_title}">
+<meta name="twitter:description" content="Track Accumulated Cyclone Energy (ACE) for the {season_year} Atlantic and Eastern Pacific hurricane seasons in real time. Updated every 3 hours from official NOAA data.">
 <meta name="twitter:image" content="https://aceofcanes.com/ace_preview.png">
 <link rel="icon" type="image/png" href="ace.png">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous" />
-<title>Hurricane ACE Dashboard | aceofcanes.com</title>
+<title>{page_title}</title>
 <script>(function(){{try{{var t=localStorage.getItem('ace-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light');else if(!t&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches)document.documentElement.setAttribute('data-theme','light');}}catch(e){{}}}})();</script>
 <style>
   :root {{
@@ -724,7 +743,7 @@ def generate_dashboard_html(basin_data):
 </head>
 <body>
 <div class="header">
-  <h1><img src="ace.png" class="logo" alt="ACE"> Hurricane ACE Dashboard</h1>
+  <h1><img src="ace.png" class="logo" alt="" aria-hidden="true"> Hurricane ACE Dashboard</h1>
   <div class="header-actions">
     <button class="unit-btn" id="unitBtn" onclick="toggleWindUnit()" title="Wind speed unit">kt</button>
     <button class="theme-btn" id="themeBtn" onclick="toggleTheme()">☀</button>
@@ -1286,28 +1305,27 @@ def generate_history_html(basin_data):
         f'{decade_buttons}</div>'
     ) if all_decades else ''
 
+    season_year = _season_year(basin_data)
+    page_title = f'Hurricane Season History ({START_YEAR}–{season_year}): ACE by Year | aceofcanes.com'
     html = f'''<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="Compare every Atlantic and Eastern Pacific hurricane season from 1991 to present by ACE, storm counts, and NOAA activity classifications.">
+<meta name="description" content="Compare every Atlantic and Eastern Pacific hurricane season from {START_YEAR} to {season_year} by ACE, storm counts, and NOAA activity classifications.">
 <meta name="theme-color" content="#4fc3f7">
 <link rel="canonical" href="https://aceofcanes.com/history.html">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="ACE Tracker">
 <meta property="og:url" content="https://aceofcanes.com/history.html">
-<meta property="og:title" content="Season History (1991–present) | aceofcanes.com">
+<meta property="og:title" content="{page_title}">
 <meta property="og:description" content="Compare every Atlantic and Eastern Pacific hurricane season from 1991 to present by ACE, storm counts, and NOAA activity classifications.">
-<meta property="og:image" content="https://aceofcanes.com/ace_preview.png">
-<meta property="og:image:width" content="766">
-<meta property="og:image:height" content="976">
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Season History (1991–present) | aceofcanes.com">
+{_share_image_meta(SHARE_IMAGE_ALT)}
+<meta name="twitter:title" content="{page_title}">
 <meta name="twitter:description" content="Compare every Atlantic and Eastern Pacific hurricane season from 1991 to present by ACE, storm counts, and NOAA activity classifications.">
 <meta name="twitter:image" content="https://aceofcanes.com/ace_preview.png">
 <link rel="icon" type="image/png" href="ace.png">
-<title>Season History (1991–present) | aceofcanes.com</title>
+<title>{page_title}</title>
 <script>(function(){{try{{var t=localStorage.getItem('ace-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light');else if(!t&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches)document.documentElement.setAttribute('data-theme','light');}}catch(e){{}}}})();</script>
 <style>
   :root {{
@@ -1428,7 +1446,7 @@ def generate_history_html(basin_data):
 </head>
 <body>
 <div class="header">
-  <h1><img src="ace.png" class="logo" alt="ACE"> Hurricane ACE History</h1>
+  <h1><img src="ace.png" class="logo" alt="" aria-hidden="true"> Hurricane ACE History</h1>
   <button class="theme-btn" id="themeBtn" onclick="toggleTheme()">☀</button>
 </div>
 <div class="updated">Updated: {now.strftime('%B %d, %Y at %H:%M UTC')}</div>
@@ -1665,6 +1683,8 @@ def generate_records_html(basin_data):
       <div class="records-grid">{''.join(cards)}</div>
     </div>''')
 
+    season_year = _season_year(basin_data)
+    page_title = f'Hurricane Records {START_YEAR}–{season_year}: Atlantic &amp; East Pacific | aceofcanes.com'
     html = f'''<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1676,17 +1696,14 @@ def generate_records_html(basin_data):
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="ACE Tracker">
 <meta property="og:url" content="https://aceofcanes.com/records.html">
-<meta property="og:title" content="Hurricane Records Since 1991 | aceofcanes.com">
+<meta property="og:title" content="{page_title}">
 <meta property="og:description" content="All-time hurricane records since 1991 for the Atlantic and Eastern Pacific: highest single-storm ACE, longest-lived storm, strongest landfall, and earliest/latest-forming named storms.">
-<meta property="og:image" content="https://aceofcanes.com/ace_preview.png">
-<meta property="og:image:width" content="766">
-<meta property="og:image:height" content="976">
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Hurricane Records Since 1991 | aceofcanes.com">
+{_share_image_meta(SHARE_IMAGE_ALT)}
+<meta name="twitter:title" content="{page_title}">
 <meta name="twitter:description" content="All-time hurricane records since 1991 for the Atlantic and Eastern Pacific: highest single-storm ACE, longest-lived storm, strongest landfall, and earliest/latest-forming named storms.">
 <meta name="twitter:image" content="https://aceofcanes.com/ace_preview.png">
 <link rel="icon" type="image/png" href="ace.png">
-<title>Hurricane Records Since 1991 | aceofcanes.com</title>
+<title>{page_title}</title>
 <script>(function(){{try{{var t=localStorage.getItem('ace-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light');else if(!t&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches)document.documentElement.setAttribute('data-theme','light');}}catch(e){{}}}})();</script>
 <style>
   :root {{
@@ -1740,7 +1757,7 @@ def generate_records_html(basin_data):
 </head>
 <body>
 <div class="header">
-  <h1><img src="ace.png" class="logo" alt="ACE"> Hurricane Records</h1>
+  <h1><img src="ace.png" class="logo" alt="" aria-hidden="true"> Hurricane Records</h1>
   <button class="theme-btn" id="themeBtn" onclick="toggleTheme()">☀</button>
 </div>
 <div class="updated">Updated: {now.strftime('%B %d, %Y at %H:%M UTC')}</div>

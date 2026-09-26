@@ -888,6 +888,53 @@ class TestHistoryDecadeFilterAndReports(unittest.TestCase):
         self.assertEqual(_nhc_tcr_links_html(2005, 'westpac'), '')
 
 
+class TestPageTitlesAndShareMeta(unittest.TestCase):
+    """Page titles carry the season year; share metadata matches the
+    1200x630 preview card and the 3-hour publish schedule."""
+
+    def _pages(self):
+        basin_data = TestHTMLGeneration()._make_basin_data()
+        return {
+            'dashboard': generate_dashboard_html(basin_data),
+            'history': generate_history_html(basin_data),
+            'records': generate_records_html(basin_data),
+        }
+
+    def test_titles_include_season_year(self):
+        pages = self._pages()
+        self.assertIn('<title>2026 Hurricane Season ACE Tracker: Atlantic &amp; East Pacific | aceofcanes.com</title>',
+                      pages['dashboard'])
+        self.assertIn('<title>Hurricane Season History (1991–2026): ACE by Year | aceofcanes.com</title>',
+                      pages['history'])
+        self.assertIn('<title>Hurricane Records 1991–2026: Atlantic &amp; East Pacific | aceofcanes.com</title>',
+                      pages['records'])
+
+    def test_share_meta_and_update_cadence(self):
+        for name, html in self._pages().items():
+            with self.subTest(page=name):
+                self.assertNotIn('every 6 hours', html)
+                self.assertIn('<meta property="og:image:width" content="1200">', html)
+                self.assertIn('<meta property="og:image:height" content="630">', html)
+                self.assertIn('og:image:alt', html)
+
+    def test_logo_does_not_leak_into_heading_text(self):
+        # alt="ACE" made screen readers and search snippets read the h1 as
+        # "ACE Hurricane ACE Dashboard".
+        for name, html in self._pages().items():
+            with self.subTest(page=name):
+                self.assertNotIn('alt="ACE"', html)
+                self.assertIn('class="logo" alt="" aria-hidden="true"', html)
+
+    def test_share_image_is_1200x630(self):
+        import os
+        import struct
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ace_preview.png')
+        with open(path, 'rb') as f:
+            header = f.read(24)
+        self.assertEqual(header[:8], b'\x89PNG\r\n\x1a\n')
+        self.assertEqual(struct.unpack('>II', header[16:24]), (1200, 630))
+
+
 class TestRankCurrentSeason(unittest.TestCase):
     """Season ranking must not double-count the in-progress year (Sprint 0 fix)."""
 
