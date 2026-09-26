@@ -35,7 +35,10 @@ from ace_data import (
     ACE_STATUSES,
     MIN_NAMED_STORM_WIND,
 )
-from ace_html import generate_dashboard_html, generate_history_html, generate_records_html
+from ace_html import (
+    generate_dashboard_html, generate_history_html, generate_records_html,
+    _decade_label, _nhc_tcr_links_html,
+)
 
 
 class TestStormCategories(unittest.TestCase):
@@ -824,6 +827,65 @@ class TestHTMLGeneration(unittest.TestCase):
         result = generate_dashboard_html(basin_data)
         self.assertIn('Test&amp;Storm', result)
         self.assertNotIn('<script>alert', result)
+
+
+class TestHistoryDecadeFilterAndReports(unittest.TestCase):
+    """History page decade filter (#59) and NHC storm report links (#50)."""
+
+    def _history(self, basin_key='atlantic'):
+        basin_data = TestHTMLGeneration()._make_basin_data()
+        basin_data[0]['basin_key'] = basin_key
+        basin_data[0]['yearly_totals'] = {1995: 227.1, 2005: 245.0, 2024: 161.6, 2025: 130.8}
+        return generate_history_html(basin_data)
+
+    def test_decade_label(self):
+        self.assertEqual(_decade_label(1991), '1990s')
+        self.assertEqual(_decade_label(2000), '2000s')
+        self.assertEqual(_decade_label(2029), '2020s')
+
+    def test_decade_buttons_match_seasons_present(self):
+        """One button per decade that has seasons (plus All), and no
+        buttons for decades with no data."""
+        result = self._history()
+        self.assertIn('class="decade-filter" role="group"', result)
+        self.assertIn('data-decade="all" aria-pressed="true"', result)
+        for dec in ('1990s', '2000s', '2020s'):
+            self.assertIn(f'data-decade="{dec}" aria-pressed="false"', result)
+        self.assertNotIn('data-decade="2010s"', result)
+
+    def test_rows_tagged_with_decade(self):
+        result = self._history()
+        self.assertIn('id="atlantic-yr-1995" data-decade="1990s"', result)
+        self.assertIn('id="atlantic-yr-2026" data-decade="2020s"', result)
+
+    def test_filter_js_and_shareable_hash(self):
+        """Filter JS is present and the decade is read from / written to
+        the URL hash alongside the basin (e.g. #pacific&decade=2010s)."""
+        result = self._history()
+        self.assertIn('function filterDecade(dec)', result)
+        self.assertIn("'&decade='+_decade", result)
+        self.assertIn("p.indexOf('decade=')===0", result)
+
+    def test_atlantic_report_links(self):
+        result = self._history()
+        self.assertIn('https://www.nhc.noaa.gov/data/tcr/index.php?season=2005&amp;basin=atl', result)
+        self.assertIn('NHC storm reports for 1995', result)
+        self.assertNotIn('basin=epac', result)
+
+    def test_pacific_report_links_cover_both_basins(self):
+        """The E/C Pacific tab links both NHC (epac) and CPHC (cpac) reports."""
+        result = self._history('pacific')
+        self.assertIn('index.php?season=2005&amp;basin=epac', result)
+        self.assertIn('index.php?season=2005&amp;basin=cpac', result)
+        self.assertNotIn('basin=atl"', result)
+
+    def test_active_season_report_note(self):
+        """Only the in-progress season gets the 'still filling in' note."""
+        self.assertIn('still filling in', _nhc_tcr_links_html(2026, 'atlantic', is_active=True))
+        self.assertNotIn('still filling in', _nhc_tcr_links_html(2005, 'atlantic'))
+
+    def test_unknown_basin_has_no_report_links(self):
+        self.assertEqual(_nhc_tcr_links_html(2005, 'westpac'), '')
 
 
 class TestRankCurrentSeason(unittest.TestCase):

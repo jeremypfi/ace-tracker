@@ -87,6 +87,38 @@ def _year_storm_list_html(storms_list):
     return '\n'.join(rows)
 
 
+# NHC Tropical Cyclone Report (TCR) archive basins. The E/C Pacific tab combines
+# two NHC/CPHC basins, so it links to both season pages.
+TCR_BASINS = {
+    'atlantic': [('atl', 'Atlantic')],
+    'pacific': [('epac', 'Eastern Pacific'), ('cpac', 'Central Pacific')],
+}
+
+
+def _decade_label(year):
+    """Decade bucket used by the history page filter, e.g. 1994 -> '1990s'."""
+    return f'{year // 10 * 10}s'
+
+
+def _nhc_tcr_links_html(year, basin_key, is_active=False):
+    """Links to NHC's Tropical Cyclone Report index for a season (#50).
+
+    Links to the per-season index rather than per-storm PDFs: the index
+    exists for every season since 1991, while per-storm PDF filenames vary
+    for older seasons and are only published months after each storm.
+    """
+    links = ' · '.join(
+        f'<a href="https://www.nhc.noaa.gov/data/tcr/index.php?season={year}&amp;basin={code}" '
+        f'target="_blank" rel="noopener noreferrer">{label} &#8599;</a>'
+        for code, label in TCR_BASINS.get(basin_key, [])
+    )
+    if not links:
+        return ''
+    note = (' <span class="yr-tcr-note">(NHC publishes reports after each storm, '
+            'so this season is still filling in)</span>') if is_active else ''
+    return f'<div class="yr-tcr">&#128196; NHC storm reports for {year}: {links}{note}</div>'
+
+
 
 # ===============================================================================
 # DASHBOARD SECTIONS
@@ -1073,6 +1105,7 @@ def generate_history_html(basin_data):
         return 'near', c
 
     basin_sections = []
+    all_decades = set()
     for bd in basin_data:
         if not bd:
             continue
@@ -1178,8 +1211,11 @@ def generate_history_html(basin_data):
             major_v = d['majors'] if d['majors'] != '—' else 0
             yr_key = f'{bd["basin_key"]}-yr-{year}'
             storm_list_html = _year_storm_list_html(d.get('storms_list', []))
+            tcr_html = _nhc_tcr_links_html(year, bd['basin_key'], is_active)
+            decade = _decade_label(year)
+            all_decades.add(decade)
             rows.append(
-                f'<tr class="{row_cls} yr-data-row" id="{yr_key}">'
+                f'<tr class="{row_cls} yr-data-row" id="{yr_key}" data-decade="{decade}">'
                 f'<td data-v="{year}" style="white-space:nowrap">'
                 f'<button class="yr-expand-btn" id="yrbtn-{yr_key}" onclick="toggleYear(\'{yr_key}\')">'
                 f'<b>{year}</b>{active_label}<span class="yr-chevron">&#9658;</span></button></td>'
@@ -1194,7 +1230,7 @@ def generate_history_html(basin_data):
                 f'</tr>'
                 f'<tr class="yr-expand-row" id="yr-xrow-{yr_key}">'
                 f'<td colspan="9"><div class="yr-panel" id="yrpanel-{yr_key}">'
-                f'<div class="yr-panel-inner">{storm_list_html}</div>'
+                f'<div class="yr-panel-inner">{storm_list_html}{tcr_html}</div>'
                 f'</div></td></tr>'
             )
 
@@ -1217,7 +1253,7 @@ def generate_history_html(basin_data):
         basin_sections.append(f'''
     <div class="basin-card{' active' if not basin_sections else ''}" id="{bd['basin_key']}">
       <h2>{html_escape(basin['name'])} — All Seasons ({START_YEAR}–{current_year})</h2>
-      <p class="season-note">{total_seasons} seasons &nbsp;·&nbsp; ● = currently active &nbsp;·&nbsp; <span style="border-left:3px solid #f9a825;padding-left:4px;">gold border</span> = top 5 all-time ACE &nbsp;·&nbsp; click headers to sort</p>
+      <p class="season-note">{total_seasons} seasons &nbsp;·&nbsp; ● = currently active &nbsp;·&nbsp; <span style="border-left:3px solid #f9a825;padding-left:4px;">gold border</span> = top 5 all-time ACE &nbsp;·&nbsp; click headers to sort &nbsp;<span class="decade-count" aria-live="polite"></span></p>
       <div class="table-wrap">
         <table class="hist-table">
           <thead>
@@ -1238,6 +1274,17 @@ def generate_history_html(basin_data):
         </table>
       </div>
     </div>''')
+
+    decade_buttons = ''.join(
+        f'<button type="button" data-decade="{dec}" aria-pressed="false" onclick="filterDecade(\'{dec}\')">{dec}</button>'
+        for dec in sorted(all_decades)
+    )
+    decade_filter_html = (
+        '<div class="decade-filter" role="group" aria-label="Filter seasons by decade">'
+        '<span class="decade-filter-label">Decade:</span>'
+        '<button type="button" class="active" data-decade="all" aria-pressed="true" onclick="filterDecade(\'all\')">All</button>'
+        f'{decade_buttons}</div>'
+    ) if all_decades else ''
 
     html = f'''<!DOCTYPE html>
 <html lang="en">
@@ -1366,6 +1413,17 @@ def generate_history_html(basin_data):
   .ys-ace {{ color:var(--accent); font-weight:bold; text-align:right; }}
   .ys-bar {{ height:4px; background:var(--gauge-bg); border-radius:2px; }}
   .ys-bar-fill {{ height:100%; background:var(--accent); border-radius:2px; }}
+  .yr-tcr {{ font-size:0.8em; color:var(--muted); padding:8px 0 2px; margin-top:4px; border-top:1px solid var(--border); white-space:normal; line-height:1.5; }}
+  .yr-tcr a {{ color:var(--accent); text-decoration:none; }}
+  .yr-tcr a:hover {{ text-decoration:underline; }}
+  .yr-tcr-note {{ font-style:italic; }}
+  .decade-filter {{ display:flex; flex-wrap:wrap; justify-content:center; align-items:center; gap:6px; margin-bottom:14px; }}
+  .decade-filter-label {{ color:var(--muted); font-size:0.8em; }}
+  .decade-filter button {{ padding:5px 14px; min-height:32px; border:1px solid var(--border); background:transparent; color:var(--text); border-radius:16px; cursor:pointer; font-size:0.82em; }}
+  .decade-filter button:hover {{ border-color:var(--accent); color:var(--accent); }}
+  .decade-filter button.active {{ background:var(--accent); border-color:var(--accent); color:var(--bg); font-weight:bold; }}
+  .decade-filter button:focus-visible, .yr-tcr a:focus-visible {{ outline:2px solid var(--accent); outline-offset:2px; }}
+  .decade-count {{ color:var(--accent); font-weight:600; }}
 </style>
 </head>
 <body>
@@ -1389,6 +1447,7 @@ def generate_history_html(basin_data):
   <span class="badge badge-near">Near Normal 73–126</span>
   <span class="badge badge-below">Below Normal &lt;73</span>
 </div>
+{decade_filter_html}
 {''.join(basin_sections)}
 <div class="sources">
   <h4>Data Sources</h4>
@@ -1408,7 +1467,36 @@ function show(id,btn) {{
   document.querySelectorAll('.toggle button').forEach(b=>b.classList.remove('active'));
   document.getElementById(id)?.classList.add('active');
   btn.classList.add('active');
-  try{{history.replaceState(null,'','#'+id);}}catch(e){{}}
+  _syncHash();
+}}
+var _decade='all';
+function _syncHash(){{
+  var card=document.querySelector('.basin-card.active');
+  var h=(card?card.id:'atlantic')+(_decade!=='all'?'&decade='+_decade:'');
+  try{{history.replaceState(null,'','#'+h);}}catch(e){{}}
+}}
+function filterDecade(dec){{
+  var btns=document.querySelectorAll('.decade-filter button');
+  if(![].some.call(btns,function(b){{return b.getAttribute('data-decade')===dec;}}))return;
+  btns.forEach(function(b){{
+    var on=b.getAttribute('data-decade')===dec;
+    b.classList.toggle('active',on);
+    b.setAttribute('aria-pressed',on?'true':'false');
+  }});
+  document.querySelectorAll('.basin-card').forEach(function(card){{
+    var shown=0,total=0;
+    card.querySelectorAll('tr.yr-data-row').forEach(function(r){{
+      var hide=dec!=='all'&&r.getAttribute('data-decade')!==dec;
+      total++;if(!hide)shown++;
+      r.hidden=hide;
+      var x=document.getElementById('yr-xrow-'+r.id);
+      if(x)x.hidden=hide;
+    }});
+    var c=card.querySelector('.decade-count');
+    if(c)c.textContent=dec==='all'?'':'· Showing '+shown+' of '+total+' seasons ('+dec+')';
+  }});
+  _decade=dec;
+  _syncHash();
 }}
 function toggleTheme() {{
   var h=document.documentElement;
@@ -1419,8 +1507,10 @@ function toggleTheme() {{
 }}
 document.addEventListener('DOMContentLoaded',function() {{
   document.getElementById('themeBtn').textContent=document.documentElement.getAttribute('data-theme')==='light'?'☾':'☀';
-  var hash=location.hash.replace('#','');
-  var match=[].slice.call(document.querySelectorAll('.toggle button')).filter(function(b){{return(b.getAttribute('onclick')||'').indexOf("'"+hash+"'")>=0;}})[0];
+  var parts=location.hash.replace('#','').split('&');
+  var hash=parts[0];
+  parts.slice(1).forEach(function(p){{if(p.indexOf('decade=')===0)filterDecade(p.slice(7));}});
+  var match=hash?[].slice.call(document.querySelectorAll('.toggle button')).filter(function(b){{return(b.getAttribute('onclick')||'').indexOf("'"+hash+"'")>=0;}})[0]:null;
   if(match)match.click();
 }});
 var _hs={{}};
