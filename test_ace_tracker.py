@@ -29,6 +29,10 @@ from ace_data import (
     find_storms_on_this_day,
     calculate_same_date_stats,
     calculate_ace_pace,
+    calculate_yearly_stats,
+    landfall_ace_share,
+    average_landfall_share,
+    generate_insights,
     _drop_stale_storm_keys,
     _last_track_stamp,
     SYNOPTIC_TIMES,
@@ -965,6 +969,46 @@ class TestWhatIsAcePage(unittest.TestCase):
         for gen in (generate_dashboard_html, generate_history_html, generate_records_html):
             with self.subTest(page=gen.__name__):
                 self.assertIn('href="what-is-ace.html"', gen(basin_data))
+
+
+class TestLandfallAceShare(unittest.TestCase):
+    """Share of season ACE from landfalling storms vs. fish storms."""
+
+    STORMS = [
+        {'name': 'Hitter', 'ace': 30.0, 'max_wind': 120, 'landfall': [('Florida', 'Cat 3')]},
+        {'name': 'Fish', 'ace': 10.0, 'max_wind': 80, 'landfall': []},
+        {'name': 'Td', 'ace': 0.0, 'max_wind': 30, 'landfall': [('Texas', 'TD')]},
+    ]
+
+    def test_split_and_counts_ignore_depressions(self):
+        self.assertEqual(landfall_ace_share(self.STORMS),
+                         {'landfall_pct': 75, 'fish_pct': 25, 'landfall_count': 1, 'fish_count': 1})
+
+    def test_no_ace_returns_none(self):
+        self.assertIsNone(landfall_ace_share([]))
+        self.assertIsNone(landfall_ace_share([self.STORMS[2]]))
+
+    def test_average_uses_completed_seasons_only(self):
+        stats = {
+            2024: {'storms_list': self.STORMS},                                      # 75%
+            2025: {'storms_list': [dict(self.STORMS[1])]},                          # 0%
+            2026: {'storms_list': [dict(self.STORMS[0])]},                          # current, excluded
+        }
+        self.assertEqual(average_landfall_share(stats, 2026), 38)
+        self.assertIsNone(average_landfall_share({}, 2026))
+
+    def test_dashboard_insight_and_history_panel(self):
+        basin_data = TestHTMLGeneration()._make_basin_data()
+        bd = basin_data[0]
+        bd['yearly_stats'] = calculate_yearly_stats(bd['historical_storms'])
+        insights = generate_insights('atlantic', bd['current'], bd['yearly_totals'],
+                                     bd['historical_storms'], bd['yearly_stats'])
+        share = [i for i in insights if i.startswith('🏝️ Landfall share')]
+        self.assertEqual(len(share), 1)
+        self.assertIn('of season ACE came from the', share[0])
+        history = generate_history_html(basin_data)
+        self.assertIn('class="yr-lfshare"', history)
+        self.assertIn('of a season\'s ACE came from storms that made landfall', history)
 
 
 class TestRankCurrentSeason(unittest.TestCase):

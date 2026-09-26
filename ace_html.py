@@ -26,6 +26,8 @@ from ace_data import (
     find_strongest_landfall,
     find_earliest_forming_storm,
     find_latest_forming_storm,
+    landfall_ace_share,
+    average_landfall_share,
     _portable_strftime,
     MIN_NAMED_STORM_WIND,
 )
@@ -86,6 +88,18 @@ def _year_storm_list_html(storms_list):
             f'</div>'
         )
     return '\n'.join(rows)
+
+
+def _landfall_share_html(storms_list):
+    """One-line landfall vs. fish-storm ACE split for a season's panel."""
+    share = landfall_ace_share(storms_list)
+    if not share:
+        return ''
+    lf_n, fish_n = share['landfall_count'], share['fish_count']
+    return (f'<div class="yr-lfshare"><span class="lfs-bar" aria-hidden="true">'
+            f'<span class="lfs-fill" style="width:{share["landfall_pct"]}%"></span></span>'
+            f'<span>&#127965;&#65039; Landfalling: <b>{share["landfall_pct"]}%</b> of ACE ({lf_n} storm{"s" if lf_n != 1 else ""})'
+            f' &nbsp;·&nbsp; &#128031; Fish storms: <b>{share["fish_pct"]}%</b> ({fish_n})</span></div>')
 
 
 # NHC Tropical Cyclone Report (TCR) archive basins. The E/C Pacific tab combines
@@ -1234,6 +1248,7 @@ def generate_history_html(basin_data):
             tcr_html = _nhc_tcr_links_html(year, bd['basin_key'], is_active)
             decade = _decade_label(year)
             all_decades.add(decade)
+            lfshare_html = _landfall_share_html(d.get('storms_list', []))
             rows.append(
                 f'<tr class="{row_cls} yr-data-row" id="{yr_key}" data-decade="{decade}">'
                 f'<td data-v="{year}" style="white-space:nowrap">'
@@ -1250,7 +1265,7 @@ def generate_history_html(basin_data):
                 f'</tr>'
                 f'<tr class="yr-expand-row" id="yr-xrow-{yr_key}">'
                 f'<td colspan="9"><div class="yr-panel" id="yrpanel-{yr_key}">'
-                f'<div class="yr-panel-inner">{storm_list_html}{tcr_html}</div>'
+                f'<div class="yr-panel-inner">{lfshare_html}{storm_list_html}{tcr_html}</div>'
                 f'</div></td></tr>'
             )
 
@@ -1270,10 +1285,14 @@ def generate_history_html(basin_data):
             f'</tr>'
         )
 
+        lf_avg = average_landfall_share(yearly_stats, current_year)
+        lf_avg_note = (f'<p class="season-note">&#127965;&#65039; On average since {START_YEAR}, <b>{lf_avg}%</b> of a season\'s ACE '
+                       f'came from storms that made landfall. Open a season to see its split.</p>') if lf_avg is not None else ''
         basin_sections.append(f'''
     <div class="basin-card{' active' if not basin_sections else ''}" id="{bd['basin_key']}">
       <h2>{html_escape(basin['name'])} — All Seasons ({START_YEAR}–{current_year})</h2>
       <p class="season-note">{total_seasons} seasons &nbsp;·&nbsp; ● = currently active &nbsp;·&nbsp; <span style="border-left:3px solid #f9a825;padding-left:4px;">gold border</span> = top 5 all-time ACE &nbsp;·&nbsp; click headers to sort &nbsp;<span class="decade-count" aria-live="polite"></span></p>
+      {lf_avg_note}
       <div class="table-wrap">
         <table class="hist-table">
           <thead>
@@ -1422,6 +1441,10 @@ def generate_history_html(basin_data):
   .yr-panel {{ overflow:hidden; max-height:0; transition:max-height 0.3s ease; background:var(--sources-bg); }}
   .yr-panel.open {{ max-height:2000px; }}
   .yr-panel-inner {{ padding:8px 12px 10px; }}
+  .yr-lfshare {{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-size:0.8em; color:var(--muted); padding:2px 0 8px; margin-bottom:4px; border-bottom:1px solid var(--border); }}
+  .yr-lfshare b {{ color:var(--text); }}
+  .lfs-bar {{ display:inline-block; width:90px; height:8px; border-radius:4px; background:var(--border); overflow:hidden; flex:none; }}
+  .lfs-fill {{ display:block; height:100%; background:#ffb74d; }}
   .ys-row {{ display:grid; grid-template-columns:110px 48px 46px 1fr; align-items:start; gap:6px; padding:5px 0; font-size:0.82em; border-bottom:1px solid var(--border); }}
   .ys-row:last-child {{ border-bottom:none; }}
   .ys-name {{ color:var(--text); font-weight:500; line-height:1.4; }}
