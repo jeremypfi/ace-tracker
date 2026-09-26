@@ -380,6 +380,50 @@ def get_landfall_locations(storm_obj):
 
 
 
+def _clean_landfalls(landfall):
+    """Tidy a landfall list for display: collapse 'X, X' names where the
+    region and country share a name (e.g. 'Puerto Rico, Puerto Rico'), and
+    list each place once at the strongest category it was hit, keeping the
+    order of first landfall. Also applied to cached entries, which predate it.
+    """
+    order = []
+    best = {}
+    for loc, cat in landfall or []:
+        region, sep, country = loc.partition(', ')
+        if sep and region == country:
+            loc = region
+        if loc not in best:
+            order.append(loc)
+            best[loc] = cat
+        elif _CATEGORY_RANK.get(cat, -1) > _CATEGORY_RANK.get(best[loc], -1):
+            best[loc] = cat
+    return [(loc, best[loc]) for loc in order]
+
+
+
+def _first_track_time(storm_obj, statuses, min_wind=0):
+    """First track time with a status in `statuses` and wind >= `min_wind`
+    (knots), or None if the track never gets there."""
+    try:
+        for t, status, wind in zip(storm_obj.time, storm_obj.type, storm_obj.vmax):
+            if str(status) in statuses and wind >= min_wind:
+                return t.to_pydatetime() if hasattr(t, 'to_pydatetime') else t
+    except Exception as e:
+        logger.warning(f"Could not read track times for {getattr(storm_obj, 'id', '?')}: {e}")
+    return None
+
+
+def _first_tropical_storm_time(storm_obj):
+    """When a system first became a tropical or subtropical storm: its first
+    track point with TS/HU/SS status. HURDAT2 tracks often begin days earlier
+    as a low, depression, or extratropical system (Alex 2016's track starts
+    Jan 7 as extratropical; it became a subtropical storm Jan 12). None for
+    a depression that never strengthened.
+    """
+    return _first_track_time(storm_obj, ACE_STATUSES)
+
+
+
 def _detect_landfall_from_track(storm_obj):
     """Geographic fallback for landfall detection when HURDAT2 'L' markers are absent.
 
@@ -670,6 +714,7 @@ def parse_hurdat2(basin_key, dataset=None):
                             landfall = get_landfall_locations(storm_obj)
                             lf_cache[cache_key] = landfall
                             lf_cache_dirty = True
+                        landfall = _clean_landfalls(landfall)
 
                         # Build storm record
                         storm_record = {
@@ -680,6 +725,9 @@ def parse_hurdat2(basin_key, dataset=None):
                             'wind_readings': wind_readings,
                             'start_date': start_date,
                             'end_date': end_date,
+                            'formation_date': _first_tropical_storm_time(storm_obj),
+                            'hurricane_date': _first_track_time(storm_obj, {'HU'}, 64),
+                            'major_date': _first_track_time(storm_obj, {'HU'}, 96),
                             'landfall': landfall,
                         }
 
@@ -894,6 +942,7 @@ def get_current_season(basin_key, dataset=None):
                                 landfall = _detect_landfall_from_track(storm_obj)
                                 cs_lf_cache[geo_key] = landfall
                                 cs_lf_dirty = True
+                        landfall = _clean_landfalls(landfall)
 
                         # Spaghetti model tracks only matter (and are only
                         # worth the extra Tropycal call) while a storm is active.
@@ -1052,7 +1101,8 @@ def calculate_yearly_stats(storms):
                 'storms_list': [],
             }
         s = stats[year]
-        s['named_storms'] += 1
+        if storm['category'] != 'TD':
+            s['named_storms'] += 1
         if storm['max_wind'] >= 64:
             s['hurricanes'] += 1
         if storm['max_wind'] >= 96:
@@ -1066,6 +1116,7 @@ def calculate_yearly_stats(storms):
             s['longest_days'] = storm['duration_days']
         if storm['category'] != 'TD':
             s['storms_list'].append({
+                'id': storm.get('id'),
                 'name': storm['name'],
                 'ace': round(storm['ace'], 2),
                 'category': storm['category'],
@@ -1171,25 +1222,34 @@ def find_strongest_landfall(historical_storms):
 
 
 
+def _formed_named_storms(historical_storms):
+    """Named storms with a known formation date (first TS/SS/HU point).
+    Depressions that never strengthened and unnamed storms are left out, so
+    the forming records only ever name a real named storm."""
+    return [s for s in historical_storms
+            if s.get('formation_date') and s.get('name', '').upper() != 'UNNAMED']
+
+
 def find_earliest_forming_storm(historical_storms):
-    """The storm that formed earliest in the calendar year since
+    """The named storm that formed earliest in the calendar year since
     START_YEAR (e.g. a rare January/February formation), ranked by
     day-of-year rather than day-into-season so pre-season storms compare
-    correctly. None if no storm has a start date."""
-    dated = [s for s in historical_storms if s.get('start_date')]
-    if not dated:
+    correctly. None if no storm has a formation date."""
+    formed = _formed_named_storms(historical_storms)
+    if not formed:
         return None
-    return min(dated, key=lambda s: s['start_date'].timetuple().tm_yday)
+    return min(formed, key=lambda s: s['formation_date'].timetuple().tm_yday)
 
 
 
 def find_latest_forming_storm(historical_storms):
-    """The storm that formed latest in the calendar year since START_YEAR
-    (e.g. a rare December formation). None if no storm has a start date."""
-    dated = [s for s in historical_storms if s.get('start_date')]
-    if not dated:
+    """The named storm that formed latest in the calendar year since
+    START_YEAR (e.g. a rare December formation). None if no storm has a
+    formation date."""
+    formed = _formed_named_storms(historical_storms)
+    if not formed:
         return None
-    return max(dated, key=lambda s: s['start_date'].timetuple().tm_yday)
+    return max(formed, key=lambda s: s['formation_date'].timetuple().tm_yday)
 
 
 
@@ -1298,14 +1358,18 @@ def calculate_same_date_stats(historical_storms, basin_key, target_date=None):
         ace = 0.0
 
         for s in yr_storms:
-            start = s.get('start_date')
-            if start is None:
+            # ACE accrues from the track start (only TS/HU/SS readings carry
+            # any), but a storm only counts as named once it has formed.
+            ace += _storm_ace_at_cutoff(s, hist_cutoff)
+
+            formed = s.get('formation_date', s.get('start_date'))
+            if formed is None or s.get('category') == 'TD':
                 continue
             # Strip timezone so comparisons work
-            if getattr(start, 'tzinfo', None):
-                start = start.replace(tzinfo=None)
+            if getattr(formed, 'tzinfo', None):
+                formed = formed.replace(tzinfo=None)
 
-            if start > hist_cutoff:
+            if formed > hist_cutoff:
                 continue  # Storm hadn't formed yet
 
             named += 1
@@ -1313,8 +1377,6 @@ def calculate_same_date_stats(historical_storms, basin_key, target_date=None):
                 hurricanes += 1
             if s['max_wind'] >= 96:
                 majors += 1
-
-            ace += _storm_ace_at_cutoff(s, hist_cutoff)
 
         sd_named[year]     = named
         sd_hurricanes[year] = hurricanes
@@ -1331,6 +1393,190 @@ def calculate_same_date_stats(historical_storms, basin_key, target_date=None):
         'day_of_season': day_of_season,
         'date_label':    date_label,
     }
+
+
+# How close (days) the current date must be to a "latest first hurricane /
+# major" record before the records-in-play panel mentions it.
+RECORD_WATCH_DAYS = 14
+# Fastest-to-100-ACE only shows up once a season is at least this far along.
+FAST_100_MIN_ACE = 60
+
+
+def _calendar_key(dt):
+    """(month, day, hour) — compares dates across years without leap-year
+    day-of-year drift."""
+    return (dt.month, dt.day, dt.hour)
+
+
+def _names_and_years(entries):
+    """'Gustav (2002) and Humberto (2013)' from [(year, name), ...]."""
+    parts = [f"{name.title()} ({year})" for year, name in sorted(entries)]
+    return ' and '.join(parts) if len(parts) < 3 else ', '.join(parts[:-1]) + f', and {parts[-1]}'
+
+
+def _date_reached_ace(storms, year, threshold):
+    """First date in `year` when the season's cumulative ACE reached
+    `threshold`, using the same proration as the same-date stats; None if
+    it never did."""
+    ends = [s['end_date'] for s in storms if s.get('end_date')]
+    if not ends or sum(s.get('ace', 0.0) for s in storms) < threshold:
+        return None
+    day = datetime(year, 1, 1)
+    last = max(e.replace(tzinfo=None) for e in ends)
+    while day <= last:
+        if sum(_storm_ace_at_cutoff(s, day) for s in storms) >= threshold:
+            return day
+        day += timedelta(days=1)
+    return last
+
+
+def _first_event_records(storms_by_year, current_storms, field, label, today, current_year):
+    """Latest-first-hurricane / latest-first-major check for one basin."""
+    firsts = {}
+    for year, yr_storms in storms_by_year.items():
+        dates = [(s[field], s['name']) for s in yr_storms if s.get(field)]
+        if dates:
+            firsts[year] = min(dates, key=lambda d: d[0])
+    if not firsts:
+        return None
+    none_years = sorted(y for y in storms_by_year if y not in firsts)
+    latest_key = max(_calendar_key(d) for d, _ in firsts.values())
+    holders = [(y, n) for y, (d, n) in firsts.items() if _calendar_key(d) == latest_key]
+    record_date = firsts[holders[0][0]][0]
+    record_label = _portable_strftime(record_date, '%B %-d')
+    holder_text = f"{_names_and_years(holders)}, {record_label}"
+    none_note = ''
+    if none_years:
+        yrs = ', '.join(str(y) for y in none_years)
+        none_note = f" ({yrs} had none at all.)"
+
+    current = [s[field] for s in current_storms if s.get(field)]
+    if current:
+        first = min(current)
+        if _calendar_key(first) > latest_key:
+            return {
+                'status': 'set',
+                'title': f'Latest first {label} since {START_YEAR}',
+                'detail': (f"This season's first {label} formed "
+                           f"{_portable_strftime(first, '%B %-d')}. Previous latest: {holder_text}."),
+            }
+        return None
+
+    record_this_year = datetime(current_year, record_date.month, record_date.day)
+    days_left = (record_this_year.date() - today.date()).days
+    if days_left < 0:
+        return {
+            'status': 'set',
+            'title': f'Latest first {label} since {START_YEAR}',
+            'detail': (f"No {label} yet this season, already later than any season since "
+                       f"{START_YEAR} that had one. Previous latest: {holder_text}.{none_note}"),
+        }
+    if days_left <= RECORD_WATCH_DAYS:
+        return {
+            'status': 'in_play',
+            'title': f'Latest first {label}',
+            'detail': (f"No {label} yet this season. The latest first {label} since "
+                       f"{START_YEAR} was {holder_text}, {days_left} day"
+                       f"{'s' if days_left != 1 else ''} from now.{none_note}"),
+        }
+    return None
+
+
+def calculate_records_in_play(historical_storms, basin_key, current_ace, target_date=None):
+    """Season records the current season is setting or close to, compared
+    with every completed season since START_YEAR: latest first hurricane,
+    latest first major hurricane, lowest/highest ACE for the date, and
+    fastest to 100 ACE. History only — never a forecast.
+
+    Returns a list of {'status': 'set' | 'in_play', 'title', 'detail'}
+    dicts; empty when nothing is notable.
+    """
+    if not historical_storms:
+        return []
+    today = target_date or _utc_now()
+    current_year = today.year
+
+    storms_by_year = {}
+    for s in historical_storms:
+        if START_YEAR <= s['year'] < current_year:
+            storms_by_year.setdefault(s['year'], []).append(s)
+    if not storms_by_year:
+        return []
+    current_storms = [s for s in historical_storms if s['year'] == current_year]
+
+    records = []
+    for field, label in (('hurricane_date', 'hurricane'), ('major_date', 'major hurricane')):
+        rec = _first_event_records(storms_by_year, current_storms, field, label, today, current_year)
+        if rec:
+            records.append(rec)
+
+    sd = calculate_same_date_stats(historical_storms, basin_key, today)
+    if sd and sd['day_of_season'] >= 30:
+        ranked = sorted(sd['yearly_ace'].items(), key=lambda kv: kv[1])
+        n = len(ranked) + 1
+        low_rank = 1 + sum(1 for _, ace in ranked if ace < current_ace)
+        high_rank = 1 + sum(1 for _, ace in ranked if ace > current_ace)
+        low_year, low_ace = ranked[0]
+        high_year, high_ace = ranked[-1]
+        through = f"through {sd['date_label']}"
+        if low_rank == 1:
+            records.append({
+                'status': 'set',
+                'title': f'Lowest ACE for the date since {START_YEAR}',
+                'detail': f"{current_ace:.1f} ACE {through}. Previous low: {low_ace:.1f} in {low_year}.",
+            })
+        elif low_rank <= 3:
+            records.append({
+                'status': 'in_play',
+                'title': 'Among the lowest ACE for the date',
+                'detail': (f"{current_ace:.1f} ACE {through} ranks #{low_rank} lowest of {n} seasons. "
+                           f"Record low: {low_ace:.1f} in {low_year}."),
+            })
+        if high_rank == 1:
+            records.append({
+                'status': 'set',
+                'title': f'Most ACE for the date since {START_YEAR}',
+                'detail': f"{current_ace:.1f} ACE {through}. Previous high: {high_ace:.1f} in {high_year}.",
+            })
+        elif high_rank <= 3:
+            records.append({
+                'status': 'in_play',
+                'title': 'Among the most ACE for the date',
+                'detail': (f"{current_ace:.1f} ACE {through} ranks #{high_rank} highest of {n} seasons. "
+                           f"Record: {high_ace:.1f} in {high_year}."),
+            })
+
+    if current_ace >= FAST_100_MIN_ACE:
+        reached = {}
+        for year, yr_storms in storms_by_year.items():
+            d = _date_reached_ace(yr_storms, year, 100)
+            if d:
+                reached[year] = d
+        if reached:
+            fastest_year = min(reached, key=lambda y: _calendar_key(reached[y]))
+            fastest = reached[fastest_year]
+            fastest_label = _portable_strftime(fastest, '%B %-d')
+            if current_ace >= 100:
+                mine = _date_reached_ace(current_storms, current_year, 100) or today
+                if _calendar_key(mine) < _calendar_key(fastest):
+                    records.append({
+                        'status': 'set',
+                        'title': f'Fastest to 100 ACE since {START_YEAR}',
+                        'detail': (f"Reached 100 ACE by {_portable_strftime(mine, '%B %-d')}. "
+                                   f"Previous fastest: {fastest_year}, {fastest_label}."),
+                    })
+            else:
+                deadline = datetime(current_year, fastest.month, fastest.day)
+                days_left = (deadline.date() - today.date()).days
+                if days_left >= 0:
+                    records.append({
+                        'status': 'in_play',
+                        'title': 'Fastest to 100 ACE',
+                        'detail': (f"At {current_ace:.1f} ACE. The fastest season to 100 since "
+                                   f"{START_YEAR} was {fastest_year}, reaching it {fastest_label} "
+                                   f"({days_left} day{'s' if days_left != 1 else ''} from now)."),
+                    })
+    return records
 
 
 def _percentile(sorted_values, pct):
@@ -1696,6 +1942,104 @@ def generate_console_report(basin_key, current, yearly_totals, insights):
 # ===============================================================================
 # NHC LIVE DATA FETCHING
 # ===============================================================================
+
+TCR_INDEX_URL = 'https://www.nhc.noaa.gov/TCR_StormReportsIndex.xml'
+
+
+def parse_tcr_index(xml_text):
+    """Parse NHC's Tropical Cyclone Report index into rows of
+    {'name', 'url', 'year', 'basin'} ('basin' is 'atlantic' or 'pacific')."""
+    import xml.etree.ElementTree as ET
+    rows = []
+    for row in ET.fromstring(xml_text).iter('row'):
+        url = (row.findtext('StormReportURL') or '').strip()
+        year = (row.findtext('Year') or '').strip()
+        basin = (row.findtext('Basin') or '').strip().lower()
+        if url.startswith('https://www.nhc.noaa.gov/') and year.isdigit() and basin in BASINS:
+            rows.append({'name': (row.findtext('StormName') or '').strip(),
+                         'url': url, 'year': int(year), 'basin': basin})
+    return rows
+
+
+def _tcr_row_storm_name(row):
+    """'Hurricane Andrew (Atlantic)' -> 'andrew'; 'Tropical Storm (Unnamed)
+    (Atlantic)' -> 'unnamed'."""
+    import re
+    name = re.sub(r'\s*\((Atlantic|Pacific)\)\s*$', '', row['name'], flags=re.I)
+    words = re.sub(r'[()]', ' ', name).split()
+    return words[-1].lower() if words else ''
+
+
+def match_tcr_reports(rows, storms, basin_key):
+    """Map storm id -> NHC report URL for one basin.
+
+    1995+ reports are PDFs named by storm id (AL012005_Arlene.pdf, or both
+    ids for a storm that crossed basins: AL022022_EP042022_Bonnie.pdf), so
+    they match exactly. 1991-1994 reports are "storm wallet" folders named
+    by storm name (sometimes cut to 8 letters, e.g. 'guillerm' for
+    Guillermo), matched by year and name. Anything left (e.g. Andrew 1992's
+    own page, or a crossover filed under the other basin's id) falls back to
+    a year + name match, same basin first. Unnamed storms only match by id.
+    Storms without a report are left out.
+    """
+    import re
+    by_id = {}
+    wallets = {}
+    by_name = {}
+    for r in rows:
+        leaf = r['url'].rstrip('/').rsplit('/', 1)[-1]
+        if leaf.lower().endswith('.pdf'):
+            for sid in re.findall(r'[A-Z]{2}\d{6}', leaf.upper()):
+                by_id.setdefault(sid, r['url'])
+        elif r['basin'] == basin_key and '/storm_wallets/' in r['url']:
+            wallets[(r['year'], leaf.lower())] = r['url']
+        name = _tcr_row_storm_name(r)
+        rank = 0 if r['basin'] == basin_key else 1
+        key = (r['year'], name)
+        if name and name != 'unnamed' and (key not in by_name or rank < by_name[key][0]):
+            by_name[key] = (rank, r['url'])
+    matched = {}
+    for s in storms:
+        sid = str(s.get('id', '')).upper()
+        if sid in by_id:
+            matched[sid] = by_id[sid]
+            continue
+        name = str(s.get('name', '')).lower()
+        year = s.get('year')
+        for (w_year, leaf), url in wallets.items():
+            if w_year == year and (leaf == name or (len(leaf) >= 8 and name.startswith(leaf))):
+                matched[sid] = url
+                break
+        else:
+            if name != 'unnamed' and (year, name) in by_name:
+                matched[sid] = by_name[(year, name)][1]
+    return matched
+
+
+_tcr_rows_cache = None
+
+
+def fetch_tcr_reports(storms, basin_key):
+    """Per-storm NHC Tropical Cyclone Report links ({storm id: url}) from
+    NHC's report index, downloaded once per run and shared by both basins.
+    Returns {} on any failure, so the history page falls back to the
+    season-level report links."""
+    global _tcr_rows_cache
+    try:
+        if _tcr_rows_cache is None:
+            req = urllib.request.Request(TCR_INDEX_URL, headers={'User-Agent': 'ACETracker/1.0'})
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                _tcr_rows_cache = parse_tcr_index(resp.read().decode('utf-8', errors='replace'))
+        rows = _tcr_rows_cache
+        matched = match_tcr_reports(rows, storms or [], basin_key)
+        print(f"  ✓ NHC storm reports: {len(matched)} linked")
+        return matched
+    except Exception as e:
+        logger.warning(f"Could not load NHC storm report index: {e}")
+        print(f"  → NHC storm report index unavailable ({e}); using season links")
+        return {}
+
+
 
 def fetch_nhc_disturbances(basin_key):
     """Fetch NHC Tropical Weather Outlook and return disturbances with Medium/High formation chances.
