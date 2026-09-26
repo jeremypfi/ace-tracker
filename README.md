@@ -5,7 +5,7 @@
 Tracks Accumulated Cyclone Energy (ACE) for Atlantic and Eastern Pacific hurricane seasons with storm-by-storm data from 1991 onward. Publishes a live web dashboard updated every 3 hours during hurricane season.
 
 [![Tests](https://github.com/jeremypfi/ace-tracker/actions/workflows/tests.yml/badge.svg)](https://github.com/jeremypfi/ace-tracker/actions/workflows/tests.yml)
-[![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Ko-fi](https://img.shields.io/badge/Support-Ko--fi-ff5e5b?logo=ko-fi)](https://ko-fi.com/aceofcanes)
 
@@ -69,7 +69,7 @@ A long-lived major hurricane contributes far more ACE than a brief tropical stor
 
 ### Requirements
 
-- Python 3.10, 3.11, or 3.12 (3.13+ isn't supported yet — see Troubleshooting)
+- Python 3.11 or 3.12 (3.13+ isn't supported yet — see Troubleshooting)
 - Internet connection (for fetching live data)
 
 ### Installation
@@ -123,7 +123,7 @@ ace-tracker/
 ├── .claude/skills/          # /pre-commit, /season-start, /verify-data
 ├── .github/
 │   ├── workflows/
-│   │   ├── tests.yml       # CI: runs tests on push/PR (Python 3.10, 3.11, 3.12)
+│   │   ├── tests.yml       # CI: runs tests on push/PR (Python 3.11, 3.12)
 │   │   └── publish.yml     # Scheduled: generates and deploys dashboard every 3 hours
 │   ├── dependabot.yml      # Automated dependency updates
 │   └── CODEOWNERS          # @jeremypfi must approve all PRs
