@@ -279,6 +279,23 @@ def _nhc_alert_html(disturbances):
     )
 
 
+def _records_in_play_html(records):
+    """'Records in Play' panel: season records the current season is setting
+    or close to, versus every season since START_YEAR. Omitted when empty."""
+    if not records:
+        return ''
+    badges = {'set': ('rip-set', 'Record'), 'in_play': ('rip-watch', 'In play')}
+    items = ''.join(
+        f'<li class="rip-item"><span class="rip-badge {badges[r["status"]][0]}">{badges[r["status"]][1]}</span>'
+        f'<span class="rip-body"><b>{html_escape(r["title"])}</b> {html_escape(r["detail"])}</span></li>'
+        for r in records)
+    return f'''
+      <h3>Records in Play</h3>
+      <ul class="rip-list">{items}</ul>
+      <p class="rip-caption">Compared with every season since {START_YEAR}. Based on history only, not a forecast.</p>'''
+
+
+
 def _season_projection_html(current_ace, basin_key):
     """Render the 'what would it take?' daily-ACE-rate projection widget."""
     projection = get_season_projection(current_ace, basin_key)
@@ -485,6 +502,7 @@ def generate_dashboard_html(basin_data):
 
       <h3>Season Insights</h3>
       <ul class="insights">{insight_items_html(insights)}</ul>
+      {_records_in_play_html(bd.get('records_in_play'))}
       {_season_projection_html(current_ace, bd['basin_key'])}'''
 
         gauge_pct = min(pct_normal, 200)
@@ -639,6 +657,12 @@ def generate_dashboard_html(basin_data):
   tr.major td {{ color:var(--danger-text); font-weight:bold; }}
   tr.total-row {{ background:var(--total-row); }}
   .insights {{ list-style:none; padding:0; }}
+  .rip-list {{ list-style:none; padding:0; margin:0; }}
+  .rip-item {{ display:flex; gap:10px; align-items:flex-start; background:var(--box); padding:8px 10px; margin:4px 0; border-radius:6px; font-size:0.85em; color:var(--text); }}
+  .rip-badge {{ flex:none; font-size:0.72em; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; padding:2px 7px; border-radius:10px; margin-top:1px; }}
+  .rip-set {{ background:#c0392b; color:#fff; }}
+  .rip-watch {{ background:#e67e22; color:#fff; }}
+  .rip-caption {{ font-size:0.75em; color:var(--muted); margin:4px 0 0; }}
   .insights li {{ background:var(--box); padding:8px 10px; margin:4px 0; border-radius:6px; font-size:0.85em; border-left:3px solid var(--accent); color:var(--text); }}
   .projection-widget {{ background:var(--box); border-radius:8px; padding:10px 12px; margin-top:6px; }}
   .projection-caption {{ color:var(--muted); font-size:0.78em; margin:0 0 8px; }}

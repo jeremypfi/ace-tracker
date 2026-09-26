@@ -30,6 +30,7 @@ from ace_data import (
     calculate_same_date_stats,
     calculate_ace_pace,
     calculate_yearly_stats,
+    calculate_records_in_play,
     _first_tropical_storm_time,
     _clean_landfalls,
     _drop_stale_storm_keys,
@@ -40,7 +41,7 @@ from ace_data import (
 )
 from ace_html import (
     generate_dashboard_html, generate_history_html, generate_records_html,
-    _decade_label, _nhc_tcr_links_html,
+    _decade_label, _nhc_tcr_links_html, _records_in_play_html,
 )
 
 
@@ -567,6 +568,99 @@ class TestFormationDateRecords(unittest.TestCase):
             storms.append(self._storm('Early', year, datetime(year, 6, 10), datetime(year, 6, 11)))
         result = calculate_same_date_stats(storms, 'atlantic', datetime(2026, 6, 28))
         self.assertEqual(result['avg_named'], 1.0)
+
+
+class TestRecordsInPlay(unittest.TestCase):
+    """calculate_records_in_play(): records the current season is setting
+    or close to, versus completed seasons. History only."""
+
+    def _storm(self, year, name, start, days, ace, hu=None, major=None):
+        wind = 100 if major else 70 if hu else 45
+        return {
+            'id': f'{name}{year}', 'name': name, 'year': year, 'max_wind': wind,
+            'category': 'Cat 3' if major else 'Cat 1' if hu else 'TS',
+            'is_major': bool(major), 'ace': ace,
+            'start_date': start, 'end_date': start + timedelta(days=days),
+            'formation_date': start, 'hurricane_date': hu, 'major_date': major,
+            'landfall': [],
+        }
+
+    def _history(self):
+        # First hurricanes Aug 1 (2023), Sep 11 (2024), Sep 11 (2025: tie).
+        return [
+            self._storm(2023, 'Arlene', datetime(2023, 7, 25), 10, 30,
+                        hu=datetime(2023, 8, 1), major=datetime(2023, 8, 3)),
+            self._storm(2024, 'Gustav', datetime(2024, 9, 5), 10, 20, hu=datetime(2024, 9, 11, 12)),
+            self._storm(2025, 'Humberto', datetime(2025, 9, 1), 20, 40,
+                        hu=datetime(2025, 9, 11, 12), major=datetime(2025, 9, 21)),
+        ]
+
+    def _titles(self, records):
+        return {(r['status'], r['title']) for r in records}
+
+    def test_no_hurricane_after_record_date_is_a_record(self):
+        storms = self._history() + [self._storm(2026, 'Arthur', datetime(2026, 8, 1), 3, 2)]
+        records = calculate_records_in_play(storms, 'atlantic', 2, datetime(2026, 9, 26))
+        hu = next(r for r in records if 'first hurricane' in r['title'])
+        self.assertEqual(hu['status'], 'set')
+        self.assertIn('Gustav (2024) and Humberto (2025)', hu['detail'])
+        self.assertIn('September 11', hu['detail'])
+        # 2024 had no major; latest first major was Sep 21 (2025)
+        major = next(r for r in records if 'first major' in r['title'])
+        self.assertEqual(major['status'], 'set')
+        self.assertIn('2024 had none at all', major['detail'])
+
+    def test_no_hurricane_shortly_before_record_date_is_in_play(self):
+        storms = self._history()
+        records = calculate_records_in_play(storms, 'atlantic', 0, datetime(2026, 9, 1))
+        hu = next(r for r in records if 'first hurricane' in r['title'])
+        self.assertEqual(hu['status'], 'in_play')
+        self.assertIn('10 days from now', hu['detail'])
+
+    def test_season_with_an_early_hurricane_shows_nothing_for_it(self):
+        storms = self._history() + [self._storm(2026, 'Bertha', datetime(2026, 7, 1), 5, 10,
+                                                hu=datetime(2026, 7, 3), major=datetime(2026, 7, 4))]
+        records = calculate_records_in_play(storms, 'atlantic', 10, datetime(2026, 9, 26))
+        self.assertFalse(any('first' in r['title'] for r in records))
+
+    def test_late_first_hurricane_that_formed_is_a_record(self):
+        storms = self._history() + [self._storm(2026, 'Cristobal', datetime(2026, 9, 20), 3, 5,
+                                                hu=datetime(2026, 9, 22))]
+        records = calculate_records_in_play(storms, 'atlantic', 5, datetime(2026, 9, 26))
+        hu = next(r for r in records if 'first hurricane' in r['title'])
+        self.assertEqual(hu['status'], 'set')
+        self.assertIn('September 22', hu['detail'])
+
+    def test_lowest_and_highest_ace_for_the_date(self):
+        storms = self._history()
+        low = calculate_records_in_play(storms, 'atlantic', 1.0, datetime(2026, 9, 26))
+        self.assertIn(('set', 'Lowest ACE for the date since 1991'), self._titles(low))
+        high = calculate_records_in_play(storms, 'atlantic', 55.0, datetime(2026, 9, 26))
+        self.assertIn(('set', 'Most ACE for the date since 1991'), self._titles(high))
+        self.assertNotIn(('set', 'Lowest ACE for the date since 1991'), self._titles(high))
+
+    def test_ace_for_date_is_skipped_early_in_season(self):
+        records = calculate_records_in_play(self._history(), 'atlantic', 0, datetime(2026, 6, 10))
+        self.assertFalse(any('ACE for the date' in r['title'] for r in records))
+
+    def test_fastest_to_100_ace(self):
+        storms = [self._storm(2024, 'Beryl', datetime(2024, 7, 1), 10, 110, hu=datetime(2024, 7, 2)),
+                  self._storm(2025, 'Erin', datetime(2025, 8, 1), 10, 120, hu=datetime(2025, 8, 2))]
+        in_play = calculate_records_in_play(storms, 'atlantic', 80, datetime(2026, 7, 5))
+        self.assertIn(('in_play', 'Fastest to 100 ACE'), self._titles(in_play))
+        current = [self._storm(2026, 'Ana', datetime(2026, 6, 20), 10, 105, hu=datetime(2026, 6, 21))]
+        done = calculate_records_in_play(storms + current, 'atlantic', 105, datetime(2026, 7, 5))
+        self.assertIn(('set', 'Fastest to 100 ACE since 1991'), self._titles(done))
+
+    def test_empty_history_returns_no_records(self):
+        self.assertEqual(calculate_records_in_play([], 'atlantic', 10), [])
+
+    def test_panel_html_escapes_and_hides_when_empty(self):
+        self.assertEqual(_records_in_play_html([]), '')
+        html = _records_in_play_html([{'status': 'set', 'title': 'T', 'detail': '<b>x</b>'}])
+        self.assertIn('Records in Play', html)
+        self.assertIn('&lt;b&gt;x&lt;/b&gt;', html)
+        self.assertIn('not a forecast', html)
 
 
 class TestCleanLandfalls(unittest.TestCase):

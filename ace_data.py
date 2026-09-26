@@ -401,6 +401,18 @@ def _clean_landfalls(landfall):
 
 
 
+def _first_track_time(storm_obj, statuses, min_wind=0):
+    """First track time with a status in `statuses` and wind >= `min_wind`
+    (knots), or None if the track never gets there."""
+    try:
+        for t, status, wind in zip(storm_obj.time, storm_obj.type, storm_obj.vmax):
+            if str(status) in statuses and wind >= min_wind:
+                return t.to_pydatetime() if hasattr(t, 'to_pydatetime') else t
+    except Exception as e:
+        logger.warning(f"Could not read track times for {getattr(storm_obj, 'id', '?')}: {e}")
+    return None
+
+
 def _first_tropical_storm_time(storm_obj):
     """When a system first became a tropical or subtropical storm: its first
     track point with TS/HU/SS status. HURDAT2 tracks often begin days earlier
@@ -408,13 +420,7 @@ def _first_tropical_storm_time(storm_obj):
     Jan 7 as extratropical; it became a subtropical storm Jan 12). None for
     a depression that never strengthened.
     """
-    try:
-        for t, status in zip(storm_obj.time, storm_obj.type):
-            if str(status) in ACE_STATUSES:
-                return t.to_pydatetime() if hasattr(t, 'to_pydatetime') else t
-    except Exception as e:
-        logger.warning(f"Could not read formation time for {getattr(storm_obj, 'id', '?')}: {e}")
-    return None
+    return _first_track_time(storm_obj, ACE_STATUSES)
 
 
 
@@ -720,6 +726,8 @@ def parse_hurdat2(basin_key, dataset=None):
                             'start_date': start_date,
                             'end_date': end_date,
                             'formation_date': _first_tropical_storm_time(storm_obj),
+                            'hurricane_date': _first_track_time(storm_obj, {'HU'}, 64),
+                            'major_date': _first_track_time(storm_obj, {'HU'}, 96),
                             'landfall': landfall,
                         }
 
@@ -1352,6 +1360,190 @@ def calculate_same_date_stats(historical_storms, basin_key, target_date=None):
         'day_of_season': day_of_season,
         'date_label':    date_label,
     }
+
+
+# How close (days) the current date must be to a "latest first hurricane /
+# major" record before the records-in-play panel mentions it.
+RECORD_WATCH_DAYS = 14
+# Fastest-to-100-ACE only shows up once a season is at least this far along.
+FAST_100_MIN_ACE = 60
+
+
+def _calendar_key(dt):
+    """(month, day, hour) — compares dates across years without leap-year
+    day-of-year drift."""
+    return (dt.month, dt.day, dt.hour)
+
+
+def _names_and_years(entries):
+    """'Gustav (2002) and Humberto (2013)' from [(year, name), ...]."""
+    parts = [f"{name.title()} ({year})" for year, name in sorted(entries)]
+    return ' and '.join(parts) if len(parts) < 3 else ', '.join(parts[:-1]) + f', and {parts[-1]}'
+
+
+def _date_reached_ace(storms, year, threshold):
+    """First date in `year` when the season's cumulative ACE reached
+    `threshold`, using the same proration as the same-date stats; None if
+    it never did."""
+    ends = [s['end_date'] for s in storms if s.get('end_date')]
+    if not ends or sum(s.get('ace', 0.0) for s in storms) < threshold:
+        return None
+    day = datetime(year, 1, 1)
+    last = max(e.replace(tzinfo=None) for e in ends)
+    while day <= last:
+        if sum(_storm_ace_at_cutoff(s, day) for s in storms) >= threshold:
+            return day
+        day += timedelta(days=1)
+    return last
+
+
+def _first_event_records(storms_by_year, current_storms, field, label, today, current_year):
+    """Latest-first-hurricane / latest-first-major check for one basin."""
+    firsts = {}
+    for year, yr_storms in storms_by_year.items():
+        dates = [(s[field], s['name']) for s in yr_storms if s.get(field)]
+        if dates:
+            firsts[year] = min(dates, key=lambda d: d[0])
+    if not firsts:
+        return None
+    none_years = sorted(y for y in storms_by_year if y not in firsts)
+    latest_key = max(_calendar_key(d) for d, _ in firsts.values())
+    holders = [(y, n) for y, (d, n) in firsts.items() if _calendar_key(d) == latest_key]
+    record_date = firsts[holders[0][0]][0]
+    record_label = _portable_strftime(record_date, '%B %-d')
+    holder_text = f"{_names_and_years(holders)}, {record_label}"
+    none_note = ''
+    if none_years:
+        yrs = ', '.join(str(y) for y in none_years)
+        none_note = f" ({yrs} had none at all.)"
+
+    current = [s[field] for s in current_storms if s.get(field)]
+    if current:
+        first = min(current)
+        if _calendar_key(first) > latest_key:
+            return {
+                'status': 'set',
+                'title': f'Latest first {label} since {START_YEAR}',
+                'detail': (f"This season's first {label} formed "
+                           f"{_portable_strftime(first, '%B %-d')}. Previous latest: {holder_text}."),
+            }
+        return None
+
+    record_this_year = datetime(current_year, record_date.month, record_date.day)
+    days_left = (record_this_year.date() - today.date()).days
+    if days_left < 0:
+        return {
+            'status': 'set',
+            'title': f'Latest first {label} since {START_YEAR}',
+            'detail': (f"No {label} yet this season, already later than any season since "
+                       f"{START_YEAR} that had one. Previous latest: {holder_text}.{none_note}"),
+        }
+    if days_left <= RECORD_WATCH_DAYS:
+        return {
+            'status': 'in_play',
+            'title': f'Latest first {label}',
+            'detail': (f"No {label} yet this season. The latest first {label} since "
+                       f"{START_YEAR} was {holder_text}, {days_left} day"
+                       f"{'s' if days_left != 1 else ''} from now.{none_note}"),
+        }
+    return None
+
+
+def calculate_records_in_play(historical_storms, basin_key, current_ace, target_date=None):
+    """Season records the current season is setting or close to, compared
+    with every completed season since START_YEAR: latest first hurricane,
+    latest first major hurricane, lowest/highest ACE for the date, and
+    fastest to 100 ACE. History only — never a forecast.
+
+    Returns a list of {'status': 'set' | 'in_play', 'title', 'detail'}
+    dicts; empty when nothing is notable.
+    """
+    if not historical_storms:
+        return []
+    today = target_date or _utc_now()
+    current_year = today.year
+
+    storms_by_year = {}
+    for s in historical_storms:
+        if START_YEAR <= s['year'] < current_year:
+            storms_by_year.setdefault(s['year'], []).append(s)
+    if not storms_by_year:
+        return []
+    current_storms = [s for s in historical_storms if s['year'] == current_year]
+
+    records = []
+    for field, label in (('hurricane_date', 'hurricane'), ('major_date', 'major hurricane')):
+        rec = _first_event_records(storms_by_year, current_storms, field, label, today, current_year)
+        if rec:
+            records.append(rec)
+
+    sd = calculate_same_date_stats(historical_storms, basin_key, today)
+    if sd and sd['day_of_season'] >= 30:
+        ranked = sorted(sd['yearly_ace'].items(), key=lambda kv: kv[1])
+        n = len(ranked) + 1
+        low_rank = 1 + sum(1 for _, ace in ranked if ace < current_ace)
+        high_rank = 1 + sum(1 for _, ace in ranked if ace > current_ace)
+        low_year, low_ace = ranked[0]
+        high_year, high_ace = ranked[-1]
+        through = f"through {sd['date_label']}"
+        if low_rank == 1:
+            records.append({
+                'status': 'set',
+                'title': f'Lowest ACE for the date since {START_YEAR}',
+                'detail': f"{current_ace:.1f} ACE {through}. Previous low: {low_ace:.1f} in {low_year}.",
+            })
+        elif low_rank <= 3:
+            records.append({
+                'status': 'in_play',
+                'title': 'Among the lowest ACE for the date',
+                'detail': (f"{current_ace:.1f} ACE {through} ranks #{low_rank} lowest of {n} seasons. "
+                           f"Record low: {low_ace:.1f} in {low_year}."),
+            })
+        if high_rank == 1:
+            records.append({
+                'status': 'set',
+                'title': f'Most ACE for the date since {START_YEAR}',
+                'detail': f"{current_ace:.1f} ACE {through}. Previous high: {high_ace:.1f} in {high_year}.",
+            })
+        elif high_rank <= 3:
+            records.append({
+                'status': 'in_play',
+                'title': 'Among the most ACE for the date',
+                'detail': (f"{current_ace:.1f} ACE {through} ranks #{high_rank} highest of {n} seasons. "
+                           f"Record: {high_ace:.1f} in {high_year}."),
+            })
+
+    if current_ace >= FAST_100_MIN_ACE:
+        reached = {}
+        for year, yr_storms in storms_by_year.items():
+            d = _date_reached_ace(yr_storms, year, 100)
+            if d:
+                reached[year] = d
+        if reached:
+            fastest_year = min(reached, key=lambda y: _calendar_key(reached[y]))
+            fastest = reached[fastest_year]
+            fastest_label = _portable_strftime(fastest, '%B %-d')
+            if current_ace >= 100:
+                mine = _date_reached_ace(current_storms, current_year, 100) or today
+                if _calendar_key(mine) < _calendar_key(fastest):
+                    records.append({
+                        'status': 'set',
+                        'title': f'Fastest to 100 ACE since {START_YEAR}',
+                        'detail': (f"Reached 100 ACE by {_portable_strftime(mine, '%B %-d')}. "
+                                   f"Previous fastest: {fastest_year}, {fastest_label}."),
+                    })
+            else:
+                deadline = datetime(current_year, fastest.month, fastest.day)
+                days_left = (deadline.date() - today.date()).days
+                if days_left >= 0:
+                    records.append({
+                        'status': 'in_play',
+                        'title': 'Fastest to 100 ACE',
+                        'detail': (f"At {current_ace:.1f} ACE. The fastest season to 100 since "
+                                   f"{START_YEAR} was {fastest_year}, reaching it {fastest_label} "
+                                   f"({days_left} day{'s' if days_left != 1 else ''} from now)."),
+                    })
+    return records
 
 
 def _percentile(sorted_values, pct):
