@@ -26,7 +26,10 @@ from ace_data import (
     find_strongest_landfall,
     find_earliest_forming_storm,
     find_latest_forming_storm,
+    landfall_ace_share,
+    average_landfall_share,
     _portable_strftime,
+    MIN_NAMED_STORM_WIND,
 )
 
 logger = logging.getLogger(__name__)
@@ -99,6 +102,18 @@ def _year_storm_list_html(storms_list, report_urls=None):
     return '\n'.join(rows)
 
 
+def _landfall_share_html(storms_list):
+    """One-line landfall vs. fish-storm ACE split for a season's panel."""
+    share = landfall_ace_share(storms_list)
+    if not share:
+        return ''
+    lf_n, fish_n = share['landfall_count'], share['fish_count']
+    return (f'<div class="yr-lfshare"><span class="lfs-bar" aria-hidden="true">'
+            f'<span class="lfs-fill" style="width:{share["landfall_pct"]}%"></span></span>'
+            f'<span>&#127965;&#65039; Landfalling: <b>{share["landfall_pct"]}%</b> of ACE ({lf_n} storm{"s" if lf_n != 1 else ""})'
+            f' &nbsp;·&nbsp; &#128031; Fish storms: <b>{share["fish_pct"]}%</b> ({fish_n})</span></div>')
+
+
 # NHC Tropical Cyclone Report (TCR) archive basins. The E/C Pacific tab combines
 # two NHC/CPHC basins, so it links to both season pages.
 TCR_BASINS = {
@@ -130,6 +145,26 @@ def _nhc_tcr_links_html(year, basin_key, is_active=False):
             'so this season is still filling in)</span>') if is_active else ''
     return f'<div class="yr-tcr">&#128196; NHC storm reports for {year}: {links}{note}</div>'
 
+
+
+SHARE_IMAGE_ALT = 'ACE Tracker: live hurricane season ACE for the Atlantic and E/C Pacific'
+
+
+def _season_year(basin_data):
+    """The season year the pages describe (for titles), falling back to the
+    current UTC year when no basin data is available."""
+    years = [bd['current']['year'] for bd in basin_data if bd and bd.get('current')]
+    return max(years) if years else datetime.now(timezone.utc).year
+
+
+def _share_image_meta(alt):
+    """Open Graph / Twitter image tags for the 1200x630 share card."""
+    alt = html_escape(alt)
+    return (f'<meta property="og:image" content="https://aceofcanes.com/ace_preview.png">\n'
+            f'<meta property="og:image:width" content="1200">\n'
+            f'<meta property="og:image:height" content="630">\n'
+            f'<meta property="og:image:alt" content="{alt}">\n'
+            f'<meta name="twitter:card" content="summary_large_image">')
 
 
 # ===============================================================================
@@ -573,29 +608,28 @@ def generate_dashboard_html(basin_data):
     _track_json = json.dumps(all_track_data).replace('</', '<\\/')
     _pace_json = json.dumps(all_pace_data).replace('</', '<\\/')
 
+    season_year = _season_year(basin_data)
+    page_title = f'{season_year} Hurricane Season ACE Tracker: Atlantic &amp; East Pacific | aceofcanes.com'
     html = f'''<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="Track the current Atlantic and Eastern Pacific hurricane season ACE (Accumulated Cyclone Energy) in real time. Updated every 6 hours during hurricane season.">
+<meta name="description" content="Track the {season_year} Atlantic and Eastern Pacific hurricane season ACE (Accumulated Cyclone Energy) in real time. Updated every 3 hours during hurricane season.">
 <meta name="theme-color" content="#4fc3f7">
 <link rel="canonical" href="https://aceofcanes.com/">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="ACE Tracker">
 <meta property="og:url" content="https://aceofcanes.com/">
-<meta property="og:title" content="Hurricane ACE Dashboard | aceofcanes.com">
-<meta property="og:description" content="Track Accumulated Cyclone Energy (ACE) for the Atlantic and Eastern Pacific hurricane seasons in real time. Updated every 6 hours from official NOAA data.">
-<meta property="og:image" content="https://aceofcanes.com/ace_preview.png">
-<meta property="og:image:width" content="766">
-<meta property="og:image:height" content="976">
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Hurricane ACE Dashboard | aceofcanes.com">
-<meta name="twitter:description" content="Track Accumulated Cyclone Energy (ACE) for the Atlantic and Eastern Pacific hurricane seasons in real time. Updated every 6 hours from official NOAA data.">
+<meta property="og:title" content="{page_title}">
+<meta property="og:description" content="Track Accumulated Cyclone Energy (ACE) for the {season_year} Atlantic and Eastern Pacific hurricane seasons in real time. Updated every 3 hours from official NOAA data.">
+{_share_image_meta(SHARE_IMAGE_ALT)}
+<meta name="twitter:title" content="{page_title}">
+<meta name="twitter:description" content="Track Accumulated Cyclone Energy (ACE) for the {season_year} Atlantic and Eastern Pacific hurricane seasons in real time. Updated every 3 hours from official NOAA data.">
 <meta name="twitter:image" content="https://aceofcanes.com/ace_preview.png">
 <link rel="icon" type="image/png" href="ace.png">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous" />
-<title>Hurricane ACE Dashboard | aceofcanes.com</title>
+<title>{page_title}</title>
 <script>(function(){{try{{var t=localStorage.getItem('ace-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light');else if(!t&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches)document.documentElement.setAttribute('data-theme','light');}}catch(e){{}}}})();</script>
 <style>
   :root {{
@@ -760,17 +794,17 @@ def generate_dashboard_html(basin_data):
 </head>
 <body>
 <div class="header">
-  <h1><img src="ace.png" class="logo" alt="ACE"> Hurricane ACE Dashboard</h1>
+  <h1><img src="ace.png" class="logo" alt="" aria-hidden="true"> Hurricane ACE Dashboard</h1>
   <div class="header-actions">
     <button class="unit-btn" id="unitBtn" onclick="toggleWindUnit()" title="Wind speed unit">kt</button>
     <button class="theme-btn" id="themeBtn" onclick="toggleTheme()">☀</button>
   </div>
 </div>
 <div class="updated">Updated: {now.strftime('%B %d, %Y at %H:%M UTC')}</div>
-<div class="nav-link"><a href="history.html">📊 Season History ({START_YEAR}–present)</a><a href="records.html">🏆 Records</a></div>
+<div class="nav-link"><a href="history.html">📊 Season History ({START_YEAR}–present)</a><a href="records.html">🏆 Records</a><a href="what-is-ace.html">❓ What is ACE?</a></div>
 <details class="ace-explain">
   <summary>What is ACE? <span class="ace-explain-hint">(tap to expand)</span></summary>
-  <p>Accumulated Cyclone Energy (ACE) measures total hurricane season activity by combining storm intensity and duration. A major hurricane that lasts two weeks contributes far more than a brief tropical storm. NOAA uses seasonal ACE totals to classify years as <b>Below Normal</b> (&lt;73), <b>Near Normal</b> (73–126), <b>Above Normal</b> (126–159), or <b>Extremely Active</b> (159+).</p>
+  <p>Accumulated Cyclone Energy (ACE) measures total hurricane season activity by combining storm intensity and duration. A major hurricane that lasts two weeks contributes far more than a brief tropical storm. NOAA uses seasonal ACE totals to classify years as <b>Below Normal</b> (&lt;73), <b>Near Normal</b> (73–126), <b>Above Normal</b> (126–159), or <b>Extremely Active</b> (159+). <a href="what-is-ace.html">More on ACE, plus a calculator →</a></p>
 </details>
 <div class="toggle">
   <button class="active" onclick="show('atlantic',this)">Atlantic</button>
@@ -1258,6 +1292,7 @@ def generate_history_html(basin_data):
             tcr_html = _nhc_tcr_links_html(year, bd['basin_key'], is_active)
             decade = _decade_label(year)
             all_decades.add(decade)
+            lfshare_html = _landfall_share_html(d.get('storms_list', []))
             rows.append(
                 f'<tr class="{row_cls} yr-data-row" id="{yr_key}" data-decade="{decade}">'
                 f'<td data-v="{year}" style="white-space:nowrap">'
@@ -1274,7 +1309,7 @@ def generate_history_html(basin_data):
                 f'</tr>'
                 f'<tr class="yr-expand-row" id="yr-xrow-{yr_key}">'
                 f'<td colspan="9"><div class="yr-panel" id="yrpanel-{yr_key}">'
-                f'<div class="yr-panel-inner">{storm_list_html}{tcr_html}</div>'
+                f'<div class="yr-panel-inner">{lfshare_html}{storm_list_html}{tcr_html}</div>'
                 f'</div></td></tr>'
             )
 
@@ -1294,10 +1329,14 @@ def generate_history_html(basin_data):
             f'</tr>'
         )
 
+        lf_avg = average_landfall_share(yearly_stats, current_year)
+        lf_avg_note = (f'<p class="season-note">&#127965;&#65039; On average since {START_YEAR}, <b>{lf_avg}%</b> of a season\'s ACE '
+                       f'came from storms that made landfall. Open a season to see its split.</p>') if lf_avg is not None else ''
         basin_sections.append(f'''
     <div class="basin-card{' active' if not basin_sections else ''}" id="{bd['basin_key']}">
       <h2>{html_escape(basin['name'])} — All Seasons ({START_YEAR}–{current_year})</h2>
       <p class="season-note">{total_seasons} seasons &nbsp;·&nbsp; ● = currently active &nbsp;·&nbsp; <span style="border-left:3px solid #f9a825;padding-left:4px;">gold border</span> = top 5 all-time ACE &nbsp;·&nbsp; click headers to sort &nbsp;<span class="decade-count" aria-live="polite"></span></p>
+      {lf_avg_note}
       <div class="table-wrap">
         <table class="hist-table">
           <thead>
@@ -1330,28 +1369,27 @@ def generate_history_html(basin_data):
         f'{decade_buttons}</div>'
     ) if all_decades else ''
 
+    season_year = _season_year(basin_data)
+    page_title = f'Hurricane Season History ({START_YEAR}–{season_year}): ACE by Year | aceofcanes.com'
     html = f'''<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="Compare every Atlantic and Eastern Pacific hurricane season from 1991 to present by ACE, storm counts, and NOAA activity classifications.">
+<meta name="description" content="Compare every Atlantic and Eastern Pacific hurricane season from {START_YEAR} to {season_year} by ACE, storm counts, and NOAA activity classifications.">
 <meta name="theme-color" content="#4fc3f7">
 <link rel="canonical" href="https://aceofcanes.com/history.html">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="ACE Tracker">
 <meta property="og:url" content="https://aceofcanes.com/history.html">
-<meta property="og:title" content="Season History (1991–present) | aceofcanes.com">
+<meta property="og:title" content="{page_title}">
 <meta property="og:description" content="Compare every Atlantic and Eastern Pacific hurricane season from 1991 to present by ACE, storm counts, and NOAA activity classifications.">
-<meta property="og:image" content="https://aceofcanes.com/ace_preview.png">
-<meta property="og:image:width" content="766">
-<meta property="og:image:height" content="976">
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Season History (1991–present) | aceofcanes.com">
+{_share_image_meta(SHARE_IMAGE_ALT)}
+<meta name="twitter:title" content="{page_title}">
 <meta name="twitter:description" content="Compare every Atlantic and Eastern Pacific hurricane season from 1991 to present by ACE, storm counts, and NOAA activity classifications.">
 <meta name="twitter:image" content="https://aceofcanes.com/ace_preview.png">
 <link rel="icon" type="image/png" href="ace.png">
-<title>Season History (1991–present) | aceofcanes.com</title>
+<title>{page_title}</title>
 <script>(function(){{try{{var t=localStorage.getItem('ace-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light');else if(!t&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches)document.documentElement.setAttribute('data-theme','light');}}catch(e){{}}}})();</script>
 <style>
   :root {{
@@ -1447,6 +1485,10 @@ def generate_history_html(basin_data):
   .yr-panel {{ overflow:hidden; max-height:0; transition:max-height 0.3s ease; background:var(--sources-bg); }}
   .yr-panel.open {{ max-height:2000px; }}
   .yr-panel-inner {{ padding:8px 12px 10px; }}
+  .yr-lfshare {{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-size:0.8em; color:var(--muted); padding:2px 0 8px; margin-bottom:4px; border-bottom:1px solid var(--border); }}
+  .yr-lfshare b {{ color:var(--text); }}
+  .lfs-bar {{ display:inline-block; width:90px; height:8px; border-radius:4px; background:var(--border); overflow:hidden; flex:none; }}
+  .lfs-fill {{ display:block; height:100%; background:#ffb74d; }}
   .ys-row {{ display:grid; grid-template-columns:110px 48px 46px 1fr; align-items:start; gap:6px; padding:5px 0; font-size:0.82em; border-bottom:1px solid var(--border); }}
   .ys-row:last-child {{ border-bottom:none; }}
   .ys-name {{ color:var(--text); font-weight:500; line-height:1.4; }}
@@ -1474,14 +1516,14 @@ def generate_history_html(basin_data):
 </head>
 <body>
 <div class="header">
-  <h1><img src="ace.png" class="logo" alt="ACE"> Hurricane ACE History</h1>
+  <h1><img src="ace.png" class="logo" alt="" aria-hidden="true"> Hurricane ACE History</h1>
   <button class="theme-btn" id="themeBtn" onclick="toggleTheme()">☀</button>
 </div>
 <div class="updated">Updated: {now.strftime('%B %d, %Y at %H:%M UTC')}</div>
-<div class="nav-link"><a href="index.html">← Current Season</a><a href="records.html">🏆 Records</a></div>
+<div class="nav-link"><a href="index.html">← Current Season</a><a href="records.html">🏆 Records</a><a href="what-is-ace.html">❓ What is ACE?</a></div>
 <details class="ace-explain">
   <summary>What is ACE? <span class="ace-explain-hint">(tap to expand)</span></summary>
-  <p>Accumulated Cyclone Energy (ACE) measures total hurricane season activity by combining storm intensity and duration. A major hurricane that lasts two weeks contributes far more than a brief tropical storm. NOAA uses seasonal ACE totals to classify years as <b>Below Normal</b> (&lt;73), <b>Near Normal</b> (73–126), <b>Above Normal</b> (126–159), or <b>Extremely Active</b> (159+).</p>
+  <p>Accumulated Cyclone Energy (ACE) measures total hurricane season activity by combining storm intensity and duration. A major hurricane that lasts two weeks contributes far more than a brief tropical storm. NOAA uses seasonal ACE totals to classify years as <b>Below Normal</b> (&lt;73), <b>Near Normal</b> (73–126), <b>Above Normal</b> (126–159), or <b>Extremely Active</b> (159+). <a href="what-is-ace.html">More on ACE, plus a calculator →</a></p>
 </details>
 <div class="toggle">
   <button class="active" onclick="show('atlantic',this)">Atlantic</button>
@@ -1711,6 +1753,8 @@ def generate_records_html(basin_data):
       <div class="records-grid">{''.join(cards)}</div>
     </div>''')
 
+    season_year = _season_year(basin_data)
+    page_title = f'Hurricane Records {START_YEAR}–{season_year}: Atlantic &amp; East Pacific | aceofcanes.com'
     html = f'''<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1722,17 +1766,14 @@ def generate_records_html(basin_data):
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="ACE Tracker">
 <meta property="og:url" content="https://aceofcanes.com/records.html">
-<meta property="og:title" content="Hurricane Records Since 1991 | aceofcanes.com">
+<meta property="og:title" content="{page_title}">
 <meta property="og:description" content="All-time hurricane records since 1991 for the Atlantic and Eastern Pacific: highest single-storm ACE, longest-lived storm, strongest landfall, and earliest/latest-forming named storms.">
-<meta property="og:image" content="https://aceofcanes.com/ace_preview.png">
-<meta property="og:image:width" content="766">
-<meta property="og:image:height" content="976">
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Hurricane Records Since 1991 | aceofcanes.com">
+{_share_image_meta(SHARE_IMAGE_ALT)}
+<meta name="twitter:title" content="{page_title}">
 <meta name="twitter:description" content="All-time hurricane records since 1991 for the Atlantic and Eastern Pacific: highest single-storm ACE, longest-lived storm, strongest landfall, and earliest/latest-forming named storms.">
 <meta name="twitter:image" content="https://aceofcanes.com/ace_preview.png">
 <link rel="icon" type="image/png" href="ace.png">
-<title>Hurricane Records Since 1991 | aceofcanes.com</title>
+<title>{page_title}</title>
 <script>(function(){{try{{var t=localStorage.getItem('ace-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light');else if(!t&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches)document.documentElement.setAttribute('data-theme','light');}}catch(e){{}}}})();</script>
 <style>
   :root {{
@@ -1786,11 +1827,11 @@ def generate_records_html(basin_data):
 </head>
 <body>
 <div class="header">
-  <h1><img src="ace.png" class="logo" alt="ACE"> Hurricane Records</h1>
+  <h1><img src="ace.png" class="logo" alt="" aria-hidden="true"> Hurricane Records</h1>
   <button class="theme-btn" id="themeBtn" onclick="toggleTheme()">☀</button>
 </div>
 <div class="updated">Updated: {now.strftime('%B %d, %Y at %H:%M UTC')}</div>
-<div class="nav-link"><a href="index.html">← Current Season</a><a href="history.html">Season History</a></div>
+<div class="nav-link"><a href="index.html">← Current Season</a><a href="history.html">Season History</a><a href="what-is-ace.html">❓ What is ACE?</a></div>
 <div class="toggle">
   <button class="active" onclick="show('atlantic',this)">Atlantic</button>
   <button onclick="show('pacific',this)">E/C Pacific</button>
@@ -1831,3 +1872,233 @@ document.addEventListener('DOMContentLoaded',function() {{
 </body>
 </html>'''
     return html
+
+
+
+# ===============================================================================
+# WHAT IS ACE? PAGE
+# ===============================================================================
+
+def _ace_fun_facts(basin_data):
+    """Short facts drawn from the site's own data, per basin: busiest and
+    quietest season, highest-ACE storm, and the current season so far."""
+    facts = []
+    for bd in basin_data:
+        if not bd:
+            continue
+        basin = BASINS[bd['basin_key']]
+        name = basin['name']
+        current_year = bd['current']['year']
+        completed = {y: a for y, a in (bd.get('yearly_totals') or {}).items() if y < current_year}
+        if completed:
+            top_year = max(completed, key=completed.get)
+            low_year = min(completed, key=completed.get)
+            facts.append(
+                f"The busiest {html_escape(name)} season since {START_YEAR} was <b>{top_year}</b> at "
+                f"<b>{completed[top_year]:.1f} ACE</b>, {completed[top_year] / basin['normal_ace']:.1f}× a normal "
+                f"season. The quietest was <b>{low_year}</b> at <b>{completed[low_year]:.1f}</b>.")
+        top_storm = find_highest_ace_storm(bd.get('historical_storms') or [])
+        if top_storm:
+            facts.append(
+                f"The biggest single {html_escape(name)} storm since {START_YEAR} was "
+                f"<b>{html_escape(top_storm['name'])} ({top_storm['year']})</b> with <b>{top_storm['ace']:.1f} ACE</b>, "
+                f"{top_storm['ace'] / basin['normal_ace'] * 100:.0f}% of a whole normal season on its own.")
+        cur = bd['current'].get('total', 0.0)
+        facts.append(
+            f"The {current_year} {html_escape(name)} season is at <b>{cur:.1f} ACE</b> so far "
+            f"({get_noaa_classification(cur, bd['basin_key'])}). "
+            f"<a href=\"index.html#{bd['basin_key']}\">See the live dashboard</a>.")
+    return facts
+
+
+def generate_about_html(basin_data):
+    """Standalone "What is ACE?" explainer: formula, NOAA classification
+    thresholds, a calculator, and facts from the site's own data."""
+    now = datetime.now(timezone.utc)
+    t = BASINS['atlantic']['noaa_thresholds']
+    normal_atl = BASINS['atlantic']['normal_ace']
+    facts = ''.join(f'<li>{f}</li>' for f in _ace_fun_facts(basin_data))
+    facts_html = f'''
+  <section class="card">
+    <h2>From this site's data</h2>
+    <ul class="facts">{facts}</ul>
+  </section>''' if facts else ''
+    description = ('What Accumulated Cyclone Energy (ACE) is, how it is calculated, how NOAA uses it to '
+                   'classify hurricane seasons, plus an ACE calculator.')
+    page_title = 'What Is ACE? Accumulated Cyclone Energy Explained | aceofcanes.com'
+
+    return f'''<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="{description}">
+<meta name="theme-color" content="#4fc3f7">
+<link rel="canonical" href="https://aceofcanes.com/what-is-ace.html">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="ACE Tracker">
+<meta property="og:url" content="https://aceofcanes.com/what-is-ace.html">
+<meta property="og:title" content="{page_title}">
+<meta property="og:description" content="{description}">
+{_share_image_meta(SHARE_IMAGE_ALT)}
+<meta name="twitter:title" content="{page_title}">
+<meta name="twitter:description" content="{description}">
+<meta name="twitter:image" content="https://aceofcanes.com/ace_preview.png">
+<link rel="icon" type="image/png" href="ace.png">
+<title>{page_title}</title>
+<script>(function(){{try{{var t=localStorage.getItem('ace-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light');else if(!t&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches)document.documentElement.setAttribute('data-theme','light');}}catch(e){{}}}})();</script>
+<style>
+  :root {{
+    --bg:#0a1628; --card:#132238; --box:#1a2d4a; --accent:#4fc3f7;
+    --text:#e0e6ed; --text-strong:#ffffff; --muted:#78909c; --border:#1e3a5f;
+    --sources-bg:#0d1b2a;
+    --badge-extreme:#ef5350; --badge-above:#ff8f00; --badge-near:#546e7a; --badge-below:#1976d2;
+  }}
+  [data-theme="light"] {{
+    --bg:#f0f4f8; --card:#ffffff; --box:#e8f0fe; --accent:#0277bd;
+    --text:#1a2d4a; --text-strong:#0a1628; --muted:#607d8b; --border:#b0bec5;
+    --sources-bg:#e2ecf7;
+  }}
+  * {{ margin:0; padding:0; box-sizing:border-box; }}
+  body {{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:var(--bg); color:var(--text); padding:12px; line-height:1.55; transition:background 0.2s,color 0.2s; }}
+  .header {{ display:grid; grid-template-columns:1fr auto 1fr; align-items:center; margin:8px 0; padding:0 4px; }}
+  h1 {{ grid-column:2; color:var(--accent); font-size:1.4em; text-align:center; display:flex; align-items:center; justify-content:center; gap:8px; }}
+  .logo {{ height:1.5em; width:auto; vertical-align:middle; }}
+  .theme-btn {{ grid-column:3; justify-self:end; background:transparent; border:1px solid var(--accent); color:var(--accent); border-radius:20px; padding:4px 10px; cursor:pointer; font-size:0.9em; }}
+  .updated {{ text-align:center; color:var(--muted); font-size:0.8em; margin-bottom:8px; }}
+  .nav-link {{ text-align:center; margin-bottom:12px; display:flex; justify-content:center; gap:8px; flex-wrap:wrap; }}
+  .nav-link a {{ color:var(--accent); text-decoration:none; font-size:0.85em; border:1px solid var(--accent); border-radius:20px; padding:4px 14px; }}
+  .nav-link a:hover {{ background:var(--accent); color:var(--bg); }}
+  .card {{ background:var(--card); border-radius:12px; padding:16px; margin-bottom:16px; }}
+  h2 {{ color:var(--accent); font-size:1.15em; margin-bottom:10px; border-bottom:1px solid var(--border); padding-bottom:8px; }}
+  .card p {{ margin:8px 0; font-size:0.92em; }}
+  .card a {{ color:var(--accent); }}
+  .formula {{ background:var(--box); border-radius:8px; padding:14px; text-align:center; font-size:1.25em; color:var(--text-strong); margin:10px 0; }}
+  .formula small {{ display:block; font-size:0.62em; color:var(--muted); margin-top:6px; }}
+  table {{ width:100%; border-collapse:collapse; font-size:0.9em; }}
+  th, td {{ text-align:left; padding:8px 10px; border-bottom:1px solid var(--border); }}
+  th {{ color:var(--muted); font-weight:600; font-size:0.85em; text-transform:uppercase; }}
+  .badge {{ display:inline-block; padding:2px 10px; border-radius:10px; color:#fff; font-size:0.85em; font-weight:600; }}
+  .b-below {{ background:var(--badge-below); }} .b-near {{ background:var(--badge-near); }}
+  .b-above {{ background:var(--badge-above); }} .b-extreme {{ background:var(--badge-extreme); }}
+  .calc label {{ display:block; font-size:0.85em; color:var(--muted); margin:10px 0 4px; }}
+  .calc textarea, .calc select {{ width:100%; background:var(--box); color:var(--text-strong); border:1px solid var(--border); border-radius:8px; padding:10px; font-size:1em; font-family:inherit; }}
+  .calc textarea {{ min-height:70px; resize:vertical; }}
+  .calc-row {{ display:flex; gap:10px; flex-wrap:wrap; margin-top:10px; }}
+  .calc-row button {{ background:transparent; border:1px solid var(--accent); color:var(--accent); border-radius:20px; padding:6px 14px; cursor:pointer; font-size:0.85em; }}
+  .calc-row button:hover {{ background:var(--accent); color:var(--bg); }}
+  .calc-out {{ background:var(--box); border-radius:8px; padding:12px 14px; margin-top:12px; }}
+  .calc-ace {{ font-size:1.6em; font-weight:bold; color:var(--text-strong); }}
+  .calc-note {{ font-size:0.82em; color:var(--muted); }}
+  .facts {{ list-style:none; padding:0; }}
+  .facts li {{ background:var(--box); border-left:3px solid var(--accent); border-radius:6px; padding:8px 10px; margin:6px 0; font-size:0.9em; }}
+  .sources {{ background:var(--sources-bg); border-top:1px solid var(--border); margin-top:24px; padding:16px 12px; border-radius:8px; }}
+  .sources h4 {{ color:var(--muted); font-size:0.8em; text-transform:uppercase; margin-bottom:8px; }}
+  .sources a {{ color:var(--accent); text-decoration:none; font-size:0.78em; }}
+  .sources p {{ color:var(--muted); font-size:0.75em; margin-top:8px; line-height:1.5; }}
+  .sources p a {{ font-size:inherit; }}
+  @media(min-width:768px) {{ body {{ max-width:860px; margin:0 auto; padding:24px; }} }}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1><img src="ace.png" class="logo" alt="" aria-hidden="true"> What Is ACE?</h1>
+  <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" aria-label="Toggle light and dark theme">☀</button>
+</div>
+<div class="updated">Updated: {now.strftime('%B %d, %Y at %H:%M UTC')}</div>
+<div class="nav-link"><a href="index.html">← Current Season</a><a href="history.html">📊 Season History</a><a href="records.html">🏆 Records</a></div>
+
+<section class="card">
+  <h2>Accumulated Cyclone Energy</h2>
+  <p><b>ACE</b> measures how much energy a storm, or a whole hurricane season, produced. It combines
+  <b>how strong</b> storms were and <b>how long</b> they lasted. One long-lived major hurricane can out-score
+  a dozen short, weak tropical storms, so ACE says more about a season than simply counting storms.</p>
+  <div class="formula">ACE = Σ V<sub>max</sub>² × 10⁻⁴
+    <small>V<sub>max</sub> is a storm's maximum sustained wind in knots, added up every 6 hours
+    (00, 06, 12 and 18 UTC) while it is a tropical storm, subtropical storm, or hurricane (≥{MIN_NAMED_STORM_WIND} kt).</small></div>
+  <p>Example: a 100 kt hurricane holding steady for one day counts 4 times: 4 × 100² × 10⁻⁴ = <b>4.0 ACE</b>.
+  Because wind is squared, a 140 kt storm scores almost 2× as much per day as a 100 kt one.</p>
+  <p>A season's ACE is the sum over all of its storms. Depressions and extratropical stages don't count.</p>
+</section>
+
+<section class="card">
+  <h2>How NOAA classifies a season</h2>
+  <p>NOAA uses these seasonal ACE ranges for both the Atlantic and the Eastern Pacific:</p>
+  <table>
+    <thead><tr><th>Classification</th><th>Season ACE</th></tr></thead>
+    <tbody>
+      <tr><td><span class="badge b-below">Below Normal</span></td><td>&lt; {t['below_normal']}</td></tr>
+      <tr><td><span class="badge b-near">Near Normal</span></td><td>{t['below_normal']}–{t['near_normal_upper']}</td></tr>
+      <tr><td><span class="badge b-above">Above Normal</span></td><td>{t['near_normal_upper']}–{t['above_normal_upper']}</td></tr>
+      <tr><td><span class="badge b-extreme">Extremely Active</span></td><td>{t['above_normal_upper']}+</td></tr>
+    </tbody>
+  </table>
+  <p>A normal Atlantic season (1991–2020 average) is about <b>{normal_atl}</b> ACE.</p>
+</section>
+
+<section class="card calc" id="calculator">
+  <h2>ACE calculator</h2>
+  <p>Enter a storm's maximum sustained wind for each 6-hour period, separated by commas or spaces.</p>
+  <label for="calcWinds">Wind speed per 6-hour period</label>
+  <textarea id="calcWinds" inputmode="decimal">35, 45, 60, 75, 90, 110, 120, 110, 90, 70, 50, 35</textarea>
+  <label for="calcUnit">Units</label>
+  <select id="calcUnit">
+    <option value="kt">knots (kt)</option>
+    <option value="mph">miles per hour (mph)</option>
+    <option value="kmh">kilometers per hour (km/h)</option>
+  </select>
+  <div class="calc-row">
+    <button type="button" onclick="calcPreset('ts')">Tropical storm, 2 days</button>
+    <button type="button" onclick="calcPreset('major')">Major hurricane, 5 days</button>
+    <button type="button" onclick="calcPreset('cat5')">Cat 5, 3 days</button>
+  </div>
+  <div class="calc-out" aria-live="polite">
+    <div class="calc-ace" id="calcAce">—</div>
+    <div class="calc-note" id="calcNote"></div>
+  </div>
+</section>
+{facts_html}
+<div class="sources">
+  <h4>Sources</h4>
+  <p><a href="https://www.cpc.ncep.noaa.gov/products/outlooks/background_information.shtml" target="_blank" rel="noopener noreferrer">NOAA Climate Prediction Center</a>: ACE definition and season classifications.
+  <a href="https://www.nhc.noaa.gov/data/#hurdat" target="_blank" rel="noopener noreferrer">NOAA HURDAT2</a>: storm data used for this site's numbers ({START_YEAR}–present).</p>
+  <p>This site is maintained by a hurricane data enthusiast, not a meteorologist. For forecasts, watches and warnings, always use the <a href="https://www.nhc.noaa.gov/" target="_blank" rel="noopener noreferrer">National Hurricane Center</a>.</p>
+</div>
+<script>
+var CALC_NORMAL={normal_atl}, CALC_MIN_KT={MIN_NAMED_STORM_WIND};
+var CALC_PRESETS={{ts:'40 45 50 50 50 45 40 35', major:'40 55 70 90 105 115 120 115 110 100 90 80 70 60 50 45 40 35 35 35', cat5:'100 120 140 150 150 145 140 130 120 110 100 90'}};
+function calcPreset(k){{document.getElementById('calcWinds').value=CALC_PRESETS[k];document.getElementById('calcUnit').value='kt';calcAce();}}
+function calcAce(){{
+  var unit=document.getElementById('calcUnit').value;
+  var toKt=unit==='mph'?0.868976:unit==='kmh'?0.539957:1;
+  var vals=document.getElementById('calcWinds').value.split(/[\\s,;]+/).filter(function(s){{return s!=='';}});
+  var sum=0, used=0, skipped=0, bad=0;
+  vals.forEach(function(s){{
+    var v=parseFloat(s);
+    if(!isFinite(v)||v<0){{bad++;return;}}
+    var kt=v*toKt;
+    if(kt>=CALC_MIN_KT){{sum+=kt*kt;used++;}}else{{skipped++;}}
+  }});
+  var ace=sum/10000;
+  document.getElementById('calcAce').textContent=ace.toFixed(2)+' ACE';
+  var note=used+' of '+vals.length+' periods counted ('+(used*6/24).toFixed(2).replace(/\\.?0+$/,'')+' days as a storm)';
+  if(skipped)note+='; '+skipped+' under '+CALC_MIN_KT+' kt not counted';
+  if(bad)note+='; '+bad+' not a number';
+  note+='. That is '+(ace/CALC_NORMAL*100).toFixed(1)+'% of a normal Atlantic season.';
+  document.getElementById('calcNote').textContent=note;
+}}
+document.getElementById('calcWinds').addEventListener('input',calcAce);
+document.getElementById('calcUnit').addEventListener('change',calcAce);
+calcAce();
+function toggleTheme() {{
+  var h=document.documentElement;
+  var light=h.getAttribute('data-theme')==='light';
+  h.setAttribute('data-theme',light?'dark':'light');
+  try{{localStorage.setItem('ace-theme',light?'dark':'light');}}catch(e){{}}
+  document.getElementById('themeBtn').textContent=light?'☀':'☾';
+}}
+document.getElementById('themeBtn').textContent=document.documentElement.getAttribute('data-theme')==='light'?'☾':'☀';
+</script>
+<!-- Cloudflare Web Analytics --><script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{{"token": "775dfcf117b94ff59e3c118c330d02aa"}}'></script><!-- End Cloudflare Web Analytics -->
+</body>
+</html>'''

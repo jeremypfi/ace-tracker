@@ -17,6 +17,8 @@ Tracks Accumulated Cyclone Energy (ACE) for Atlantic and Eastern Pacific hurrica
 |---|---|
 | Current Season Dashboard | https://aceofcanes.com |
 | Season History (1991–present) | https://aceofcanes.com/history.html |
+| Records Since 1991 | https://aceofcanes.com/records.html |
+| What Is ACE? (explainer + calculator) | https://aceofcanes.com/what-is-ace.html |
 
 Updated every 3 hours during hurricane season (Eastern Pacific: May 15 – Nov 30 · Atlantic: Jun 1 – Nov 30).
 
@@ -89,6 +91,8 @@ python3 ace_tracker.py
 Generates in `data/`:
 - `ACE_Dashboard.html` — current season dashboard (open in any browser)
 - `history.html` — all-seasons history page
+- `records.html` — storm records since 1991
+- `what-is-ace.html` — ACE explainer and calculator
 
 ### Run tests
 
@@ -112,7 +116,7 @@ ace-tracker/
 ├── verify_pr.py            # Consolidated PR check: tests + syntax check + a live tracker run
 ├── requirements.txt        # Python dependencies
 ├── ace.png                 # Site logo (favicon + OG image)
-├── ace_preview.png         # Social share preview image (copied into data/ at publish time)
+├── ace_preview.png         # 1200x630 social share card (copied into data/ at publish time)
 ├── landfall_cache.json     # Cached landfall geocoding results (gitignored, built by CI)
 ├── CNAME                   # Custom domain for GitHub Pages (aceofcanes.com)
 ├── robots.txt              # Search engine crawl rules
@@ -132,6 +136,8 @@ ace-tracker/
     ├── ace.png
     ├── ACE_Dashboard.html
     ├── history.html
+    ├── records.html
+    ├── what-is-ace.html
     └── cones/              # NHC forecast cone images, fetched fresh each run (gitignored)
 ```
 

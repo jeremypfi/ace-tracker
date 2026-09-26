@@ -35,6 +35,9 @@ from ace_data import (
     match_tcr_reports,
     _first_tropical_storm_time,
     _clean_landfalls,
+    landfall_ace_share,
+    average_landfall_share,
+    generate_insights,
     _drop_stale_storm_keys,
     _last_track_stamp,
     SYNOPTIC_TIMES,
@@ -42,7 +45,7 @@ from ace_data import (
     MIN_NAMED_STORM_WIND,
 )
 from ace_html import (
-    generate_dashboard_html, generate_history_html, generate_records_html,
+    generate_dashboard_html, generate_history_html, generate_records_html, generate_about_html,
     _decade_label, _nhc_tcr_links_html, _records_in_play_html, _year_storm_list_html,
 )
 
@@ -1163,6 +1166,125 @@ class TestHistoryDecadeFilterAndReports(unittest.TestCase):
 
     def test_unknown_basin_has_no_report_links(self):
         self.assertEqual(_nhc_tcr_links_html(2005, 'westpac'), '')
+
+
+class TestPageTitlesAndShareMeta(unittest.TestCase):
+    """Page titles carry the season year; share metadata matches the
+    1200x630 preview card and the 3-hour publish schedule."""
+
+    def _pages(self):
+        basin_data = TestHTMLGeneration()._make_basin_data()
+        return {
+            'dashboard': generate_dashboard_html(basin_data),
+            'history': generate_history_html(basin_data),
+            'records': generate_records_html(basin_data),
+        }
+
+    def test_titles_include_season_year(self):
+        pages = self._pages()
+        self.assertIn('<title>2026 Hurricane Season ACE Tracker: Atlantic &amp; East Pacific | aceofcanes.com</title>',
+                      pages['dashboard'])
+        self.assertIn('<title>Hurricane Season History (1991–2026): ACE by Year | aceofcanes.com</title>',
+                      pages['history'])
+        self.assertIn('<title>Hurricane Records 1991–2026: Atlantic &amp; East Pacific | aceofcanes.com</title>',
+                      pages['records'])
+
+    def test_share_meta_and_update_cadence(self):
+        for name, html in self._pages().items():
+            with self.subTest(page=name):
+                self.assertNotIn('every 6 hours', html)
+                self.assertIn('<meta property="og:image:width" content="1200">', html)
+                self.assertIn('<meta property="og:image:height" content="630">', html)
+                self.assertIn('og:image:alt', html)
+
+    def test_logo_does_not_leak_into_heading_text(self):
+        # alt="ACE" made screen readers and search snippets read the h1 as
+        # "ACE Hurricane ACE Dashboard".
+        for name, html in self._pages().items():
+            with self.subTest(page=name):
+                self.assertNotIn('alt="ACE"', html)
+                self.assertIn('class="logo" alt="" aria-hidden="true"', html)
+
+    def test_share_image_is_1200x630(self):
+        import os
+        import struct
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ace_preview.png')
+        with open(path, 'rb') as f:
+            header = f.read(24)
+        self.assertEqual(header[:8], b'\x89PNG\r\n\x1a\n')
+        self.assertEqual(struct.unpack('>II', header[16:24]), (1200, 630))
+
+
+class TestWhatIsAcePage(unittest.TestCase):
+    """The standalone What-is-ACE page: formula, NOAA thresholds,
+    calculator, facts from site data, and links from every page's nav."""
+
+    def test_page_has_formula_thresholds_and_calculator(self):
+        html = generate_about_html(TestHTMLGeneration()._make_basin_data())
+        self.assertIn('<!DOCTYPE html>', html)
+        self.assertIn('ACE = Σ V<sub>max</sub>² × 10⁻⁴', html)
+        for text in ('&lt; 73', '73–126', '126–159', '159+'):
+            self.assertIn(text, html)
+        self.assertIn('id="calcWinds"', html)
+        self.assertIn('CALC_MIN_KT=34', html)
+        self.assertIn('rel="canonical" href="https://aceofcanes.com/what-is-ace.html"', html)
+
+    def test_fun_facts_come_from_site_data(self):
+        html = generate_about_html(TestHTMLGeneration()._make_basin_data())
+        # Fixture: completed seasons 2005 (245.0), 2024, 2025; Katrina top storm
+        self.assertIn('<b>2005</b> at <b>245.0 ACE</b>', html)
+        self.assertIn('Katrina (2005)', html)
+
+    def test_page_renders_without_basin_data(self):
+        html = generate_about_html([])
+        self.assertIn('id="calculator"', html)
+        self.assertNotIn("From this site's data", html)
+
+    def test_every_page_links_to_it(self):
+        basin_data = TestHTMLGeneration()._make_basin_data()
+        for gen in (generate_dashboard_html, generate_history_html, generate_records_html):
+            with self.subTest(page=gen.__name__):
+                self.assertIn('href="what-is-ace.html"', gen(basin_data))
+
+
+class TestLandfallAceShare(unittest.TestCase):
+    """Share of season ACE from landfalling storms vs. fish storms."""
+
+    STORMS = [
+        {'name': 'Hitter', 'ace': 30.0, 'max_wind': 120, 'landfall': [('Florida', 'Cat 3')]},
+        {'name': 'Fish', 'ace': 10.0, 'max_wind': 80, 'landfall': []},
+        {'name': 'Td', 'ace': 0.0, 'max_wind': 30, 'landfall': [('Texas', 'TD')]},
+    ]
+
+    def test_split_and_counts_ignore_depressions(self):
+        self.assertEqual(landfall_ace_share(self.STORMS),
+                         {'landfall_pct': 75, 'fish_pct': 25, 'landfall_count': 1, 'fish_count': 1})
+
+    def test_no_ace_returns_none(self):
+        self.assertIsNone(landfall_ace_share([]))
+        self.assertIsNone(landfall_ace_share([self.STORMS[2]]))
+
+    def test_average_uses_completed_seasons_only(self):
+        stats = {
+            2024: {'storms_list': self.STORMS},                                      # 75%
+            2025: {'storms_list': [dict(self.STORMS[1])]},                          # 0%
+            2026: {'storms_list': [dict(self.STORMS[0])]},                          # current, excluded
+        }
+        self.assertEqual(average_landfall_share(stats, 2026), 38)
+        self.assertIsNone(average_landfall_share({}, 2026))
+
+    def test_dashboard_insight_and_history_panel(self):
+        basin_data = TestHTMLGeneration()._make_basin_data()
+        bd = basin_data[0]
+        bd['yearly_stats'] = calculate_yearly_stats(bd['historical_storms'])
+        insights = generate_insights('atlantic', bd['current'], bd['yearly_totals'],
+                                     bd['historical_storms'], bd['yearly_stats'])
+        share = [i for i in insights if i.startswith('🏝️ Landfall share')]
+        self.assertEqual(len(share), 1)
+        self.assertIn('of season ACE came from the', share[0])
+        history = generate_history_html(basin_data)
+        self.assertIn('class="yr-lfshare"', history)
+        self.assertIn('of a season\'s ACE came from storms that made landfall', history)
 
 
 class TestRankCurrentSeason(unittest.TestCase):

@@ -1131,6 +1131,38 @@ def calculate_yearly_stats(storms):
 
 
 
+def landfall_ace_share(storms):
+    """How a season's ACE splits between storms that made landfall and
+    "fish storms" that stayed at sea. `storms` are dicts with 'ace',
+    'max_wind' and 'landfall' (a list; empty means no landfall).
+
+    Returns {'landfall_pct', 'fish_pct', 'landfall_count', 'fish_count'},
+    or None when the storms produced no ACE.
+    """
+    named = [s for s in storms if s.get('max_wind', 0) >= MIN_NAMED_STORM_WIND]
+    total = sum(s.get('ace', 0.0) for s in named)
+    if total <= 0:
+        return None
+    landfalling = [s for s in named if s.get('landfall')]
+    landfall_pct = round(sum(s.get('ace', 0.0) for s in landfalling) / total * 100)
+    return {
+        'landfall_pct': landfall_pct,
+        'fish_pct': 100 - landfall_pct,
+        'landfall_count': len(landfalling),
+        'fish_count': len(named) - len(landfalling),
+    }
+
+
+def average_landfall_share(yearly_stats, before_year):
+    """Mean landfall share of ACE (percent) across completed seasons
+    before `before_year`, or None without data."""
+    shares = [landfall_ace_share(st.get('storms_list', []))
+              for y, st in (yearly_stats or {}).items() if y < before_year]
+    shares = [s['landfall_pct'] for s in shares if s]
+    return round(sum(shares) / len(shares)) if shares else None
+
+
+
 def find_similar_seasons(target_ace, yearly_totals, exclude_year=None):
     """Find the 3 historical seasons with ACE closest to the target."""
     candidates = [(y, ace) for y, ace in yearly_totals.items() if y != exclude_year]
@@ -1733,6 +1765,19 @@ def generate_insights(basin_key, current, yearly_totals, historical_storms, year
         leader_pct = leader_ace / current_ace * 100
         if leader_pct > 30:
             insights.append(f"💪 Top-heavy season: {leader_pct:.0f}% of all ACE from just {leader_name}")
+
+    # 7b. Landfall share of ACE — how much of the season's energy came from
+    # storms that hit land vs. fish storms. Uses current-season storm details
+    # (their landfall list includes the geographic fallback for live tracks).
+    share = landfall_ace_share(list(current.get('storm_details', {}).values()))
+    if share:
+        avg_share = average_landfall_share(yearly_stats, current_year)
+        avg_note = f" ({START_YEAR}–{current_year - 1} average: {avg_share}%)" if avg_share is not None else ""
+        insights.append(
+            f"🏝️ Landfall share: {share['landfall_pct']}% of season ACE came from the "
+            f"{share['landfall_count']} storm{'s' if share['landfall_count'] != 1 else ''} that made landfall{avg_note}; "
+            f"{share['fish_pct']}% from {share['fish_count']} fish storm{'s' if share['fish_count'] != 1 else ''}"
+        )
 
     # 8. Named storms — same-date avg alongside full-season avg
     num_storms = len(storms)

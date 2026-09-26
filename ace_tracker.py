@@ -12,6 +12,7 @@ Output:
 - data/ACE_Dashboard.html  — current season dashboard (deployed to aceofcanes.com)
 - data/history.html        — all-seasons history page
 - data/records.html        — all-time-since-1991 storm records page
+- data/what-is-ace.html    — ACE explainer and calculator
 
 Usage:
     python3 ace_tracker.py
@@ -40,7 +41,7 @@ from ace_data import (
     generate_discord_text,
     generate_console_report,
 )
-from ace_html import generate_dashboard_html, generate_history_html, generate_records_html
+from ace_html import generate_dashboard_html, generate_history_html, generate_records_html, generate_about_html
 
 # logging.basicConfig() lives in ace_data.py, which every import path here
 # (directly or via ace_html) already pulls in — see the comment there.
@@ -203,6 +204,17 @@ def main():
         except (OSError, PermissionError) as e:
             logger.error(f"Failed to save records page {records_path}: {e}")
             print(f"  ✗ Error: Could not save records page")
+
+        about_html = generate_about_html(basin_results)
+        about_path = os.path.join(OUTPUT_FOLDER, 'what-is-ace.html')
+        try:
+            with open(about_path, 'w', encoding='utf-8') as f:
+                f.write(about_html)
+            output_files.append(about_path)
+            print(f"  ✓ What-is-ACE page saved to: {about_path}")
+        except (OSError, PermissionError) as e:
+            logger.error(f"Failed to save what-is-ACE page {about_path}: {e}")
+            print(f"  ✗ Error: Could not save what-is-ACE page")
 
     print("\n" + "=" * 50)
     print("All done! Dashboard updated.")
