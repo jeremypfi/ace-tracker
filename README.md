@@ -18,6 +18,7 @@ Tracks Accumulated Cyclone Energy (ACE) for Atlantic and Eastern Pacific hurrica
 | Current Season Dashboard | https://aceofcanes.com |
 | Season History (1991–present) | https://aceofcanes.com/history.html |
 | Records Since 1991 | https://aceofcanes.com/records.html |
+| What Is ACE? (explainer + calculator) | https://aceofcanes.com/what-is-ace.html |
 
 Updated every 3 hours during hurricane season (Eastern Pacific: May 15 – Nov 30 · Atlantic: Jun 1 – Nov 30).
 
@@ -91,6 +92,7 @@ Generates in `data/`:
 - `ACE_Dashboard.html` — current season dashboard (open in any browser)
 - `history.html` — all-seasons history page
 - `records.html` — storm records since 1991
+- `what-is-ace.html` — ACE explainer and calculator
 
 ### Run tests
 
@@ -135,6 +137,7 @@ ace-tracker/
     ├── ACE_Dashboard.html
     ├── history.html
     ├── records.html
+    ├── what-is-ace.html
     └── cones/              # NHC forecast cone images, fetched fresh each run (gitignored)
 ```
 

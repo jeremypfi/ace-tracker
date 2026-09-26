@@ -36,7 +36,7 @@ from ace_data import (
     MIN_NAMED_STORM_WIND,
 )
 from ace_html import (
-    generate_dashboard_html, generate_history_html, generate_records_html,
+    generate_dashboard_html, generate_history_html, generate_records_html, generate_about_html,
     _decade_label, _nhc_tcr_links_html,
 )
 
@@ -933,6 +933,38 @@ class TestPageTitlesAndShareMeta(unittest.TestCase):
             header = f.read(24)
         self.assertEqual(header[:8], b'\x89PNG\r\n\x1a\n')
         self.assertEqual(struct.unpack('>II', header[16:24]), (1200, 630))
+
+
+class TestWhatIsAcePage(unittest.TestCase):
+    """The standalone What-is-ACE page: formula, NOAA thresholds,
+    calculator, facts from site data, and links from every page's nav."""
+
+    def test_page_has_formula_thresholds_and_calculator(self):
+        html = generate_about_html(TestHTMLGeneration()._make_basin_data())
+        self.assertIn('<!DOCTYPE html>', html)
+        self.assertIn('ACE = Σ V<sub>max</sub>² × 10⁻⁴', html)
+        for text in ('&lt; 73', '73–126', '126–159', '159+'):
+            self.assertIn(text, html)
+        self.assertIn('id="calcWinds"', html)
+        self.assertIn('CALC_MIN_KT=34', html)
+        self.assertIn('rel="canonical" href="https://aceofcanes.com/what-is-ace.html"', html)
+
+    def test_fun_facts_come_from_site_data(self):
+        html = generate_about_html(TestHTMLGeneration()._make_basin_data())
+        # Fixture: completed seasons 2005 (245.0), 2024, 2025; Katrina top storm
+        self.assertIn('<b>2005</b> at <b>245.0 ACE</b>', html)
+        self.assertIn('Katrina (2005)', html)
+
+    def test_page_renders_without_basin_data(self):
+        html = generate_about_html([])
+        self.assertIn('id="calculator"', html)
+        self.assertNotIn("From this site's data", html)
+
+    def test_every_page_links_to_it(self):
+        basin_data = TestHTMLGeneration()._make_basin_data()
+        for gen in (generate_dashboard_html, generate_history_html, generate_records_html):
+            with self.subTest(page=gen.__name__):
+                self.assertIn('href="what-is-ace.html"', gen(basin_data))
 
 
 class TestRankCurrentSeason(unittest.TestCase):
