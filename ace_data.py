@@ -1116,6 +1116,7 @@ def calculate_yearly_stats(storms):
             s['longest_days'] = storm['duration_days']
         if storm['category'] != 'TD':
             s['storms_list'].append({
+                'id': storm.get('id'),
                 'name': storm['name'],
                 'ace': round(storm['ace'], 2),
                 'category': storm['category'],
@@ -1896,6 +1897,104 @@ def generate_console_report(basin_key, current, yearly_totals, insights):
 # ===============================================================================
 # NHC LIVE DATA FETCHING
 # ===============================================================================
+
+TCR_INDEX_URL = 'https://www.nhc.noaa.gov/TCR_StormReportsIndex.xml'
+
+
+def parse_tcr_index(xml_text):
+    """Parse NHC's Tropical Cyclone Report index into rows of
+    {'name', 'url', 'year', 'basin'} ('basin' is 'atlantic' or 'pacific')."""
+    import xml.etree.ElementTree as ET
+    rows = []
+    for row in ET.fromstring(xml_text).iter('row'):
+        url = (row.findtext('StormReportURL') or '').strip()
+        year = (row.findtext('Year') or '').strip()
+        basin = (row.findtext('Basin') or '').strip().lower()
+        if url.startswith('https://www.nhc.noaa.gov/') and year.isdigit() and basin in BASINS:
+            rows.append({'name': (row.findtext('StormName') or '').strip(),
+                         'url': url, 'year': int(year), 'basin': basin})
+    return rows
+
+
+def _tcr_row_storm_name(row):
+    """'Hurricane Andrew (Atlantic)' -> 'andrew'; 'Tropical Storm (Unnamed)
+    (Atlantic)' -> 'unnamed'."""
+    import re
+    name = re.sub(r'\s*\((Atlantic|Pacific)\)\s*$', '', row['name'], flags=re.I)
+    words = re.sub(r'[()]', ' ', name).split()
+    return words[-1].lower() if words else ''
+
+
+def match_tcr_reports(rows, storms, basin_key):
+    """Map storm id -> NHC report URL for one basin.
+
+    1995+ reports are PDFs named by storm id (AL012005_Arlene.pdf, or both
+    ids for a storm that crossed basins: AL022022_EP042022_Bonnie.pdf), so
+    they match exactly. 1991-1994 reports are "storm wallet" folders named
+    by storm name (sometimes cut to 8 letters, e.g. 'guillerm' for
+    Guillermo), matched by year and name. Anything left (e.g. Andrew 1992's
+    own page, or a crossover filed under the other basin's id) falls back to
+    a year + name match, same basin first. Unnamed storms only match by id.
+    Storms without a report are left out.
+    """
+    import re
+    by_id = {}
+    wallets = {}
+    by_name = {}
+    for r in rows:
+        leaf = r['url'].rstrip('/').rsplit('/', 1)[-1]
+        if leaf.lower().endswith('.pdf'):
+            for sid in re.findall(r'[A-Z]{2}\d{6}', leaf.upper()):
+                by_id.setdefault(sid, r['url'])
+        elif r['basin'] == basin_key and '/storm_wallets/' in r['url']:
+            wallets[(r['year'], leaf.lower())] = r['url']
+        name = _tcr_row_storm_name(r)
+        rank = 0 if r['basin'] == basin_key else 1
+        key = (r['year'], name)
+        if name and name != 'unnamed' and (key not in by_name or rank < by_name[key][0]):
+            by_name[key] = (rank, r['url'])
+    matched = {}
+    for s in storms:
+        sid = str(s.get('id', '')).upper()
+        if sid in by_id:
+            matched[sid] = by_id[sid]
+            continue
+        name = str(s.get('name', '')).lower()
+        year = s.get('year')
+        for (w_year, leaf), url in wallets.items():
+            if w_year == year and (leaf == name or (len(leaf) >= 8 and name.startswith(leaf))):
+                matched[sid] = url
+                break
+        else:
+            if name != 'unnamed' and (year, name) in by_name:
+                matched[sid] = by_name[(year, name)][1]
+    return matched
+
+
+_tcr_rows_cache = None
+
+
+def fetch_tcr_reports(storms, basin_key):
+    """Per-storm NHC Tropical Cyclone Report links ({storm id: url}) from
+    NHC's report index, downloaded once per run and shared by both basins.
+    Returns {} on any failure, so the history page falls back to the
+    season-level report links."""
+    global _tcr_rows_cache
+    try:
+        if _tcr_rows_cache is None:
+            req = urllib.request.Request(TCR_INDEX_URL, headers={'User-Agent': 'ACETracker/1.0'})
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                _tcr_rows_cache = parse_tcr_index(resp.read().decode('utf-8', errors='replace'))
+        rows = _tcr_rows_cache
+        matched = match_tcr_reports(rows, storms or [], basin_key)
+        print(f"  ✓ NHC storm reports: {len(matched)} linked")
+        return matched
+    except Exception as e:
+        logger.warning(f"Could not load NHC storm report index: {e}")
+        print(f"  → NHC storm report index unavailable ({e}); using season links")
+        return {}
+
+
 
 def fetch_nhc_disturbances(basin_key):
     """Fetch NHC Tropical Weather Outlook and return disturbances with Medium/High formation chances.

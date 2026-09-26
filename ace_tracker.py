@@ -35,6 +35,7 @@ from ace_data import (
     calculate_yearly_stats,
     calculate_ace_pace,
     calculate_records_in_play,
+    fetch_tcr_reports,
     generate_insights,
     generate_discord_text,
     generate_console_report,
@@ -160,6 +161,13 @@ def main():
     result = process_basin('pacific')
     if result:
         basin_results.append(result)
+
+    # Per-storm NHC report links for the history page. Fetched once both
+    # basins' live data is in, so this extra NHC request never competes
+    # with the current-season and forecast-track downloads.
+    for result in basin_results:
+        storms = result.get('historical_storms')
+        result['tcr_reports'] = fetch_tcr_reports(storms, result['basin_key']) if storms else {}
 
     # Generate HTML pages
     if basin_results:

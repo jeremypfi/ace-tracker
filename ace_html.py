@@ -62,8 +62,19 @@ def _intensity_bar_html(track_points):
 
 
 
-def _year_storm_list_html(storms_list):
-    """Inline HTML list of storms for the history page accordion."""
+def _storm_report_link_html(name, url):
+    """Small document icon linking to a storm's NHC Tropical Cyclone Report."""
+    if not url:
+        return ''
+    label = html_escape(f'NHC report for {name}')
+    return (f'<a class="ys-tcr" href="{html_escape(url)}" target="_blank" rel="noopener noreferrer" '
+            f'title="{label}" aria-label="{label}">&#128196;</a>')
+
+
+def _year_storm_list_html(storms_list, report_urls=None):
+    """Inline HTML list of storms for the history page accordion.
+    `report_urls` maps storm id (or name, for the in-progress season) to its
+    NHC report URL."""
     if not storms_list:
         return '<p style="color:var(--muted);font-size:0.82em;padding:4px 0 2px">No named storms on record</p>'
     max_ace = storms_list[0]['ace'] if storms_list[0]['ace'] > 0 else 1
@@ -78,7 +89,8 @@ def _year_storm_list_html(storms_list):
             lf_html = '<span class="ys-lf ys-fish" data-tip="A storm that never made landfall and just pissed off fish">Fish Storm</span>'
         rows.append(
             f'<div class="ys-row">'
-            f'<span class="ys-name">{html_escape(s["name"])}{lf_html}</span>'
+            f'<span class="ys-name">{html_escape(s["name"])}'
+            f'{_storm_report_link_html(s["name"], (report_urls or {}).get(s.get("id") or s["name"]))}{lf_html}</span>'
             f'<span class="ys-cat" data-tip="Peak intensity">{s["category"]}</span>'
             f'<span class="ys-ace">{s["ace"]:.1f}</span>'
             f'<div class="ys-bar"><div class="ys-bar-fill" style="width:{bar_pct}%"></div></div>'
@@ -103,9 +115,9 @@ def _decade_label(year):
 def _nhc_tcr_links_html(year, basin_key, is_active=False):
     """Links to NHC's Tropical Cyclone Report index for a season (#50).
 
-    Links to the per-season index rather than per-storm PDFs: the index
-    exists for every season since 1991, while per-storm PDF filenames vary
-    for older seasons and are only published months after each storm.
+    Shown alongside the per-storm report icons as a fallback: NHC's report
+    index misses some storms (mostly Central Pacific ones) and a new
+    season's reports only appear months after each storm.
     """
     links = ' · '.join(
         f'<a href="https://www.nhc.noaa.gov/data/tcr/index.php?season={year}&amp;basin={code}" '
@@ -1140,6 +1152,14 @@ def generate_history_html(basin_data):
         current_year = current['year']
         normal = basin['normal_ace']
 
+        # Per-storm NHC report links, keyed by storm id. The in-progress
+        # season's storm list comes from current-season details (keyed by
+        # name), so its storms are also looked up by name.
+        report_urls = dict(bd.get('tcr_reports') or {})
+        for storm in bd.get('historical_storms') or []:
+            if storm['year'] == current_year and storm.get('id') in report_urls:
+                report_urls[storm['name']] = report_urls[storm['id']]
+
         # Build per-year data from yearly_stats (HURDAT2 historical)
         years_data = {}
         if yearly_stats:
@@ -1234,7 +1254,7 @@ def generate_history_html(basin_data):
             hurr_v = d['hurricanes'] if d['hurricanes'] != '—' else 0
             major_v = d['majors'] if d['majors'] != '—' else 0
             yr_key = f'{bd["basin_key"]}-yr-{year}'
-            storm_list_html = _year_storm_list_html(d.get('storms_list', []))
+            storm_list_html = _year_storm_list_html(d.get('storms_list', []), report_urls)
             tcr_html = _nhc_tcr_links_html(year, bd['basin_key'], is_active)
             decade = _decade_label(year)
             all_decades.add(decade)
@@ -1430,6 +1450,8 @@ def generate_history_html(basin_data):
   .ys-row {{ display:grid; grid-template-columns:110px 48px 46px 1fr; align-items:start; gap:6px; padding:5px 0; font-size:0.82em; border-bottom:1px solid var(--border); }}
   .ys-row:last-child {{ border-bottom:none; }}
   .ys-name {{ color:var(--text); font-weight:500; line-height:1.4; }}
+  .ys-tcr {{ margin-left:5px; font-size:0.85em; text-decoration:none; opacity:0.75; }}
+  .ys-tcr:hover, .ys-tcr:focus-visible {{ opacity:1; }}
   .ys-lf {{ display:block; font-size:0.82em; font-weight:400; color:var(--muted); font-style:italic; margin-top:1px; }}
   .ys-fish {{ color:var(--muted); opacity:0.7; cursor:help; }}
   .ys-cat {{ color:var(--muted); font-size:0.9em; cursor:help; text-decoration:underline dotted; text-underline-offset:2px; }}

@@ -31,6 +31,8 @@ from ace_data import (
     calculate_ace_pace,
     calculate_yearly_stats,
     calculate_records_in_play,
+    parse_tcr_index,
+    match_tcr_reports,
     _first_tropical_storm_time,
     _clean_landfalls,
     _drop_stale_storm_keys,
@@ -41,7 +43,7 @@ from ace_data import (
 )
 from ace_html import (
     generate_dashboard_html, generate_history_html, generate_records_html,
-    _decade_label, _nhc_tcr_links_html, _records_in_play_html,
+    _decade_label, _nhc_tcr_links_html, _records_in_play_html, _year_storm_list_html,
 )
 
 
@@ -661,6 +663,80 @@ class TestRecordsInPlay(unittest.TestCase):
         self.assertIn('Records in Play', html)
         self.assertIn('&lt;b&gt;x&lt;/b&gt;', html)
         self.assertIn('not a forecast', html)
+
+
+class TestStormReportLinks(unittest.TestCase):
+    """Per-storm NHC Tropical Cyclone Report links from NHC's report index."""
+
+    INDEX = '''<?xml version="1.0"?><StormReportInfo>
+      <row><StormName>Guillermo (Pacific)</StormName>
+        <StormReportURL>https://www.nhc.noaa.gov/archive/storm_wallets/epacific/ep1991-prelim/guillerm/</StormReportURL>
+        <Year>1991</Year><Basin>Pacific</Basin></row>
+      <row><StormName>Unnamed (Atlantic)</StormName>
+        <StormReportURL>https://www.nhc.noaa.gov/archive/storm_wallets/atlantic/atl1991-prelim/unnamed/</StormReportURL>
+        <Year>1991</Year><Basin>Atlantic</Basin></row>
+      <row><StormName>Hurricane Andrew (Atlantic)</StormName>
+        <StormReportURL>https://www.nhc.noaa.gov/1992andrew.html</StormReportURL>
+        <Year>1992</Year><Basin>Atlantic</Basin></row>
+      <row><StormName>Hurricane Katrina (Atlantic)</StormName>
+        <StormReportURL>https://www.nhc.noaa.gov/data/tcr/AL122005_Katrina.pdf</StormReportURL>
+        <Year>2005</Year><Basin>Atlantic</Basin></row>
+      <row><StormName>Hurricane Bonnie (Atlantic)</StormName>
+        <StormReportURL>https://www.nhc.noaa.gov/data/tcr/AL022022_EP042022_Bonnie.pdf</StormReportURL>
+        <Year>2022</Year><Basin>Atlantic</Basin></row>
+      <row><StormName>Hurricane Otto (Atlantic)</StormName>
+        <StormReportURL>https://www.nhc.noaa.gov/data/tcr/AL162016_Otto.pdf</StormReportURL>
+        <Year>2016</Year><Basin>Atlantic</Basin></row>
+      <row><StormName>Bad (Atlantic)</StormName>
+        <StormReportURL>https://example.com/x.pdf</StormReportURL>
+        <Year>2020</Year><Basin>Atlantic</Basin></row>
+    </StormReportInfo>'''
+
+    def _rows(self):
+        return parse_tcr_index(self.INDEX)
+
+    def test_parse_keeps_only_nhc_urls(self):
+        rows = self._rows()
+        self.assertEqual(len(rows), 6)
+        self.assertEqual(rows[0]['basin'], 'pacific')
+        self.assertEqual(rows[0]['year'], 1991)
+
+    def test_pdf_reports_match_by_storm_id(self):
+        m = match_tcr_reports(self._rows(), [{'id': 'AL122005', 'name': 'Katrina', 'year': 2005}], 'atlantic')
+        self.assertEqual(m['AL122005'], 'https://www.nhc.noaa.gov/data/tcr/AL122005_Katrina.pdf')
+
+    def test_crossover_storm_matches_either_id(self):
+        # Bonnie 2022 is EP042022 in the Pacific dataset; Otto 2016 is
+        # EP222016 there but its report is only filed as AL162016.
+        storms = [{'id': 'EP042022', 'name': 'Bonnie', 'year': 2022},
+                  {'id': 'EP222016', 'name': 'Otto', 'year': 2016}]
+        m = match_tcr_reports(self._rows(), storms, 'pacific')
+        self.assertIn('AL022022_EP042022_Bonnie.pdf', m['EP042022'])
+        self.assertIn('AL162016_Otto.pdf', m['EP222016'])
+
+    def test_1991_storm_wallets_match_by_truncated_name(self):
+        storms = [{'id': 'EP081991', 'name': 'Guillermo', 'year': 1991},
+                  {'id': 'AL011991', 'name': 'Unnamed', 'year': 1991}]
+        self.assertIn('guillerm', match_tcr_reports(self._rows(), storms, 'pacific')['EP081991'])
+        self.assertIn('atl1991-prelim/unnamed', match_tcr_reports(self._rows(), storms, 'atlantic')['AL011991'])
+
+    def test_name_fallback_and_missing_reports(self):
+        storms = [{'id': 'AL041992', 'name': 'Andrew', 'year': 1992},
+                  {'id': 'AL171995', 'name': 'Opal', 'year': 1995},
+                  {'id': 'AL212005', 'name': 'Unnamed', 'year': 2005}]
+        m = match_tcr_reports(self._rows(), storms, 'atlantic')
+        self.assertEqual(m, {'AL041992': 'https://www.nhc.noaa.gov/1992andrew.html'})
+
+    def test_storm_list_shows_report_icon_only_when_known(self):
+        storms_list = [{'id': 'AL122005', 'name': 'Katrina', 'ace': 20.0, 'category': 'Cat 5',
+                        'max_wind': 150, 'landfall': []},
+                       {'id': 'AL171995', 'name': 'Opal', 'ace': 10.0, 'category': 'Cat 4',
+                        'max_wind': 130, 'landfall': []}]
+        html = _year_storm_list_html(storms_list, {'AL122005': 'https://www.nhc.noaa.gov/data/tcr/AL122005_Katrina.pdf'})
+        self.assertEqual(html.count('class="ys-tcr"'), 1)
+        self.assertIn('aria-label="NHC report for Katrina"', html)
+        self.assertIn('rel="noopener noreferrer"', html)
+        self.assertNotIn('ys-tcr', _year_storm_list_html(storms_list))
 
 
 class TestCleanLandfalls(unittest.TestCase):
