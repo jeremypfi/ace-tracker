@@ -62,8 +62,19 @@ def _intensity_bar_html(track_points):
 
 
 
-def _year_storm_list_html(storms_list):
-    """Inline HTML list of storms for the history page accordion."""
+def _storm_report_link_html(name, url):
+    """Small document icon linking to a storm's NHC Tropical Cyclone Report."""
+    if not url:
+        return ''
+    label = html_escape(f'NHC report for {name}')
+    return (f'<a class="ys-tcr" href="{html_escape(url)}" target="_blank" rel="noopener noreferrer" '
+            f'title="{label}" aria-label="{label}">&#128196;</a>')
+
+
+def _year_storm_list_html(storms_list, report_urls=None):
+    """Inline HTML list of storms for the history page accordion.
+    `report_urls` maps storm id (or name, for the in-progress season) to its
+    NHC report URL."""
     if not storms_list:
         return '<p style="color:var(--muted);font-size:0.82em;padding:4px 0 2px">No named storms on record</p>'
     max_ace = storms_list[0]['ace'] if storms_list[0]['ace'] > 0 else 1
@@ -78,7 +89,8 @@ def _year_storm_list_html(storms_list):
             lf_html = '<span class="ys-lf ys-fish" data-tip="A storm that never made landfall and just pissed off fish">Fish Storm</span>'
         rows.append(
             f'<div class="ys-row">'
-            f'<span class="ys-name">{html_escape(s["name"])}{lf_html}</span>'
+            f'<span class="ys-name">{html_escape(s["name"])}'
+            f'{_storm_report_link_html(s["name"], (report_urls or {}).get(s.get("id") or s["name"]))}{lf_html}</span>'
             f'<span class="ys-cat" data-tip="Peak intensity">{s["category"]}</span>'
             f'<span class="ys-ace">{s["ace"]:.1f}</span>'
             f'<div class="ys-bar"><div class="ys-bar-fill" style="width:{bar_pct}%"></div></div>'
@@ -103,9 +115,9 @@ def _decade_label(year):
 def _nhc_tcr_links_html(year, basin_key, is_active=False):
     """Links to NHC's Tropical Cyclone Report index for a season (#50).
 
-    Links to the per-season index rather than per-storm PDFs: the index
-    exists for every season since 1991, while per-storm PDF filenames vary
-    for older seasons and are only published months after each storm.
+    Shown alongside the per-storm report icons as a fallback: NHC's report
+    index misses some storms (mostly Central Pacific ones) and a new
+    season's reports only appear months after each storm.
     """
     links = ' · '.join(
         f'<a href="https://www.nhc.noaa.gov/data/tcr/index.php?season={year}&amp;basin={code}" '
@@ -277,6 +289,23 @@ def _nhc_alert_html(disturbances):
         f'</div>'
         f'</div>'
     )
+
+
+def _records_in_play_html(records):
+    """'Records in Play' panel: season records the current season is setting
+    or close to, versus every season since START_YEAR. Omitted when empty."""
+    if not records:
+        return ''
+    badges = {'set': ('rip-set', 'Record'), 'in_play': ('rip-watch', 'In play')}
+    items = ''.join(
+        f'<li class="rip-item"><span class="rip-badge {badges[r["status"]][0]}">{badges[r["status"]][1]}</span>'
+        f'<span class="rip-body"><b>{html_escape(r["title"])}</b> {html_escape(r["detail"])}</span></li>'
+        for r in records)
+    return f'''
+      <h3>Records in Play</h3>
+      <ul class="rip-list">{items}</ul>
+      <p class="rip-caption">Compared with every season since {START_YEAR}. Based on history only, not a forecast.</p>'''
+
 
 
 def _season_projection_html(current_ace, basin_key):
@@ -485,6 +514,7 @@ def generate_dashboard_html(basin_data):
 
       <h3>Season Insights</h3>
       <ul class="insights">{insight_items_html(insights)}</ul>
+      {_records_in_play_html(bd.get('records_in_play'))}
       {_season_projection_html(current_ace, bd['basin_key'])}'''
 
         gauge_pct = min(pct_normal, 200)
@@ -639,6 +669,12 @@ def generate_dashboard_html(basin_data):
   tr.major td {{ color:var(--danger-text); font-weight:bold; }}
   tr.total-row {{ background:var(--total-row); }}
   .insights {{ list-style:none; padding:0; }}
+  .rip-list {{ list-style:none; padding:0; margin:0; }}
+  .rip-item {{ display:flex; gap:10px; align-items:flex-start; background:var(--box); padding:8px 10px; margin:4px 0; border-radius:6px; font-size:0.85em; color:var(--text); }}
+  .rip-badge {{ flex:none; font-size:0.72em; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; padding:2px 7px; border-radius:10px; margin-top:1px; }}
+  .rip-set {{ background:#c0392b; color:#fff; }}
+  .rip-watch {{ background:#e67e22; color:#fff; }}
+  .rip-caption {{ font-size:0.75em; color:var(--muted); margin:4px 0 0; }}
   .insights li {{ background:var(--box); padding:8px 10px; margin:4px 0; border-radius:6px; font-size:0.85em; border-left:3px solid var(--accent); color:var(--text); }}
   .projection-widget {{ background:var(--box); border-radius:8px; padding:10px 12px; margin-top:6px; }}
   .projection-caption {{ color:var(--muted); font-size:0.78em; margin:0 0 8px; }}
@@ -1116,6 +1152,14 @@ def generate_history_html(basin_data):
         current_year = current['year']
         normal = basin['normal_ace']
 
+        # Per-storm NHC report links, keyed by storm id. The in-progress
+        # season's storm list comes from current-season details (keyed by
+        # name), so its storms are also looked up by name.
+        report_urls = dict(bd.get('tcr_reports') or {})
+        for storm in bd.get('historical_storms') or []:
+            if storm['year'] == current_year and storm.get('id') in report_urls:
+                report_urls[storm['name']] = report_urls[storm['id']]
+
         # Build per-year data from yearly_stats (HURDAT2 historical)
         years_data = {}
         if yearly_stats:
@@ -1210,7 +1254,7 @@ def generate_history_html(basin_data):
             hurr_v = d['hurricanes'] if d['hurricanes'] != '—' else 0
             major_v = d['majors'] if d['majors'] != '—' else 0
             yr_key = f'{bd["basin_key"]}-yr-{year}'
-            storm_list_html = _year_storm_list_html(d.get('storms_list', []))
+            storm_list_html = _year_storm_list_html(d.get('storms_list', []), report_urls)
             tcr_html = _nhc_tcr_links_html(year, bd['basin_key'], is_active)
             decade = _decade_label(year)
             all_decades.add(decade)
@@ -1406,6 +1450,8 @@ def generate_history_html(basin_data):
   .ys-row {{ display:grid; grid-template-columns:110px 48px 46px 1fr; align-items:start; gap:6px; padding:5px 0; font-size:0.82em; border-bottom:1px solid var(--border); }}
   .ys-row:last-child {{ border-bottom:none; }}
   .ys-name {{ color:var(--text); font-weight:500; line-height:1.4; }}
+  .ys-tcr {{ margin-left:5px; font-size:0.85em; text-decoration:none; opacity:0.75; }}
+  .ys-tcr:hover, .ys-tcr:focus-visible {{ opacity:1; }}
   .ys-lf {{ display:block; font-size:0.82em; font-weight:400; color:var(--muted); font-style:italic; margin-top:1px; }}
   .ys-fish {{ color:var(--muted); opacity:0.7; cursor:help; }}
   .ys-cat {{ color:var(--muted); font-size:0.9em; cursor:help; text-decoration:underline dotted; text-underline-offset:2px; }}
@@ -1649,14 +1695,14 @@ def generate_records_html(basin_data):
             cards.append(_record_card_html(
                 '📅', 'Earliest-Forming Storm',
                 f"{html_escape(earliest['name'])} ({earliest['year']})",
-                f"Formed {_portable_strftime(earliest['start_date'], '%B %-d')}"))
+                f"Formed {_portable_strftime(earliest['formation_date'], '%B %-d')}"))
 
         latest = find_latest_forming_storm(historical_storms)
         if latest:
             cards.append(_record_card_html(
                 '📅', 'Latest-Forming Storm',
                 f"{html_escape(latest['name'])} ({latest['year']})",
-                f"Formed {_portable_strftime(latest['start_date'], '%B %-d, %Y')}"))
+                f"Formed {_portable_strftime(latest['formation_date'], '%B %-d, %Y')}"))
 
         basin_sections.append(f'''
     <div class="basin-card{' active' if not basin_sections else ''}" id="{bd['basin_key']}">
