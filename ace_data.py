@@ -81,6 +81,12 @@ MAX_STORMS_DISCORD = 10  # Maximum storms shown in Discord update before summari
 # to ~280 members/models, which would be unreadable clutter on the map.
 SPAGHETTI_MODELS = ['AVNO', 'EMX', 'UKX', 'CMC', 'HWRF', 'HMON', 'NVGM', 'OFCL']
 
+# A model whose latest run trails the newest run shown by more than this is
+# dropped from the map. When a model stops running for a storm, Tropycal keeps
+# returning its last run (HWRF/HMON for Fay 2026: Sep 21 runs on Sep 27),
+# which would be drawn beside current guidance as if it were current.
+SPAGHETTI_MAX_RUN_LAG_HOURS = 24
+
 
 # ===============================================================================
 # BACKUP DATA (used when network is unavailable)
@@ -816,7 +822,9 @@ def _extract_spaghetti_tracks(storm_obj):
     Returns ({model_id: [{'lat', 'lon'}, ...]}, {model_id: cycle_iso}),
     omitting models that are absent or return no forward-looking (fhr >= 0)
     points for this storm/cycle — ICON was observed doing this during testing.
-    The cycle time is shown with each track so old guidance is visibly old.
+    The cycle time is shown with each track so old guidance is visibly old,
+    and a model whose run is more than SPAGHETTI_MAX_RUN_LAG_HOURS older than
+    the newest one is left out.
     """
     tracks_by_model = {}
     cycles_by_model = {}
@@ -847,6 +855,15 @@ def _extract_spaghetti_tracks(storm_obj):
         except Exception as e:
             logger.debug(f"Could not parse {model} forecast: {e}")
             continue
+
+    if cycles_by_model:
+        newest = max(datetime.strptime(c, '%Y-%m-%dT%H:%M:%SZ') for c in cycles_by_model.values())
+        cutoff = newest - timedelta(hours=SPAGHETTI_MAX_RUN_LAG_HOURS)
+        for model, cycle in list(cycles_by_model.items()):
+            if datetime.strptime(cycle, '%Y-%m-%dT%H:%M:%SZ') < cutoff:
+                logger.info(f"Dropping stale {model} run {cycle} (newest run {newest:%Y-%m-%d %HZ})")
+                del cycles_by_model[model]
+                del tracks_by_model[model]
 
     return tracks_by_model, cycles_by_model
 
