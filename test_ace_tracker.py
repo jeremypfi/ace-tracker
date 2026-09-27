@@ -1425,6 +1425,16 @@ class TestKeyboardAndAria(unittest.TestCase):
         self.assertIn('id="unitBtn" onclick="toggleWindUnit()" title="Wind speed unit" aria-label="Wind speed unit: kt"', dashboard)
         self.assertIn("btn.setAttribute('aria-label','Wind speed unit: '+WIND_UNIT_LABELS[unit])", dashboard)
 
+    def test_collapsed_panels_leave_the_tab_order(self):
+        # max-height:0 alone left ~540 report links in collapsed season
+        # panels reachable by Tab; visibility:hidden removes them, and the
+        # delayed visibility transition keeps the close animation.
+        pages = self._pages()
+        self.assertIn('.track-panel { overflow:hidden; max-height:0; visibility:hidden;', pages['dashboard'])
+        self.assertIn('.track-panel.open { max-height:1500px; visibility:visible;', pages['dashboard'])
+        self.assertIn('.yr-panel { overflow:hidden; max-height:0; visibility:hidden;', pages['history'])
+        self.assertIn('.yr-panel.open { max-height:2000px; visibility:visible;', pages['history'])
+
     def test_every_page_has_a_focus_ring(self):
         for name, html in self._pages().items():
             with self.subTest(page=name):

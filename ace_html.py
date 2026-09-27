@@ -758,8 +758,8 @@ def generate_dashboard_html(basin_data):
   @keyframes trpulse {{ 0%{{box-shadow:0 0 0 0 rgba(76,175,80,0.7);}} 70%{{box-shadow:0 0 0 6px rgba(76,175,80,0);}} 100%{{box-shadow:0 0 0 0 rgba(76,175,80,0);}} }}
   tr.active-storm-row {{ border-left:3px solid #4caf50; }}
   .track-row td {{ padding:0; border-bottom:2px solid var(--border); }}
-  .track-panel {{ overflow:hidden; max-height:0; transition:max-height 0.35s ease; background:var(--card); }}
-  .track-panel.open {{ max-height:1500px; }}
+  .track-panel {{ overflow:hidden; max-height:0; visibility:hidden; transition:max-height 0.35s ease, visibility 0s linear 0.35s; background:var(--card); }}
+  .track-panel.open {{ max-height:1500px; visibility:visible; transition:max-height 0.35s ease, visibility 0s; }}
   .track-inner {{ padding:12px 14px 14px; }}
   .track-map {{ height:320px; border-radius:8px; border:1px solid var(--border); margin-bottom:10px; }}
   .track-map-wrap {{ position:relative; margin-bottom:10px; }}
@@ -1489,8 +1489,8 @@ def generate_history_html(basin_data):
   .yr-chevron {{ font-size:0.65em; color:var(--muted); display:inline-block; transition:transform 0.2s; margin-left:3px; }}
   .yr-expand-btn.open .yr-chevron {{ transform:rotate(90deg); }}
   .yr-expand-row td {{ padding:0; border-bottom:1px solid var(--border); }}
-  .yr-panel {{ overflow:hidden; max-height:0; transition:max-height 0.3s ease; background:var(--sources-bg); }}
-  .yr-panel.open {{ max-height:2000px; }}
+  .yr-panel {{ overflow:hidden; max-height:0; visibility:hidden; transition:max-height 0.3s ease, visibility 0s linear 0.3s; background:var(--sources-bg); }}
+  .yr-panel.open {{ max-height:2000px; visibility:visible; transition:max-height 0.3s ease, visibility 0s; }}
   .yr-panel-inner {{ padding:8px 12px 10px; }}
   .yr-lfshare {{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-size:0.8em; color:var(--muted); padding:2px 0 8px; margin-bottom:4px; border-bottom:1px solid var(--border); }}
   .yr-lfshare b {{ color:var(--text); }}
