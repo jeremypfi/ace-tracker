@@ -64,6 +64,17 @@ jobs:
         key: landfall-v1-${{ github.run_id }}
         restore-keys: landfall-v1-
 
+    # The landfall geocoder needs Natural Earth's 10m state/province and
+    # country boundaries (~20 MB). Without this, cartopy re-downloads them on
+    # every run (a DownloadWarning in the log), and a Natural Earth outage
+    # would silently drop estimated landfalls for live storms. The files are
+    # static; bump the key suffix to force a fresh download.
+    - name: Restore Natural Earth boundaries
+      uses: actions/cache@v6
+      with:
+        path: ~/.local/share/cartopy
+        key: naturalearth-10m-cultural-v1
+
     - name: Generate dashboard
       env:
         IN_SEASON: ${{ steps.season_check.outputs.in_season }}

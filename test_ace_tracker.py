@@ -44,6 +44,7 @@ from ace_data import (
     generate_insights,
     _drop_stale_storm_keys,
     _last_track_stamp,
+    _drop_malformed_hurdat_rows,
     latest_track_time,
     _extract_spaghetti_tracks,
     SYNOPTIC_TIMES,
@@ -1826,6 +1827,33 @@ class TestTcrFetchFailure(unittest.TestCase):
             self.assertIsNone(ace_data._tcr_rows_cache)
         finally:
             ace_data._tcr_rows_cache = saved
+class TestHurdatSanitizer(unittest.TestCase):
+    """Malformed HURDAT2 rows are dropped and attributed to their storm, so
+    the log says whether they matter for this site (1991+)."""
+
+    # The two rows NOAA's Sept 2026 revision shipped malformed.
+    RAW = "\n".join([
+        "AL211969,            UNNAMED,      3,",
+        "19690928, 1800,  , EX, 62.0N,   10.0W,  70, -999",
+        "19690929, 0600,  , EX, 63.3N    7.5E,  70, -999",
+        "19690929, 1200,  , EX, 64.0N,    5.0E,  65, -999",
+        "AL231975,            UNNAMED,      2,",
+        "19751207, 0000,  , EX, 38.83,  51.0W,  50, -999",
+        "19751207, 0600,  , EX, 39.5N,  50.0W,  45, -999",
+    ])
+
+    def test_drops_bad_rows_and_names_their_storms(self):
+        kept, dropped = _drop_malformed_hurdat_rows(self.RAW)
+        self.assertEqual(dropped, ['AL211969', 'AL231975'])
+        self.assertEqual(len(kept), 5)
+        self.assertNotIn('63.3N    7.5E', '\n'.join(kept))
+        self.assertIn('AL231975,', '\n'.join(kept))
+
+    def test_clean_file_keeps_everything(self):
+        clean = "\n".join(l for l in self.RAW.splitlines() if '7.5E,' not in l and '38.83,' not in l)
+        kept, dropped = _drop_malformed_hurdat_rows(clean)
+        self.assertEqual(dropped, [])
+        self.assertEqual(len(kept), 5)
 
 
 def run_tests():
