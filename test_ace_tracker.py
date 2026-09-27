@@ -1629,6 +1629,25 @@ class TestGuidanceTimestamps(unittest.TestCase):
         self.assertEqual(len(tracks['OFCL']), 2)
         self.assertEqual(cycles, {'OFCL': '2026-09-27T00:00:00Z', 'AVNO': '2026-09-26T06:00:00Z'})
 
+    def test_spaghetti_drops_runs_far_older_than_the_newest(self):
+        # HWRF and HMON stopped running for Fay 2026; Tropycal still returned
+        # their last (Sep 21) runs on Sep 27, drawn beside current guidance.
+        def fc(lat):
+            return {'lat': [lat], 'lon': [-60.0], 'fhr': [0]}
+
+        class Storm:
+            def get_operational_forecasts(self):
+                return {
+                    'OFCL': {'2026092700': fc(20.0)},
+                    'AVNO': {'2026092618': fc(20.1)},
+                    'CMC': {'2026092600': fc(20.2)},   # exactly 24 h behind: kept
+                    'UKX': {'2026092518': fc(20.3)},   # 30 h behind: dropped
+                    'HWRF': {'2026092118': fc(20.4)},  # six days behind: dropped
+                }
+        tracks, cycles = _extract_spaghetti_tracks(Storm())
+        self.assertEqual(sorted(tracks), ['AVNO', 'CMC', 'OFCL'])
+        self.assertEqual(sorted(cycles), ['AVNO', 'CMC', 'OFCL'])
+
     def test_spaghetti_fetch_failure_returns_empty(self):
         class Broken:
             def get_operational_forecasts(self):
