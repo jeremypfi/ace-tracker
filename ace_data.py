@@ -574,6 +574,29 @@ def _portable_strftime(dt, fmt):
 
 
 
+def _drop_malformed_hurdat_rows(raw):
+    """Split HURDAT2 text into the lines to keep and the storm IDs of any
+    data rows dropped because their lat/lon fields aren't parseable (one ID
+    per dropped row)."""
+    dropped = []
+    kept_lines = []
+    storm_id = '?'
+    for line in raw.splitlines():
+        tokens = line.replace(' ', '').split(',')
+        is_header = bool(tokens[0]) and tokens[0][0] in ('A', 'C', 'E')
+        if is_header:
+            storm_id = tokens[0]
+        elif len(tokens) >= 6:
+            lat, lon = tokens[4], tokens[5]
+            lat_ok = ('N' in lat) or ('S' in lat)
+            lon_ok = ('W' in lon) or ('E' in lon)
+            if not (lat_ok and lon_ok):
+                dropped.append(storm_id)
+                continue
+        kept_lines.append(line)
+    return kept_lines, dropped
+
+
 def _sanitize_hurdat_file(url):
     """Download a HURDAT2 master file and drop any data row whose lat/lon
     fields aren't cleanly parseable, returning a local file path.
@@ -589,24 +612,15 @@ def _sanitize_hurdat_file(url):
     with urllib.request.urlopen(url, timeout=30) as resp:
         raw = resp.read().decode('utf-8', errors='replace')
 
-    dropped = 0
-    kept_lines = []
-    for line in raw.splitlines():
-        tokens = line.replace(' ', '').split(',')
-        is_header = bool(tokens[0]) and tokens[0][0] in ('A', 'C', 'E')
-        if not is_header and len(tokens) >= 6:
-            lat, lon = tokens[4], tokens[5]
-            lat_ok = ('N' in lat) or ('S' in lat)
-            lon_ok = ('W' in lon) or ('E' in lon)
-            if not (lat_ok and lon_ok):
-                dropped += 1
-                continue
-        kept_lines.append(line)
-
+    kept_lines, dropped = _drop_malformed_hurdat_rows(raw)
     if dropped:
+        storm_ids = sorted(set(dropped))
+        in_range = [sid for sid in storm_ids if sid[-4:].isdigit() and int(sid[-4:]) >= START_YEAR]
+        impact = (f"affects {', '.join(in_range)}" if in_range
+                  else f"all before {START_YEAR}, so no effect on this site's data")
         logger.warning(
-            f"Dropped {dropped} malformed row(s) with unparseable lat/lon "
-            f"fields from HURDAT2 file ({url})")
+            f"Dropped {len(dropped)} malformed row(s) with unparseable lat/lon "
+            f"fields from HURDAT2 file ({url}): {', '.join(storm_ids)} ({impact})")
 
     fd, path = tempfile.mkstemp(prefix='hurdat2_sanitized_', suffix='.txt')
     with os.fdopen(fd, 'w', encoding='utf-8') as f:
