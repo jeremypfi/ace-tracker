@@ -27,6 +27,7 @@ from ace_data import (
     find_earliest_forming_storm,
     find_latest_forming_storm,
     landfall_ace_share,
+    depression_only_landfalls,
     average_landfall_share,
     _portable_strftime,
     MIN_NAMED_STORM_WIND,
@@ -108,10 +109,13 @@ def _landfall_share_html(storms_list):
     if not share:
         return ''
     lf_n, fish_n = share['landfall_count'], share['fish_count']
+    td_n = len(depression_only_landfalls(storms_list))
+    td_note = (f', incl. {td_n} that reached land only as a depression{"s" if td_n != 1 else ""}'
+               if td_n else '')
     return (f'<div class="yr-lfshare"><span class="lfs-bar" aria-hidden="true">'
             f'<span class="lfs-fill" style="width:{share["landfall_pct"]}%"></span></span>'
-            f'<span>&#127965;&#65039; Landfalling: <b>{share["landfall_pct"]}%</b> of ACE ({lf_n} storm{"s" if lf_n != 1 else ""})'
-            f' &nbsp;·&nbsp; &#128031; Fish storms: <b>{share["fish_pct"]}%</b> ({fish_n})</span></div>')
+            f'<span>&#127965;&#65039; Landfalling (TS or stronger): <b>{share["landfall_pct"]}%</b> of ACE ({lf_n} storm{"s" if lf_n != 1 else ""})'
+            f' &nbsp;·&nbsp; &#128031; Fish storms: <b>{share["fish_pct"]}%</b> ({fish_n}{td_note})</span></div>')
 
 
 # NHC Tropical Cyclone Report (TCR) archive basins. The E/C Pacific tab combines

@@ -1636,9 +1636,33 @@ class TestHonestyLabels(unittest.TestCase):
         insights = generate_insights('atlantic', bd['current'], bd['yearly_totals'],
                                      bd['historical_storms'], calculate_yearly_stats(bd['historical_storms']))
         share = [i for i in insights if i.startswith('🏝️ Landfall share')][0]
-        self.assertIn(': no storm has made landfall at tropical-storm strength or stronger, '
-                      'so all season ACE came from 1 fish storm', share)
+        self.assertIn(': no storm has made landfall at tropical-storm strength or stronger', share)
+        self.assertIn('so 1 storm counts as a fish storm, including Arthur, '
+                      'which reached Guerrero, Mexico only as a depression', share)
         self.assertNotIn('0 storms', share)
+
+    def test_landfall_share_insight_names_depression_landfalls(self):
+        bd = self._data()[0]
+        bd['current']['storms']['Dolly'] = 0.5
+        bd['current']['storm_details']['Dolly'] = {
+            'ace': 0.5, 'max_wind': 40, 'track_points': [], 'is_active': False,
+            'start_date': '7/1', 'landfall': [('Puerto Rico', 'TD')], 'landfall_estimated': True}
+        bd['current']['total'] = 0.91
+        insights = generate_insights('atlantic', bd['current'], bd['yearly_totals'],
+                                     bd['historical_storms'], calculate_yearly_stats(bd['historical_storms']))
+        share = [i for i in insights if i.startswith('🏝️ Landfall share')][0]
+        self.assertIn('from the 1 storm that made landfall at tropical-storm strength or stronger', share)
+        self.assertIn('from 1 fish storm, including Dolly, which reached Puerto Rico only as a depression', share)
+
+    def test_history_panel_counts_depression_landfalls(self):
+        from ace_html import _landfall_share_html
+        html = _landfall_share_html([
+            {'name': 'Hitter', 'ace': 30.0, 'max_wind': 120, 'landfall': [('Florida', 'Cat 3')]},
+            {'name': 'Crosser', 'ace': 10.0, 'max_wind': 50, 'landfall': [['Texas', 'TD']]},
+            {'name': 'Fish', 'ace': 10.0, 'max_wind': 50, 'landfall': []},
+        ])
+        self.assertIn('Landfalling (TS or stronger): <b>60%</b>', html)
+        self.assertIn('(2, incl. 1 that reached land only as a depression)', html)
 
 
 class TestGuidanceTimestamps(unittest.TestCase):
