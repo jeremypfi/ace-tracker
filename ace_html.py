@@ -663,6 +663,7 @@ def generate_dashboard_html(basin_data):
   .ace-explain summary::before {{ content:'ℹ'; font-size:1.1em; }}
   .ace-explain-hint {{ color:var(--muted); font-size:0.85em; }}
   .ace-explain p {{ color:var(--text); line-height:1.6; margin-top:8px; padding-top:8px; border-top:1px solid var(--border); }}
+  .ace-explain p a, .ace-explain p a:visited {{ color:var(--accent); font-weight:600; text-decoration:underline; text-underline-offset:2px; }}
   .toggle {{ display:flex; justify-content:center; gap:8px; margin-bottom:16px; }}
   .toggle button {{ padding:8px 20px; border:1px solid var(--accent); background:transparent; color:var(--accent); border-radius:20px; cursor:pointer; font-size:0.9em; }}
   .toggle button.active {{ background:var(--accent); color:var(--bg); font-weight:bold; }}
@@ -1426,6 +1427,7 @@ def generate_history_html(basin_data):
   .ace-explain summary::before {{ content:'ℹ'; font-size:1.1em; }}
   .ace-explain-hint {{ color:var(--muted); font-size:0.85em; }}
   .ace-explain p {{ color:var(--text); line-height:1.6; margin-top:8px; padding-top:8px; border-top:1px solid var(--border); }}
+  .ace-explain p a, .ace-explain p a:visited {{ color:var(--accent); font-weight:600; text-decoration:underline; text-underline-offset:2px; }}
   .toggle {{ display:flex; justify-content:center; gap:8px; margin-bottom:16px; }}
   .toggle button {{ padding:8px 20px; border:1px solid var(--accent); background:transparent; color:var(--accent); border-radius:20px; cursor:pointer; font-size:0.9em; }}
   .toggle button.active {{ background:var(--accent); color:var(--bg); font-weight:bold; }}
