@@ -798,8 +798,8 @@ def generate_dashboard_html(basin_data):
 <div class="header">
   <h1><img src="ace.png" class="logo" alt="" aria-hidden="true"> Hurricane ACE Dashboard</h1>
   <div class="header-actions">
-    <button class="unit-btn" id="unitBtn" onclick="toggleWindUnit()" title="Wind speed unit">kt</button>
-    <button class="theme-btn" id="themeBtn" onclick="toggleTheme()">☀</button>
+    <button class="unit-btn" id="unitBtn" onclick="toggleWindUnit()" title="Wind speed unit" aria-label="Wind speed unit: kt">kt</button>
+    <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" aria-label="Toggle light and dark theme">☀</button>
   </div>
 </div>
 <div class="updated">Updated: {now.strftime('%B %d, %Y at %H:%M UTC')}</div>
@@ -809,8 +809,8 @@ def generate_dashboard_html(basin_data):
   <p>Accumulated Cyclone Energy (ACE) measures total hurricane season activity by combining storm intensity and duration. A major hurricane that lasts two weeks contributes far more than a brief tropical storm. NOAA uses seasonal ACE totals to classify years as <b>Below Normal</b> (&lt;73), <b>Near Normal</b> (73–126), <b>Above Normal</b> (126–159), or <b>Extremely Active</b> (159+). <a href="what-is-ace.html">More on ACE, plus a calculator →</a></p>
 </details>
 <div class="toggle">
-  <button class="active" onclick="show('atlantic',this)">Atlantic</button>
-  <button onclick="show('pacific',this)">E/C Pacific</button>
+  <button class="active" aria-pressed="true" onclick="show('atlantic',this)">Atlantic</button>
+  <button aria-pressed="false" onclick="show('pacific',this)">E/C Pacific</button>
 </div>
 {''.join(sections)}
 <div class="sources">
@@ -828,9 +828,10 @@ def generate_dashboard_html(basin_data):
 <script>
 function show(id,btn) {{
   document.querySelectorAll('.basin-card').forEach(c=>c.classList.remove('active'));
-  document.querySelectorAll('.toggle button').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.toggle button').forEach(b=>{{b.classList.remove('active');b.setAttribute('aria-pressed','false');}});
   document.getElementById(id)?.classList.add('active');
   btn.classList.add('active');
+  btn.setAttribute('aria-pressed','true');
   try{{history.replaceState(null,'','#'+id);}}catch(e){{}}
   _renderPaceChart(id);
 }}
@@ -839,7 +840,7 @@ function toggleTheme() {{
   var light=h.getAttribute('data-theme')==='light';
   h.setAttribute('data-theme',light?'dark':'light');
   try{{localStorage.setItem('ace-theme',light?'dark':'light');}}catch(e){{}}
-  document.getElementById('themeBtn').textContent=light?'☀':'☾';
+  document.getElementById('themeBtn').textContent=light?'☀':'☾';document.getElementById('themeBtn').setAttribute('aria-label',document.documentElement.getAttribute('data-theme')==='light'?'Switch to dark mode':'Switch to light mode');
   _restylePaceCharts();
 }}
 var WIND_UNITS=['kt','mph','kmh'];
@@ -860,7 +861,7 @@ function _fmtWind(kt) {{
 function applyWindUnit() {{
   var unit=_windUnit();
   var btn=document.getElementById('unitBtn');
-  if(btn)btn.textContent=WIND_UNIT_LABELS[unit];
+  if(btn){{btn.textContent=WIND_UNIT_LABELS[unit];btn.setAttribute('aria-label','Wind speed unit: '+WIND_UNIT_LABELS[unit]);}}
   document.querySelectorAll('.wind-val').forEach(function(el){{
     el.textContent=String(_convertWind(parseFloat(el.getAttribute('data-kt'))));
   }});
@@ -901,7 +902,7 @@ function copyStormLink(e,slug) {{
   }}
 }}
 document.addEventListener('DOMContentLoaded',function() {{
-  document.getElementById('themeBtn').textContent=document.documentElement.getAttribute('data-theme')==='light'?'☾':'☀';
+  document.getElementById('themeBtn').textContent=document.documentElement.getAttribute('data-theme')==='light'?'☾':'☀';document.getElementById('themeBtn').setAttribute('aria-label',document.documentElement.getAttribute('data-theme')==='light'?'Switch to dark mode':'Switch to light mode');
   applyWindUnit();
   var hash=location.hash.replace('#','');
   var match=[].slice.call(document.querySelectorAll('.toggle button')).filter(function(b){{return(b.getAttribute('onclick')||'').indexOf("'"+hash+"'")>=0;}})[0];
@@ -1521,7 +1522,7 @@ def generate_history_html(basin_data):
 <body>
 <div class="header">
   <h1><img src="ace.png" class="logo" alt="" aria-hidden="true"> Hurricane ACE History</h1>
-  <button class="theme-btn" id="themeBtn" onclick="toggleTheme()">☀</button>
+  <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" aria-label="Toggle light and dark theme">☀</button>
 </div>
 <div class="updated">Updated: {now.strftime('%B %d, %Y at %H:%M UTC')}</div>
 <div class="nav-link"><a href="index.html">← Current Season</a><a href="records.html">🏆 Records</a><a href="what-is-ace.html">❓ What is ACE?</a></div>
@@ -1530,8 +1531,8 @@ def generate_history_html(basin_data):
   <p>Accumulated Cyclone Energy (ACE) measures total hurricane season activity by combining storm intensity and duration. A major hurricane that lasts two weeks contributes far more than a brief tropical storm. NOAA uses seasonal ACE totals to classify years as <b>Below Normal</b> (&lt;73), <b>Near Normal</b> (73–126), <b>Above Normal</b> (126–159), or <b>Extremely Active</b> (159+). <a href="what-is-ace.html">More on ACE, plus a calculator →</a></p>
 </details>
 <div class="toggle">
-  <button class="active" onclick="show('atlantic',this)">Atlantic</button>
-  <button onclick="show('pacific',this)">E/C Pacific</button>
+  <button class="active" aria-pressed="true" onclick="show('atlantic',this)">Atlantic</button>
+  <button aria-pressed="false" onclick="show('pacific',this)">E/C Pacific</button>
 </div>
 <div class="legend">
   <span class="badge badge-extreme">Extremely Active ≥159</span>
@@ -1556,9 +1557,10 @@ def generate_history_html(basin_data):
 <script>
 function show(id,btn) {{
   document.querySelectorAll('.basin-card').forEach(c=>c.classList.remove('active'));
-  document.querySelectorAll('.toggle button').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.toggle button').forEach(b=>{{b.classList.remove('active');b.setAttribute('aria-pressed','false');}});
   document.getElementById(id)?.classList.add('active');
   btn.classList.add('active');
+  btn.setAttribute('aria-pressed','true');
   _syncHash();
 }}
 var _decade='all';
@@ -1595,10 +1597,10 @@ function toggleTheme() {{
   var light=h.getAttribute('data-theme')==='light';
   h.setAttribute('data-theme',light?'dark':'light');
   try{{localStorage.setItem('ace-theme',light?'dark':'light');}}catch(e){{}}
-  document.getElementById('themeBtn').textContent=light?'☀':'☾';
+  document.getElementById('themeBtn').textContent=light?'☀':'☾';document.getElementById('themeBtn').setAttribute('aria-label',document.documentElement.getAttribute('data-theme')==='light'?'Switch to dark mode':'Switch to light mode');
 }}
 document.addEventListener('DOMContentLoaded',function() {{
-  document.getElementById('themeBtn').textContent=document.documentElement.getAttribute('data-theme')==='light'?'☾':'☀';
+  document.getElementById('themeBtn').textContent=document.documentElement.getAttribute('data-theme')==='light'?'☾':'☀';document.getElementById('themeBtn').setAttribute('aria-label',document.documentElement.getAttribute('data-theme')==='light'?'Switch to dark mode':'Switch to light mode');
   var parts=location.hash.replace('#','').split('&');
   var hash=parts[0];
   parts.slice(1).forEach(function(p){{if(p.indexOf('decade=')===0)filterDecade(p.slice(7));}});
@@ -1833,13 +1835,13 @@ def generate_records_html(basin_data):
 <body>
 <div class="header">
   <h1><img src="ace.png" class="logo" alt="" aria-hidden="true"> Hurricane Records</h1>
-  <button class="theme-btn" id="themeBtn" onclick="toggleTheme()">☀</button>
+  <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" aria-label="Toggle light and dark theme">☀</button>
 </div>
 <div class="updated">Updated: {now.strftime('%B %d, %Y at %H:%M UTC')}</div>
 <div class="nav-link"><a href="index.html">← Current Season</a><a href="history.html">Season History</a><a href="what-is-ace.html">❓ What is ACE?</a></div>
 <div class="toggle">
-  <button class="active" onclick="show('atlantic',this)">Atlantic</button>
-  <button onclick="show('pacific',this)">E/C Pacific</button>
+  <button class="active" aria-pressed="true" onclick="show('atlantic',this)">Atlantic</button>
+  <button aria-pressed="false" onclick="show('pacific',this)">E/C Pacific</button>
 </div>
 {''.join(basin_sections)}
 <div class="sources">
@@ -1854,9 +1856,10 @@ def generate_records_html(basin_data):
 <script>
 function show(id,btn) {{
   document.querySelectorAll('.basin-card').forEach(c=>c.classList.remove('active'));
-  document.querySelectorAll('.toggle button').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.toggle button').forEach(b=>{{b.classList.remove('active');b.setAttribute('aria-pressed','false');}});
   document.getElementById(id)?.classList.add('active');
   btn.classList.add('active');
+  btn.setAttribute('aria-pressed','true');
   try{{history.replaceState(null,'','#'+id);}}catch(e){{}}
 }}
 function toggleTheme() {{
@@ -1864,10 +1867,10 @@ function toggleTheme() {{
   var light=h.getAttribute('data-theme')==='light';
   h.setAttribute('data-theme',light?'dark':'light');
   try{{localStorage.setItem('ace-theme',light?'dark':'light');}}catch(e){{}}
-  document.getElementById('themeBtn').textContent=light?'☀':'☾';
+  document.getElementById('themeBtn').textContent=light?'☀':'☾';document.getElementById('themeBtn').setAttribute('aria-label',document.documentElement.getAttribute('data-theme')==='light'?'Switch to dark mode':'Switch to light mode');
 }}
 document.addEventListener('DOMContentLoaded',function() {{
-  document.getElementById('themeBtn').textContent=document.documentElement.getAttribute('data-theme')==='light'?'☾':'☀';
+  document.getElementById('themeBtn').textContent=document.documentElement.getAttribute('data-theme')==='light'?'☾':'☀';document.getElementById('themeBtn').setAttribute('aria-label',document.documentElement.getAttribute('data-theme')==='light'?'Switch to dark mode':'Switch to light mode');
   var hash=location.hash.replace('#','');
   var match=[].slice.call(document.querySelectorAll('.toggle button')).filter(function(b){{return(b.getAttribute('onclick')||'').indexOf("'"+hash+"'")>=0;}})[0];
   if(match)match.click();
@@ -2100,9 +2103,9 @@ function toggleTheme() {{
   var light=h.getAttribute('data-theme')==='light';
   h.setAttribute('data-theme',light?'dark':'light');
   try{{localStorage.setItem('ace-theme',light?'dark':'light');}}catch(e){{}}
-  document.getElementById('themeBtn').textContent=light?'☀':'☾';
+  document.getElementById('themeBtn').textContent=light?'☀':'☾';document.getElementById('themeBtn').setAttribute('aria-label',document.documentElement.getAttribute('data-theme')==='light'?'Switch to dark mode':'Switch to light mode');
 }}
-document.getElementById('themeBtn').textContent=document.documentElement.getAttribute('data-theme')==='light'?'☾':'☀';
+document.getElementById('themeBtn').textContent=document.documentElement.getAttribute('data-theme')==='light'?'☾':'☀';document.getElementById('themeBtn').setAttribute('aria-label',document.documentElement.getAttribute('data-theme')==='light'?'Switch to dark mode':'Switch to light mode');
 </script>
 <!-- Cloudflare Web Analytics --><script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{{"token": "775dfcf117b94ff59e3c118c330d02aa"}}'></script><!-- End Cloudflare Web Analytics -->
 </body>
