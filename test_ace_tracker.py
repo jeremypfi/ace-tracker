@@ -1412,6 +1412,14 @@ class TestKeyboardAndAria(unittest.TestCase):
                               f'onclick="{fn}(this,{0 if default == "Year" else 1},\'n\')">{default} ', html)
                 self.assertIn("h.setAttribute('aria-sort',asc?'ascending':'descending')", html)
 
+    def test_row_buttons_expose_expanded_state(self):
+        pages = self._pages()
+        self.assertIn('id="trbtn-arthur" aria-expanded="false" aria-controls="trpanel-arthur"', pages['dashboard'])
+        self.assertIn("btn.setAttribute('aria-expanded','true')", pages['dashboard'])
+        self.assertIn('id="yrbtn-atlantic-yr-2005" aria-expanded="false" aria-controls="yrpanel-atlantic-yr-2005"',
+                      pages['history'])
+        self.assertIn("btn.setAttribute('aria-expanded',open?'false':'true')", pages['history'])
+
 
 def run_tests():
     """Run all tests"""

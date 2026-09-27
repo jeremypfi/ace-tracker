@@ -477,7 +477,7 @@ def generate_dashboard_html(basin_data):
 
             rows.append(
                 f'<tr class="{row_classes}" id="storm-row-{slug}">'
-                f'<td data-v="{html_escape(name)}"><button class="storm-name-btn" id="trbtn-{slug}" onclick="toggleTrack(\'{slug}\')">'
+                f'<td data-v="{html_escape(name)}"><button class="storm-name-btn" id="trbtn-{slug}" aria-expanded="false" aria-controls="trpanel-{slug}" onclick="toggleTrack(\'{slug}\')">'
                 f'{active_dot}{html_escape(name)}<span class="storm-chevron">&#9658;</span></button>'
                 f'<button class="storm-share-btn" type="button" data-tip="Copy link to this storm" '
                 f'aria-label="Copy link to {html_escape(name)}" onclick="copyStormLink(event,\'{slug}\')">&#128279;</button></td>'
@@ -1044,9 +1044,9 @@ function toggleTrack(slug){{
   var btn=document.getElementById('trbtn-'+slug);
   if(!panel)return;
   var open=panel.classList.contains('open');
-  if(open){{panel.classList.remove('open');if(btn)btn.classList.remove('open');return;}}
+  if(open){{panel.classList.remove('open');if(btn){{btn.classList.remove('open');btn.setAttribute('aria-expanded','false');}}return;}}
   panel.classList.add('open');
-  if(btn)btn.classList.add('open');
+  if(btn){{btn.classList.add('open');btn.setAttribute('aria-expanded','true');}}
   if(!_trMaps[slug]){{_trMaps[slug]=true;setTimeout(function(){{_buildMap(slug);}},25);}}
 }}
 function _hideTrackSkeleton(slug){{
@@ -1298,7 +1298,7 @@ def generate_history_html(basin_data):
             rows.append(
                 f'<tr class="{row_cls} yr-data-row" id="{yr_key}" data-decade="{decade}">'
                 f'<td data-v="{year}" style="white-space:nowrap">'
-                f'<button class="yr-expand-btn" id="yrbtn-{yr_key}" onclick="toggleYear(\'{yr_key}\')">'
+                f'<button class="yr-expand-btn" id="yrbtn-{yr_key}" aria-expanded="false" aria-controls="yrpanel-{yr_key}" onclick="toggleYear(\'{yr_key}\')">'
                 f'<b>{year}</b>{active_label}<span class="yr-chevron">&#9658;</span></button></td>'
                 f'<td data-v="{ace:.4f}"><b>{ace:.1f}</b><div class="ace-bar"><div class="ace-bar-fill" style="width:{ace_bar_pct}%"></div></div></td>'
                 f'<td data-v="{pct}">{pct}%</td>'
@@ -1636,6 +1636,7 @@ function toggleYear(key){{
   var open=panel.classList.contains('open');
   if(open){{panel.classList.remove('open');if(btn)btn.classList.remove('open');}}
   else{{panel.classList.add('open');if(btn)btn.classList.add('open');}}
+  if(btn)btn.setAttribute('aria-expanded',open?'false':'true');
 }}
 </script>
 <div id="global-tip" class="global-tip"></div>
