@@ -35,7 +35,7 @@ Same thresholds for both Atlantic and Eastern Pacific:
 
 ```bash
 python3 ace_tracker.py        # generates HTML files in data/
-python3 test_ace_tracker.py   # 67 tests — ALL must pass before committing
+python3 test_ace_tracker.py   # full unit suite — ALL tests must pass before committing
 python3 verify_pr.py          # unit tests + syntax check + live tracker run in one pass/fail summary
 python3 verify_pr.py --fast   # unit tests + syntax check only, skips the live tracker run
 pip3 install -r requirements.txt
@@ -45,16 +45,16 @@ pip3 install -r requirements.txt
 
 `ace_data.py`: fetches via Tropycal → calculates ACE at synoptic times → generates plain-text reports (Discord/console). Owns `BASINS`, `START_YEAR`, and other domain constants.
 
-`ace_html.py`: renders the dashboard and history HTML pages in `data/`. Imports domain constants and data functions from `ace_data.py`.
+`ace_html.py`: renders the dashboard, history, records, and What Is ACE? pages in `data/`. Imports domain constants and data functions from `ace_data.py`.
 
 `ace_tracker.py`: CLI entrypoint — `process_basin()` and `main()`, wiring `ace_data.py` and `ace_html.py` together. Run via `python3 ace_tracker.py`.
 
-`test_ace_tracker.py`: 67 tests across 16 classes — categorization, ACE formula, NOAA classification, storm finalization, yearly totals, similar-season matching, ACE pace chart data, on-this-day/highest-ACE-storm lookups. Imports directly from `ace_data.py`/`ace_html.py`.
+`test_ace_tracker.py`: unit tests (no fixed count on purpose — a hard-coded number goes stale) — categorization, ACE formula, NOAA classification, storm finalization, yearly totals and named-storm counts, formation-date records, records in play, similar-season matching, ACE pace chart data, landfall cleanup and landfall ACE share, NHC report matching, and HTML output for every page. Imports directly from `ace_data.py`/`ace_html.py`.
 
 ## Repository Rules
 
 - **Only @jeremypfi can approve and merge PRs** (CODEOWNERS + branch protection)
-- All 67 tests must pass before committing — run `/pre-commit` skill
+- All tests must pass before committing — run `/pre-commit` skill
 - Never commit `data/*.html` — gitignored
 - **Before opening any PR:** fetch origin and merge main into the branch first:
   ```bash

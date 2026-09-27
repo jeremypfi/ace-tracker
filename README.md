@@ -38,7 +38,12 @@ Updated every 3 hours during hurricane season (Eastern Pacific: May 15 – Nov 3
 - **Wind speed unit toggle** — switch the dashboard between knots, mph, and km/h; persisted across visits, defaults to knots
 - **Shareable storm links** — copy a direct link to any storm on the dashboard via the 🔗 button on each row; opening the link auto-switches basin and expands that storm
 - **NHC forecast cone** — active storms show their official 5-day forecast cone graphic, fetched from NHC once per run and served from our own domain (not hotlinked)
-- **Season history page** — all seasons 1991–present in a sortable table with classification badges, top-5 highlights, per-year storm accordions with landfall data, and a long-term average row
+- **Season history page** — all seasons 1991–present in a sortable table with classification badges, top-5 highlights, per-year storm accordions with landfall data, and a long-term average row. Filter by decade (shareable links like `history.html#pacific&decade=2010s`)
+- **NHC storm reports** — each storm on the history page links to its official NHC Tropical Cyclone Report, with season-level report links as a fallback
+- **Landfall ACE share** — how much of each season's ACE came from storms that made landfall vs. fish storms, compared with the 1991–present average
+- **Records page** — highest single-storm ACE, longest-lived storm, strongest landfall, and earliest/latest-forming named storms since 1991 (formation = first tropical/subtropical storm point, not the first track point)
+- **Records in Play** — the dashboard lists season records being set or within reach (latest first hurricane/major, lowest or most ACE for the date, fastest to 100 ACE), based on history only, never a forecast
+- **What Is ACE? page** — formula, worked example, NOAA thresholds, an ACE calculator (kt, mph, or km/h), and facts from the site's own data
 - **Similar seasons** — finds the 3 closest historical seasons by ACE accumulated through the same date
 - **Pace rank** — shows where this season ranks among all historical seasons at this same calendar date, alongside the full-season rank
 - **ACE pace chart** — plots the season's cumulative ACE against historical climatology (mean and 25th/75th percentile band) and last year's pace
@@ -101,7 +106,7 @@ python3 test_ace_tracker.py     # unit + smoke tests
 python3 verify_pr.py            # unit tests + syntax check + a full live tracker run
 ```
 
-All 67 tests must pass before committing. Use the `/pre-commit` skill in Claude Code for the full checklist.
+All tests must pass before committing. Use the `/pre-commit` skill in Claude Code for the full checklist.
 
 ---
 
@@ -112,7 +117,7 @@ ace-tracker/
 ├── ace_data.py             # Data fetch, ACE calc, plain-text report generation
 ├── ace_html.py             # Dashboard + history HTML rendering
 ├── ace_tracker.py          # CLI entrypoint — wires ace_data.py + ace_html.py together
-├── test_ace_tracker.py     # 67 unit + smoke tests
+├── test_ace_tracker.py     # unit + smoke tests
 ├── verify_pr.py            # Consolidated PR check: tests + syntax check + a live tracker run
 ├── requirements.txt        # Python dependencies
 ├── ace.png                 # Site logo (favicon + OG image)

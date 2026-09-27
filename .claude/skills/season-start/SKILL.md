@@ -31,16 +31,15 @@ python3 ace_tracker.py
 Verify:
 - Current season year appears in console
 - If no storms yet: ACE shows 0.0
-- Both Excel files and HTML dashboard generate successfully
+- All pages in `data/` generate successfully (dashboard, history, records, What Is ACE?)
 
-## 3. Verify Excel Spreadsheets
+## 3. Verify the Generated Pages
 
-Check both Atlantic and Pacific files in `data/`:
+Open the pages in `data/` for both the Atlantic and E/C Pacific tabs:
 
-- **Summary**: Current year at top, season dates correct, historical ranking includes previous year
-- **Current Season Storms**: Headers present; storms appear if any (highlighted yellow)
-- **Historical Storms**: Previous year's storms present, all years 1991–present
-- **Yearly Totals**: Previous year ranked, current year at top
+- **Dashboard** (`ACE_Dashboard.html`): current year in the heading and page title, season progress bar dates correct, storm table present (or the no-storms-yet view)
+- **History** (`history.html`): previous year's row present with its storms and NHC report links, all years 1991–present, current year marked active
+- **Records** (`records.html`): records include the previous season
 
 ## 4. Check First Named Storm
 
@@ -60,4 +59,4 @@ When the first named storm forms, run the tracker and verify:
 python3 test_ace_tracker.py
 ```
 
-All 67 tests must still pass.
+All tests must still pass.
