@@ -1440,6 +1440,51 @@ class TestKeyboardAndAria(unittest.TestCase):
         self.assertIn("btn.setAttribute('aria-expanded',open?'false':'true')", pages['history'])
 
 
+class TestColorContrast(unittest.TestCase):
+    """Text colors defined as theme tokens meet WCAG AA (4.5:1) against the
+    surfaces they sit on, computed from each page's generated CSS."""
+
+    @staticmethod
+    def _ratio(fg, bg):
+        def lum(h):
+            c = [int(h[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+            c = [x / 12.92 if x <= 0.03928 else ((x + 0.055) / 1.055) ** 2.4 for x in c]
+            return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
+        hi, lo = sorted((lum(fg), lum(bg)), reverse=True)
+        return (hi + 0.05) / (lo + 0.05)
+
+    @staticmethod
+    def _themes(html):
+        import re
+        dark = re.search(r':root \{(.*?)\}', html, re.S).group(1)
+        light = re.search(r'\[data-theme="light"\] \{(.*?)\}', html, re.S).group(1)
+        parse = lambda block: dict(re.findall(r'--([\w-]+):(#[0-9a-fA-F]{6})', block))
+        return {'dark': parse(dark), 'light': parse(light)}
+
+    def test_muted_text_on_page_surfaces(self):
+        pages = TestKeyboardAndAria()._pages()
+        for name, html in pages.items():
+            for theme, tok in self._themes(html).items():
+                for surface in ('card', 'box', 'sources-bg', 'bg'):
+                    if surface not in tok:
+                        continue
+                    with self.subTest(page=name, theme=theme, surface=surface):
+                        self.assertGreaterEqual(self._ratio(tok['muted'], tok[surface]), 4.5)
+                if 'muted-dark' in tok and 'sources-bg' in tok:
+                    with self.subTest(page=name, theme=theme, token='muted-dark'):
+                        self.assertGreaterEqual(self._ratio(tok['muted-dark'], tok['sources-bg']), 4.5)
+
+    def test_classification_badges_with_white_text(self):
+        pages = TestKeyboardAndAria()._pages()
+        for name in ('history', 'what-is-ace'):
+            for theme, tok in self._themes(pages[name]).items():
+                for badge in ('badge-extreme', 'badge-above', 'badge-near', 'badge-below'):
+                    if badge not in tok:
+                        continue
+                    with self.subTest(page=name, theme=theme, badge=badge):
+                        self.assertGreaterEqual(self._ratio('#ffffff', tok[badge]), 4.5)
+
+
 def run_tests():
     """Run all tests"""
     unittest.main(verbosity=2)

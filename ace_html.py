@@ -634,14 +634,14 @@ def generate_dashboard_html(basin_data):
 <style>
   :root {{
     --bg:#0a1628; --card:#132238; --box:#1a2d4a; --accent:#4fc3f7; --accent2:#29b6f6;
-    --accent-h3:#81d4fa; --text:#e0e6ed; --text-strong:#ffffff; --muted:#78909c;
-    --muted-dark:#546e7a; --border:#1e3a5f; --danger:#ef5350; --danger-bg:#2a1a1a;
+    --accent-h3:#81d4fa; --text:#e0e6ed; --text-strong:#ffffff; --muted:#8aa0ab;
+    --muted-dark:#78909c; --border:#1e3a5f; --danger:#ef5350; --danger-bg:#2a1a1a;
     --danger-text:#ef8a80; --total-row:#1a2d4a; --sources-bg:#0d1b2a; --gauge-bg:#1e3a5f;
     --pace-last:#ffb74d;
   }}
   [data-theme="light"] {{
     --bg:#f0f4f8; --card:#ffffff; --box:#e8f0fe; --accent:#0277bd; --accent2:#0288d1;
-    --accent-h3:#01579b; --text:#1a2d4a; --text-strong:#0a1628; --muted:#607d8b;
+    --accent-h3:#01579b; --text:#1a2d4a; --text-strong:#0a1628; --muted:#4f6773;
     --muted-dark:#455a64; --border:#b0bec5; --danger:#d32f2f; --danger-bg:#ffeaea;
     --danger-text:#c62828; --total-row:#e8f0fe; --sources-bg:#e2ecf7; --gauge-bg:#c9daf8;
     --pace-last:#e65100;
@@ -1398,21 +1398,21 @@ def generate_history_html(basin_data):
 <style>
   :root {{
     --bg:#0a1628; --card:#132238; --box:#1a2d4a; --accent:#4fc3f7;
-    --text:#e0e6ed; --text-strong:#ffffff; --muted:#78909c; --border:#1e3a5f;
+    --text:#e0e6ed; --text-strong:#ffffff; --muted:#8aa0ab; --border:#1e3a5f;
     --sources-bg:#0d1b2a; --gauge-bg:#1e3a5f;
     --row-extreme:rgba(239,83,80,0.10); --row-above:rgba(255,143,0,0.10);
     --row-below:rgba(66,165,245,0.10); --row-near:transparent;
     --current-border:#4fc3f7; --active-dot:#4fc3f7;
-    --badge-extreme:#ef5350; --badge-above:#ff8f00; --badge-near:#546e7a; --badge-below:#1976d2;
+    --badge-extreme:#c62828; --badge-above:#b45309; --badge-near:#546e7a; --badge-below:#1976d2;
   }}
   [data-theme="light"] {{
     --bg:#f0f4f8; --card:#ffffff; --box:#e8f0fe; --accent:#0277bd;
-    --text:#1a2d4a; --text-strong:#0a1628; --muted:#607d8b; --border:#b0bec5;
+    --text:#1a2d4a; --text-strong:#0a1628; --muted:#4f6773; --border:#b0bec5;
     --sources-bg:#e2ecf7; --gauge-bg:#c9daf8;
     --row-extreme:rgba(198,40,40,0.07); --row-above:rgba(230,81,0,0.07);
     --row-below:rgba(21,101,192,0.07); --row-near:transparent;
     --current-border:#0277bd; --active-dot:#0277bd;
-    --badge-extreme:#c62828; --badge-above:#e65100; --badge-near:#546e7a; --badge-below:#1565c0;
+    --badge-extreme:#c62828; --badge-above:#b45309; --badge-near:#546e7a; --badge-below:#1565c0;
   }}
   * {{ margin:0; padding:0; box-sizing:border-box; }}
   :focus-visible {{ outline:2px solid var(--accent); outline-offset:2px; }}
@@ -1474,7 +1474,7 @@ def generate_history_html(basin_data):
   .sources h4 {{ color:var(--muted); font-size:0.8em; text-transform:uppercase; margin-bottom:8px; }}
   .sources a {{ color:var(--accent); text-decoration:none; font-size:0.78em; }}
   .sources a:hover {{ text-decoration:underline; }}
-  .sources p {{ color:var(--muted-dark,#546e7a); font-size:0.75em; margin-top:8px; line-height:1.5; }}
+  .sources p {{ color:var(--muted); font-size:0.75em; margin-top:8px; line-height:1.5; }}
   .sources ul {{ list-style:none; padding:0; margin:0; }}
   .sources li {{ color:var(--muted); font-size:0.78em; margin:4px 0; padding-left:12px; position:relative; }}
   .sources li::before {{ content:"•"; position:absolute; left:0; color:var(--accent); }}
@@ -1787,12 +1787,12 @@ def generate_records_html(basin_data):
 <style>
   :root {{
     --bg:#0a1628; --card:#132238; --box:#1a2d4a; --accent:#4fc3f7;
-    --text:#e0e6ed; --text-strong:#ffffff; --muted:#78909c; --border:#1e3a5f;
+    --text:#e0e6ed; --text-strong:#ffffff; --muted:#8aa0ab; --border:#1e3a5f;
     --sources-bg:#0d1b2a;
   }}
   [data-theme="light"] {{
     --bg:#f0f4f8; --card:#ffffff; --box:#e8f0fe; --accent:#0277bd;
-    --text:#1a2d4a; --text-strong:#0a1628; --muted:#607d8b; --border:#b0bec5;
+    --text:#1a2d4a; --text-strong:#0a1628; --muted:#4f6773; --border:#b0bec5;
     --sources-bg:#e2ecf7;
   }}
   * {{ margin:0; padding:0; box-sizing:border-box; }}
@@ -1961,13 +1961,13 @@ def generate_about_html(basin_data):
 <style>
   :root {{
     --bg:#0a1628; --card:#132238; --box:#1a2d4a; --accent:#4fc3f7;
-    --text:#e0e6ed; --text-strong:#ffffff; --muted:#78909c; --border:#1e3a5f;
+    --text:#e0e6ed; --text-strong:#ffffff; --muted:#8aa0ab; --border:#1e3a5f;
     --sources-bg:#0d1b2a;
-    --badge-extreme:#ef5350; --badge-above:#ff8f00; --badge-near:#546e7a; --badge-below:#1976d2;
+    --badge-extreme:#c62828; --badge-above:#b45309; --badge-near:#546e7a; --badge-below:#1976d2;
   }}
   [data-theme="light"] {{
     --bg:#f0f4f8; --card:#ffffff; --box:#e8f0fe; --accent:#0277bd;
-    --text:#1a2d4a; --text-strong:#0a1628; --muted:#607d8b; --border:#b0bec5;
+    --text:#1a2d4a; --text-strong:#0a1628; --muted:#4f6773; --border:#b0bec5;
     --sources-bg:#e2ecf7;
   }}
   * {{ margin:0; padding:0; box-sizing:border-box; }}
