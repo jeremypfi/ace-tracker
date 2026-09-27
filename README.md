@@ -165,7 +165,7 @@ ace-tracker/
 
 ## How Landfall Detection Works
 
-Historical storms (completed seasons) use the official HURDAT2 `'L'` landfall markers, which record the exact time and position of each landfall. These markers aren't added to the real-time best-track data until the post-season analysis, so active-season storms use a geographic fallback: track points are checked against Natural Earth shapefiles using exact point-in-polygon containment. Those landfalls are shown as **est.**, and only landfalls at tropical-storm strength or stronger count toward the landfall ACE share. Results are cached in `landfall_cache.json` and persisted via GitHub Actions cache so geocoding only runs for new or updated storms.
+Historical storms (completed seasons) use the official HURDAT2 `'L'` landfall markers, which record the exact time and position of each landfall. These markers aren't added to the real-time best-track data until the post-season analysis, so active-season storms use a geographic fallback: track points are checked against Natural Earth shapefiles using exact point-in-polygon containment. Those landfalls are shown as **est.**, and only landfalls at tropical-storm strength or stronger count toward the landfall ACE share. Results are cached in `landfall_cache.json` and persisted via GitHub Actions cache so geocoding only runs for new or updated storms. The Natural Earth shapefiles themselves (~20 MB) are also cached by the publish workflow (key `naturalearth-10m-cultural-v1`; bump the suffix to force a fresh download).
 
 ---
 
@@ -195,6 +195,9 @@ The tracker falls back to `BACKUP_DATA` automatically. You'll see:
 
 **Landfall cache miss on first CI run**
 The `landfall_cache.json` is built on the first run and cached by GitHub Actions. The first run after a fresh clone will geocode all historical storms (~1 min extra). Every subsequent run reads from cache.
+
+**"Dropped N malformed row(s) … from HURDAT2 file" warning**
+NOAA's HURDAT2 file sometimes ships rows with unparseable lat/lon fields, which would crash Tropycal's parser for the whole basin. The tracker drops those rows and names the storms they belong to, and says whether any is from 1991 onward. As of Sept 2026 they are AL211969 and AL231975: "all before 1991, so no effect on this site's data."
 
 **`pkg_resources` deprecation warning**
 Tropycal uses `pkg_resources` which is deprecated in setuptools 81+ and removed in setuptools 82+. `requirements.txt` pins `setuptools<85` as a workaround, and CI excludes Python 3.13+ for the same reason. Monitor [Tropycal releases](https://github.com/tropycal/tropycal/releases) for a fix.
