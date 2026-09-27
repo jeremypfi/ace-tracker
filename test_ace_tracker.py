@@ -1425,6 +1425,12 @@ class TestKeyboardAndAria(unittest.TestCase):
         self.assertIn('id="unitBtn" onclick="toggleWindUnit()" title="Wind speed unit" aria-label="Wind speed unit: kt"', dashboard)
         self.assertIn("btn.setAttribute('aria-label','Wind speed unit: '+WIND_UNIT_LABELS[unit])", dashboard)
 
+    def test_every_page_has_a_focus_ring(self):
+        for name, html in self._pages().items():
+            with self.subTest(page=name):
+                self.assertIn(':focus-visible {{ outline:2px solid var(--accent); outline-offset:2px; }}'
+                              .replace('{{', '{').replace('}}', '}'), html)
+
     def test_row_buttons_expose_expanded_state(self):
         pages = self._pages()
         self.assertIn('id="trbtn-arthur" aria-expanded="false" aria-controls="trpanel-arthur"', pages['dashboard'])

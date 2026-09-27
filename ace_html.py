@@ -647,6 +647,7 @@ def generate_dashboard_html(basin_data):
     --pace-last:#e65100;
   }}
   * {{ margin:0; padding:0; box-sizing:border-box; }}
+  :focus-visible {{ outline:2px solid var(--accent); outline-offset:2px; }}
   body {{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:var(--bg); color:var(--text); padding:12px; transition:background 0.2s,color 0.2s; }}
   .header {{ display:grid; grid-template-columns:1fr auto 1fr; align-items:center; margin:8px 0; padding:0 4px; }}
   h1 {{ grid-column:2; color:var(--accent); font-size:1.4em; text-align:center; display:flex; align-items:center; justify-content:center; gap:8px; }}
@@ -1414,6 +1415,7 @@ def generate_history_html(basin_data):
     --badge-extreme:#c62828; --badge-above:#e65100; --badge-near:#546e7a; --badge-below:#1565c0;
   }}
   * {{ margin:0; padding:0; box-sizing:border-box; }}
+  :focus-visible {{ outline:2px solid var(--accent); outline-offset:2px; }}
   body {{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:var(--bg); color:var(--text); padding:12px; transition:background 0.2s,color 0.2s; }}
   .header {{ display:grid; grid-template-columns:1fr auto 1fr; align-items:center; margin:8px 0; padding:0 4px; }}
   h1 {{ grid-column:2; color:var(--accent); font-size:1.4em; text-align:center; display:flex; align-items:center; justify-content:center; gap:8px; }}
@@ -1794,6 +1796,7 @@ def generate_records_html(basin_data):
     --sources-bg:#e2ecf7;
   }}
   * {{ margin:0; padding:0; box-sizing:border-box; }}
+  :focus-visible {{ outline:2px solid var(--accent); outline-offset:2px; }}
   body {{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:var(--bg); color:var(--text); padding:12px; transition:background 0.2s,color 0.2s; }}
   .header {{ display:grid; grid-template-columns:1fr auto 1fr; align-items:center; margin:8px 0; padding:0 4px; }}
   h1 {{ grid-column:2; color:var(--accent); font-size:1.4em; text-align:center; display:flex; align-items:center; justify-content:center; gap:8px; }}
@@ -1968,6 +1971,7 @@ def generate_about_html(basin_data):
     --sources-bg:#e2ecf7;
   }}
   * {{ margin:0; padding:0; box-sizing:border-box; }}
+  :focus-visible {{ outline:2px solid var(--accent); outline-offset:2px; }}
   body {{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:var(--bg); color:var(--text); padding:12px; line-height:1.55; transition:background 0.2s,color 0.2s; }}
   .header {{ display:grid; grid-template-columns:1fr auto 1fr; align-items:center; margin:8px 0; padding:0 4px; }}
   h1 {{ grid-column:2; color:var(--accent); font-size:1.4em; text-align:center; display:flex; align-items:center; justify-content:center; gap:8px; }}
