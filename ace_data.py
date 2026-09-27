@@ -798,19 +798,33 @@ def parse_hurdat2(basin_key, dataset=None):
 # CURRENT SEASON from Tropycal
 # ===============================================================================
 
+def _forecast_cycle_iso(cycle_key, fc):
+    """A forecast's initialization time as 'YYYY-MM-DDTHH:00:00Z', from its
+    'init' datetime or else its 'YYYYMMDDHH' cycle key; None if neither parses."""
+    init = fc.get('init') if isinstance(fc, dict) else None
+    if not isinstance(init, datetime):
+        try:
+            init = datetime.strptime(str(cycle_key), '%Y%m%d%H')
+        except ValueError:
+            return None
+    return init.strftime('%Y-%m-%dT%H:00:00Z')
+
+
 def _extract_spaghetti_tracks(storm_obj):
     """Latest-cycle forecast track per curated model, for the active-storm map overlay.
 
-    Returns {model_id: [{'lat', 'lon'}, ...]}, omitting models that are absent
-    or return no forward-looking (fhr >= 0) points for this storm/cycle — ICON
-    was observed doing this during testing.
+    Returns ({model_id: [{'lat', 'lon'}, ...]}, {model_id: cycle_iso}),
+    omitting models that are absent or return no forward-looking (fhr >= 0)
+    points for this storm/cycle — ICON was observed doing this during testing.
+    The cycle time is shown with each track so old guidance is visibly old.
     """
     tracks_by_model = {}
+    cycles_by_model = {}
     try:
         forecasts = storm_obj.get_operational_forecasts()
     except Exception as e:
         logger.debug(f"Could not fetch operational forecasts: {e}")
-        return tracks_by_model
+        return tracks_by_model, cycles_by_model
 
     for model in SPAGHETTI_MODELS:
         cycles = forecasts.get(model)
@@ -827,11 +841,14 @@ def _extract_spaghetti_tracks(storm_obj):
             ]
             if points:
                 tracks_by_model[model] = points
+                cycle = _forecast_cycle_iso(latest_cycle, fc)
+                if cycle:
+                    cycles_by_model[model] = cycle
         except Exception as e:
             logger.debug(f"Could not parse {model} forecast: {e}")
             continue
 
-    return tracks_by_model
+    return tracks_by_model, cycles_by_model
 
 
 def get_current_season(basin_key, dataset=None):
@@ -979,7 +996,8 @@ def get_current_season(basin_key, dataset=None):
 
                         # Spaghetti model tracks only matter (and are only
                         # worth the extra Tropycal call) while a storm is active.
-                        spaghetti = _extract_spaghetti_tracks(storm_obj) if is_active else {}
+                        spaghetti, spaghetti_cycles = (
+                            _extract_spaghetti_tracks(storm_obj) if is_active else ({}, {}))
 
                         # Store storm data
                         storms[storm_name] = storm_ace
@@ -992,6 +1010,7 @@ def get_current_season(basin_key, dataset=None):
                             'landfall': landfall,
                             'landfall_estimated': landfall_estimated and bool(landfall),
                             'spaghetti': spaghetti,
+                            'spaghetti_cycles': spaghetti_cycles,
                         }
 
                     except Exception as e:
@@ -2249,7 +2268,8 @@ def fetch_active_storm_cones(basin_key, storm_details):
     untouched (fail open) rather than losing active-storm UI to a transient outage.
 
     Returns a dict of storm_name -> relative path (e.g. 'cones/ep042026.png'),
-    or {} if nothing is active or the fetch fails.
+    or {} if nothing is active or the fetch fails. Also records each cone's
+    advisory time as storm_details[name]['cone_issued'] (ISO UTC).
     """
     import urllib.request
 
@@ -2324,6 +2344,9 @@ def fetch_active_storm_cones(basin_key, storm_details):
             for orig_name in storm_details:
                 if orig_name.upper() == name:
                     images[orig_name] = f'cones/{filename}'
+                    issued = ts if ts.tzinfo else ts.replace(tzinfo=timezone.utc)
+                    storm_details[orig_name]['cone_issued'] = (
+                        issued.astimezone(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'))
                     break
         except Exception as e:
             logger.warning(f"Could not fetch cone image for {name}: {e}")

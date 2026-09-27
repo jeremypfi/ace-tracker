@@ -41,6 +41,7 @@ from ace_data import (
     _drop_stale_storm_keys,
     _last_track_stamp,
     latest_track_time,
+    _extract_spaghetti_tracks,
     SYNOPTIC_TIMES,
     ACE_STATUSES,
     MIN_NAMED_STORM_WIND,
@@ -1483,6 +1484,62 @@ class TestHonestyLabels(unittest.TestCase):
         share = [i for i in insights if i.startswith('🏝️ Landfall share')][0]
         self.assertTrue(share.startswith('🏝️ Landfall share (estimated):'))
         self.assertIn('made landfall at tropical-storm strength or stronger', share)
+
+
+class TestGuidanceTimestamps(unittest.TestCase):
+    """Relayed model tracks and the NHC cone carry the time they were issued."""
+
+    class _Storm:
+        def get_operational_forecasts(self):
+            return {
+                'OFCL': {
+                    '2026092618': {'lat': [20.0], 'lon': [-60.0], 'fhr': [0]},
+                    '2026092700': {'lat': [20.5, 21.0], 'lon': [-61.0, -62.0], 'fhr': [0, 12],
+                                   'init': datetime(2026, 9, 27, 0)},
+                },
+                'AVNO': {'2026092606': {'lat': [20.0], 'lon': [-60.0], 'fhr': [6]}},
+                'EMX': {'2026092612': {'lat': [20.0], 'lon': [-60.0], 'fhr': [-6]}},  # nothing forward
+            }
+
+    def test_spaghetti_returns_latest_cycle_per_model(self):
+        tracks, cycles = _extract_spaghetti_tracks(self._Storm())
+        self.assertEqual(sorted(tracks), ['AVNO', 'OFCL'])
+        self.assertEqual(len(tracks['OFCL']), 2)
+        self.assertEqual(cycles, {'OFCL': '2026-09-27T00:00:00Z', 'AVNO': '2026-09-26T06:00:00Z'})
+
+    def test_spaghetti_fetch_failure_returns_empty(self):
+        class Broken:
+            def get_operational_forecasts(self):
+                raise RuntimeError('offline')
+        self.assertEqual(_extract_spaghetti_tracks(Broken()), ({}, {}))
+
+    def test_dashboard_shows_model_cycle_and_cone_advisory_time(self):
+        from unittest import mock
+        basin_data = TestHTMLGeneration()._make_basin_data()
+        arthur = basin_data[0]['current']['storm_details']['Arthur']
+        arthur.update({
+            'is_active': True,
+            'spaghetti': {'OFCL': [{'lat': 26.0, 'lon': -91.0}]},
+            'spaghetti_cycles': {'OFCL': '2026-09-27T00:00:00Z'},
+            'cone_issued': '2026-09-27T03:00:00Z',
+        })
+        with mock.patch('ace_html.fetch_active_storm_cones', return_value={'Arthur': 'cones/al012026.png'}), \
+             mock.patch('ace_html.fetch_nhc_disturbances', return_value=[]):
+            html = generate_dashboard_html(basin_data)
+        self.assertIn('"spaghetti_cycles": {"OFCL": "00Z Sep 27"}', html)
+        self.assertIn('Latest run of each model (UTC)', html)
+        self.assertIn('alt="NHC forecast cone for Arthur, advisory issued Sep 27, 2026 03:00 UTC"', html)
+        self.assertIn('advisory issued <time datetime="2026-09-27T03:00:00Z">', html)
+
+    def test_cone_without_issue_time_keeps_plain_credit(self):
+        from unittest import mock
+        basin_data = TestHTMLGeneration()._make_basin_data()
+        basin_data[0]['current']['storm_details']['Arthur']['is_active'] = True
+        with mock.patch('ace_html.fetch_active_storm_cones', return_value={'Arthur': 'cones/al012026.png'}), \
+             mock.patch('ace_html.fetch_nhc_disturbances', return_value=[]):
+            html = generate_dashboard_html(basin_data)
+        self.assertIn('alt="NHC forecast cone for Arthur"', html)
+        self.assertNotIn('advisory issued', html)
 
 
 def run_tests():

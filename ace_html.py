@@ -293,6 +293,12 @@ def _timestamp_html(dt):
             f' <span class="rel-time" data-ts="{iso}"></span>')
 
 
+def _cycle_label(iso):
+    """'00Z Sep 27' for a model cycle time, or '' if unreadable."""
+    dt = _parse_utc(iso)
+    return f"{dt:%H}Z {dt:%b} {dt.day}" if dt else ''
+
+
 def _data_as_of_html(data_as_of, outlook_issued=''):
     """'Data as of' line for a basin: the newest best-track point (how current
     the ACE numbers really are, as opposed to when the page was built) and,
@@ -452,6 +458,8 @@ def generate_dashboard_html(basin_data):
                 'category': cat,
                 'points': track_points,
                 'spaghetti': spaghetti,
+                'spaghetti_cycles': {m: _cycle_label(c) for m, c in (d.get('spaghetti_cycles') or {}).items()
+                                     if m in spaghetti and _cycle_label(c)},
             }
 
             landfall = d.get('landfall', [])
@@ -477,10 +485,16 @@ def generate_dashboard_html(basin_data):
 
             cone_img = ''
             if is_active and cone_images.get(name):
+                cone_dt = _parse_utc(d.get('cone_issued'))
+                cone_alt = f'NHC forecast cone for {html_escape(name)}'
+                cone_when = ''
+                if cone_dt:
+                    cone_alt += f', advisory issued {_utc_label(cone_dt)}'
+                    cone_when = f' &middot; advisory issued {_timestamp_html(cone_dt)}'
                 cone_img = (
                     f'<div class="cone-graphic">'
-                    f'<img src="{html_escape(cone_images[name])}" alt="NHC forecast cone for {html_escape(name)}" loading="lazy">'
-                    f'<div class="cone-credit">Forecast cone via <a href="https://www.nhc.noaa.gov/" target="_blank" rel="noopener">NHC</a></div>'
+                    f'<img src="{html_escape(cone_images[name])}" alt="{cone_alt}" loading="lazy">'
+                    f'<div class="cone-credit">Forecast cone via <a href="https://www.nhc.noaa.gov/" target="_blank" rel="noopener">NHC</a>{cone_when}</div>'
                     f'</div>'
                 )
 
@@ -509,6 +523,7 @@ def generate_dashboard_html(basin_data):
                 f'<input type="checkbox" id="sptoggle-{slug}" checked onchange="_toggleSpaghetti(\'{slug}\')">'
                 f' Show model forecast tracks</label>'
                 f'<div class="track-legend spaghetti-legend" id="splegend-{slug}"></div>'
+                f'<div class="sp-note">Latest run of each model (UTC), shown as published.</div>'
             ) if spaghetti else ''
 
             map_div = (
@@ -837,6 +852,8 @@ def generate_dashboard_html(basin_data):
   .legend-dot {{ width:9px; height:9px; border-radius:50%; flex-shrink:0; }}
   .spaghetti-toggle {{ display:flex; align-items:center; gap:6px; font-size:0.78em; color:var(--muted); margin-top:8px; cursor:pointer; }}
   .spaghetti-legend {{ margin-top:6px; }}
+  .sp-cycle {{ color:var(--muted); font-size:0.9em; }}
+  .sp-note {{ font-size:0.72em; color:var(--muted); margin-top:4px; }}
   .spaghetti-legend .legend-dot {{ width:14px; height:3px; border-radius:2px; }}
   .nhc-link {{ font-size:0.78em; color:var(--muted); text-align:right; margin-top:6px; }}
   .nhc-link a {{ color:var(--accent); text-decoration:none; }}
@@ -1170,11 +1187,12 @@ function _buildMap(slug){{
       // sides of the antimeridian and the combined bounds would be wrong.
       var mlls=_unwrapSeries([lls[lls.length-1]].concat(mpts.map(function(p){{return[p.lat,p.lon];}}))).slice(1);
       var color=_SPAG_COLORS[model]||'#ffffff',label=_SPAG_LABELS[model]||model;
+      var cyc=(d.spaghetti_cycles||{{}})[model];
       L.polyline(mlls,{{color:color,weight:model==='OFCL'?3:2,opacity:0.85,dashArray:model==='OFCL'?null:'4,4'}})
-        .bindTooltip(label,{{sticky:true}}).addTo(spagGroup);
+        .bindTooltip(label+(cyc?' \xb7 '+cyc:''),{{sticky:true}}).addTo(spagGroup);
       L.circleMarker(mlls[mlls.length-1],{{radius:3,color:color,fillColor:color,fillOpacity:1,weight:1}}).addTo(spagGroup);
       boundsPts=boundsPts.concat(mlls);
-      legendHtml+='<div class="legend-item"><div class="legend-dot" style="background:'+color+'"></div>'+label+'</div>';
+      legendHtml+='<div class="legend-item"><div class="legend-dot" style="background:'+color+'"></div>'+label+(cyc?' <span class="sp-cycle">'+cyc+'</span>':'')+'</div>';
     }});
   }}
   spagGroup.addTo(map);
