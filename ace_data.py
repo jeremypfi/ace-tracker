@@ -964,6 +964,7 @@ def get_current_season(basin_key, dataset=None):
                         # last track timestamp so stale entries auto-invalidate
                         # when new track data arrives for an active storm.
                         landfall = get_landfall_locations(storm_obj)
+                        landfall_estimated = not landfall
                         if not landfall:
                             geo_key = f"geo:{storm_id}:{_last_track_stamp(storm_obj)}"
                             if _drop_stale_storm_keys(cs_lf_cache, storm_id, geo_key, 'geo'):
@@ -989,6 +990,7 @@ def get_current_season(basin_key, dataset=None):
                             'is_active': is_active,
                             'start_date': start_date_str,
                             'landfall': landfall,
+                            'landfall_estimated': landfall_estimated and bool(landfall),
                             'spaghetti': spaghetti,
                         }
 
@@ -1164,10 +1166,19 @@ def calculate_yearly_stats(storms):
 
 
 
+def made_ts_landfall(landfall):
+    """True if any (location, category) landfall entry is at tropical-storm
+    strength or stronger. A system that only crossed land as a depression
+    does not count as a landfalling storm."""
+    return any(entry[1] != 'TD' for entry in landfall or [] if len(entry) > 1)
+
+
 def landfall_ace_share(storms):
-    """How a season's ACE splits between storms that made landfall and
-    "fish storms" that stayed at sea. `storms` are dicts with 'ace',
-    'max_wind' and 'landfall' (a list; empty means no landfall).
+    """How a season's ACE splits between storms that made landfall at
+    tropical-storm strength or stronger and "fish storms" (including storms
+    that only crossed land as depressions). `storms` are dicts with 'ace',
+    'max_wind' and 'landfall' (a list of (location, category); empty means
+    no landfall).
 
     Returns {'landfall_pct', 'fish_pct', 'landfall_count', 'fish_count'},
     or None when the storms produced no ACE.
@@ -1176,7 +1187,7 @@ def landfall_ace_share(storms):
     total = sum(s.get('ace', 0.0) for s in named)
     if total <= 0:
         return None
-    landfalling = [s for s in named if s.get('landfall')]
+    landfalling = [s for s in named if made_ts_landfall(s.get('landfall'))]
     landfall_pct = round(sum(s.get('ace', 0.0) for s in landfalling) / total * 100)
     return {
         'landfall_pct': landfall_pct,
@@ -1802,13 +1813,16 @@ def generate_insights(basin_key, current, yearly_totals, historical_storms, year
     # 7b. Landfall share of ACE — how much of the season's energy came from
     # storms that hit land vs. fish storms. Uses current-season storm details
     # (their landfall list includes the geographic fallback for live tracks).
-    share = landfall_ace_share(list(current.get('storm_details', {}).values()))
+    details = list(current.get('storm_details', {}).values())
+    share = landfall_ace_share(details)
     if share:
         avg_share = average_landfall_share(yearly_stats, current_year)
         avg_note = f" ({START_YEAR}–{current_year - 1} average: {avg_share}%)" if avg_share is not None else ""
+        estimated = any(d.get('landfall_estimated') for d in details)
         insights.append(
-            f"🏝️ Landfall share: {share['landfall_pct']}% of season ACE came from the "
-            f"{share['landfall_count']} storm{'s' if share['landfall_count'] != 1 else ''} that made landfall{avg_note}; "
+            f"🏝️ Landfall share{' (estimated)' if estimated else ''}: {share['landfall_pct']}% of season ACE came from the "
+            f"{share['landfall_count']} storm{'s' if share['landfall_count'] != 1 else ''} that made landfall "
+            f"at tropical-storm strength or stronger{avg_note}; "
             f"{share['fish_pct']}% from {share['fish_count']} fish storm{'s' if share['fish_count'] != 1 else ''}"
         )
 

@@ -1270,6 +1270,17 @@ class TestLandfallAceShare(unittest.TestCase):
         self.assertEqual(landfall_ace_share(self.STORMS),
                          {'landfall_pct': 75, 'fish_pct': 25, 'landfall_count': 1, 'fish_count': 1})
 
+    def test_depression_strength_landfall_is_not_landfalling(self):
+        # A storm that only crossed land as a depression (Boris 2026 at
+        # Guerrero) stayed a fish storm for the share; any TS+ landfall counts.
+        storms = [
+            {'name': 'Crosser', 'ace': 20.0, 'max_wind': 70, 'landfall': [('Guerrero, Mexico', 'TD')]},
+            {'name': 'Hitter', 'ace': 20.0, 'max_wind': 70,
+             'landfall': [['Cuba', 'TD'], ['Florida', 'TS']]},
+        ]
+        self.assertEqual(landfall_ace_share(storms),
+                         {'landfall_pct': 50, 'fish_pct': 50, 'landfall_count': 1, 'fish_count': 1})
+
     def test_no_ace_returns_none(self):
         self.assertIsNone(landfall_ace_share([]))
         self.assertIsNone(landfall_ace_share([self.STORMS[2]]))
@@ -1427,6 +1438,51 @@ class TestDataFreshness(unittest.TestCase):
         self.assertNotIn('<div class="updated">', html)
         footer = html[html.index('<div class="sources">'):]
         self.assertIn('Page built ', footer)
+
+
+class TestHonestyLabels(unittest.TestCase):
+    """In-season ACE is labelled preliminary and geocoded landfalls are
+    labelled estimated wherever they appear."""
+
+    def _data(self, estimated=True):
+        basin_data = TestHTMLGeneration()._make_basin_data()
+        basin_data[0]['current']['storm_details']['Arthur']['landfall_estimated'] = estimated
+        return basin_data
+
+    def test_dashboard_headline_is_preliminary(self):
+        html = generate_dashboard_html(self._data())
+        self.assertIn('<div class="stat-label">Season ACE <span class="prelim"', html)
+
+    def test_dashboard_marks_estimated_landfalls(self):
+        html = generate_dashboard_html(self._data())
+        self.assertIn('Texas (TS) <abbr class="lf-est"', html)
+        self.assertIn('class="table-note"', html)
+
+    def test_hurdat2_landfalls_not_marked_estimated(self):
+        html = generate_dashboard_html(self._data(estimated=False))
+        self.assertNotIn('<abbr class="lf-est"', html)
+        self.assertNotIn('class="table-note"', html)
+
+    def test_history_current_row_is_preliminary(self):
+        html = generate_history_html(self._data())
+        row = html[html.index('id="atlantic-yr-2026"'):]
+        row = row[:row.index('</tr>')]
+        self.assertIn('class="prelim"', row)
+        past = html[html.index('id="atlantic-yr-2005"'):]
+        self.assertNotIn('class="prelim"', past[:past.index('</tr>')])
+
+    def test_what_is_ace_fact_is_preliminary(self):
+        html = generate_about_html(self._data())
+        self.assertIn('ACE</b> so far (preliminary;', html)
+
+    def test_landfall_share_insight_labels(self):
+        bd = self._data()[0]
+        bd['yearly_stats'] = calculate_yearly_stats(bd['historical_storms'])
+        insights = generate_insights('atlantic', bd['current'], bd['yearly_totals'],
+                                     bd['historical_storms'], bd['yearly_stats'])
+        share = [i for i in insights if i.startswith('🏝️ Landfall share')][0]
+        self.assertTrue(share.startswith('🏝️ Landfall share (estimated):'))
+        self.assertIn('made landfall at tropical-storm strength or stronger', share)
 
 
 def run_tests():

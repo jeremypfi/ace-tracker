@@ -427,6 +427,7 @@ def generate_dashboard_html(basin_data):
         sorted_storms = sorted(storms.items(), key=lambda x: x[1], reverse=True)
         rows = []
         track_data = {}
+        any_estimated = False
         for name, ace in sorted_storms:
             d = details.get(name, {})
             pct = (ace / total * 100) if total > 0 else 0
@@ -456,6 +457,10 @@ def generate_dashboard_html(basin_data):
             landfall = d.get('landfall', [])
             if landfall:
                 lf_cell = ' · '.join(f'{html_escape(loc)} ({html_escape(cat)})' for loc, cat in landfall)
+                if d.get('landfall_estimated'):
+                    any_estimated = True
+                    lf_cell += (' <abbr class="lf-est" title="Estimated from the preliminary track; '
+                                'NHC confirms landfalls in its post-season report">est.</abbr>')
             else:
                 lf_cell = '<span class="dash-fish" data-tip="A storm that never made landfall and just pissed off fish">Fish Storm</span>'
 
@@ -535,7 +540,10 @@ def generate_dashboard_html(basin_data):
                 f'<td colspan="6"><div class="track-panel" id="trpanel-{slug}"><div class="track-inner">{panel_inner}</div></div></td>'
                 f'</tr>'
             )
-        return '\n'.join(rows), track_data
+        note = ('<p class="table-note"><abbr class="lf-est">est.</abbr> Landfall estimated from the storm\'s '
+                'preliminary track against coastlines. NHC confirms landfalls in its post-season Tropical '
+                'Cyclone Report.</p>') if any_estimated else ''
+        return '\n'.join(rows), track_data, note
 
     def insight_items_html(insights):
         return '\n'.join(f'<li>{i}</li>' for i in insights)
@@ -568,7 +576,7 @@ def generate_dashboard_html(basin_data):
             lower_section = _preseason_html(bd['basin_key'], yearly_totals, current_year)
         else:
             rank, total_seasons = rank_current_season(yearly_totals, current_year, current_ace)
-            storm_html, track_data = storm_rows_html(current, cone_images)
+            storm_html, track_data, landfall_note = storm_rows_html(current, cone_images)
             all_track_data.update(track_data)
             lower_section = f'''
       <h3>Storm Breakdown</h3>
@@ -590,6 +598,7 @@ def generate_dashboard_html(basin_data):
           </tfoot>
         </table>
       </div>
+      {landfall_note}
 
       <h3>Season Insights</h3>
       <ul class="insights">{insight_items_html(insights)}</ul>
@@ -616,7 +625,7 @@ def generate_dashboard_html(basin_data):
             stats_grid = f'''
       <div class="stats-grid">
         <div class="stat-box ace-total">
-          <div class="stat-label">Season ACE</div>
+          <div class="stat-label">Season ACE <span class="prelim" title="Preliminary: from NHC's real-time best track, revised in the post-season HURDAT2 release">preliminary</span></div>
           <div class="stat-value">{current_ace:.1f}</div>
           <div class="stat-sub">{pct_normal:.0f}% of normal ({normal})</div>
           <div class="gauge"><div class="gauge-fill" style="width:{gauge_pct/2}%"></div></div>
@@ -701,6 +710,9 @@ def generate_dashboard_html(basin_data):
   .data-asof {{ text-align:center; color:var(--muted); font-size:0.8em; margin:0 0 10px; }}
   .data-asof time {{ color:var(--text); }}
   .build-time {{ color:var(--muted); font-size:0.85em; }}
+  .prelim {{ font-size:0.72em; font-weight:600; text-transform:uppercase; letter-spacing:0.04em; color:var(--muted); border:1px solid var(--border); border-radius:4px; padding:0 4px; margin-left:4px; white-space:nowrap; }}
+  .lf-est {{ font-size:0.85em; color:var(--muted); text-decoration:underline dotted; cursor:help; }}
+  .table-note {{ font-size:0.75em; color:var(--muted); margin:6px 2px 0; }}
   .nav-link {{ text-align:center; margin-bottom:12px; display:flex; justify-content:center; gap:8px; flex-wrap:wrap; }}
   .nav-link a {{ color:var(--accent); text-decoration:none; font-size:0.85em; border:1px solid var(--accent); border-radius:20px; padding:4px 14px; }}
   .nav-link a:hover {{ background:var(--accent); color:var(--bg); }}
@@ -1329,6 +1341,9 @@ def generate_history_html(basin_data):
         def _csort(bc):
             return {'below': 0, 'near': 1, 'above': 2, 'extreme': 3}.get(bc, 1)
 
+        prelim_html = (' <span class="prelim" title="Preliminary: from NHC\'s real-time best track, '
+                       'revised in the post-season HURDAT2 release">preliminary</span>')
+
         # Build table rows (year descending default)
         rows = []
         for year in sorted(years_data.keys(), reverse=True):
@@ -1360,7 +1375,7 @@ def generate_history_html(basin_data):
                 f'<td data-v="{year}" style="white-space:nowrap">'
                 f'<button class="yr-expand-btn" id="yrbtn-{yr_key}" onclick="toggleYear(\'{yr_key}\')">'
                 f'<b>{year}</b>{active_label}<span class="yr-chevron">&#9658;</span></button></td>'
-                f'<td data-v="{ace:.4f}"><b>{ace:.1f}</b><div class="ace-bar"><div class="ace-bar-fill" style="width:{ace_bar_pct}%"></div></div></td>'
+                f'<td data-v="{ace:.4f}"><b>{ace:.1f}</b>{prelim_html if is_active else ""}<div class="ace-bar"><div class="ace-bar-fill" style="width:{ace_bar_pct}%"></div></div></td>'
                 f'<td data-v="{pct}">{pct}%</td>'
                 f'<td data-v="{_csort(bc)}"><span class="badge badge-{bc}">{classification}</span></td>'
                 f'<td data-v="{named_v}">{d["named"]}</td>'
@@ -1393,7 +1408,7 @@ def generate_history_html(basin_data):
 
         lf_avg = average_landfall_share(yearly_stats, current_year)
         lf_avg_note = (f'<p class="season-note">&#127965;&#65039; On average since {START_YEAR}, <b>{lf_avg}%</b> of a season\'s ACE '
-                       f'came from storms that made landfall. Open a season to see its split.</p>') if lf_avg is not None else ''
+                       f'came from storms that made landfall at tropical-storm strength or stronger. Open a season to see its split.</p>') if lf_avg is not None else ''
         basin_sections.append(f'''
     <div class="basin-card{' active' if not basin_sections else ''}" id="{bd['basin_key']}">
       <h2>{html_escape(basin['name'])} — All Seasons ({START_YEAR}–{current_year})</h2>
@@ -1526,6 +1541,7 @@ def generate_history_html(basin_data):
   .badge-near {{ background:var(--badge-near); }}
   .badge-below {{ background:var(--badge-below); }}
   .active-dot {{ color:var(--active-dot); font-size:0.65em; vertical-align:middle; margin-left:3px; }}
+  .prelim {{ font-size:0.68em; font-weight:600; text-transform:uppercase; letter-spacing:0.04em; color:var(--muted); border:1px solid var(--border); border-radius:4px; padding:0 3px; margin-left:4px; white-space:nowrap; }}
   .sources {{ background:var(--sources-bg); border-top:1px solid var(--border); margin-top:24px; padding:16px 12px; border-radius:8px; }}
   .sources h4 {{ color:var(--muted); font-size:0.8em; text-transform:uppercase; margin-bottom:8px; }}
   .sources a {{ color:var(--accent); text-decoration:none; font-size:0.78em; }}
@@ -1969,7 +1985,7 @@ def _ace_fun_facts(basin_data):
         cur = bd['current'].get('total', 0.0)
         facts.append(
             f"The {current_year} {html_escape(name)} season is at <b>{cur:.1f} ACE</b> so far "
-            f"({get_noaa_classification(cur, bd['basin_key'])}). "
+            f"(preliminary; {get_noaa_classification(cur, bd['basin_key'])}). "
             f"<a href=\"index.html#{bd['basin_key']}\">See the live dashboard</a>.")
     return facts
 
