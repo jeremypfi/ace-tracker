@@ -1681,6 +1681,56 @@ class TestCanonicalHomeLinks(unittest.TestCase):
         self.assertIn('<a href="/#atlantic">See the live dashboard</a>', html)
 
 
+class TestVendoredLibraries(unittest.TestCase):
+    """Leaflet and Chart.js are served from our own domain (data/vendor/,
+    deployed with the rest of data/) instead of a single third-party CDN."""
+
+    def _dashboard(self):
+        return generate_dashboard_html(TestHTMLGeneration()._make_basin_data())
+
+    def test_no_third_party_cdn_for_libraries(self):
+        self.assertNotIn('unpkg.com', self._dashboard())
+
+    def test_vendored_files_match_their_integrity_hashes(self):
+        import base64
+        import hashlib
+        import os
+        import re
+        html = self._dashboard()
+        refs = re.findall(r'(?:src|href)="(vendor/[^"]+)" integrity="sha384-([^"]+)"', html)
+        self.assertEqual(sorted(r[0] for r in refs), [
+            'vendor/chart.js-4.5.1/chart.umd.min.js',
+            'vendor/leaflet-1.9.4/leaflet.css',
+            'vendor/leaflet-1.9.4/leaflet.js',
+        ])
+        data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
+        for path, digest in refs:
+            with self.subTest(file=path):
+                with open(os.path.join(data_dir, path), 'rb') as f:
+                    actual = base64.b64encode(hashlib.sha384(f.read()).digest()).decode()
+                self.assertEqual(actual, digest)
+
+    def test_leaflet_assets_and_licenses_shipped(self):
+        import os
+        base = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'vendor')
+        for rel in ('leaflet-1.9.4/images/layers.png', 'leaflet-1.9.4/images/marker-icon.png',
+                    'leaflet-1.9.4/LICENSE', 'chart.js-4.5.1/LICENSE.md'):
+            with self.subTest(file=rel):
+                self.assertTrue(os.path.isfile(os.path.join(base, rel)))
+
+    def test_stylesheet_does_not_block_render(self):
+        html = self._dashboard()
+        self.assertIn('href="vendor/leaflet-1.9.4/leaflet.css"', html)
+        self.assertIn('media="print" onload="this.media=\'all\'"', html)
+        self.assertIn('<noscript><link rel="stylesheet" href="vendor/leaflet-1.9.4/leaflet.css"></noscript>', html)
+
+    def test_fallback_text_when_a_library_fails_to_load(self):
+        html = self._dashboard()
+        self.assertIn("if(typeof L==='undefined')", html)
+        self.assertIn('Map unavailable right now.', html)
+        self.assertIn('Chart unavailable right now.', html)
+
+
 def run_tests():
     """Run all tests"""
     unittest.main(verbosity=2)

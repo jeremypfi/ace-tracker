@@ -199,7 +199,7 @@ Tropycal uses `pkg_resources` which is deprecated in setuptools 81+ and removed 
 
 - Built with [Claude Code](https://claude.ai/claude-code) (Anthropic)
 - Data from [NOAA National Hurricane Center](https://www.nhc.noaa.gov/) via [Tropycal](https://tropycal.github.io/tropycal/)
-- Maps powered by [Leaflet](https://leafletjs.com/)
+- Maps powered by [Leaflet](https://leafletjs.com/) (BSD-2) and the pace chart by [Chart.js](https://www.chartjs.org/) (MIT), both self-hosted from `data/vendor/` with their licenses. To upgrade one, add a new versioned folder there, update the path and `integrity` hash in `ace_html.py`, and `test_ace_tracker.py` checks the file matches the hash.
 - Inspired by hurricane tracking communities
 
 ---
