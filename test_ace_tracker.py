@@ -1240,6 +1240,14 @@ class TestWhatIsAcePage(unittest.TestCase):
         self.assertIn('id="calculator"', html)
         self.assertNotIn("From this site's data", html)
 
+    def test_explainer_link_uses_accent_color(self):
+        # Unstyled, the link fell back to the browser's dark purple visited
+        # color, which is nearly invisible on the dark theme.
+        basin_data = TestHTMLGeneration()._make_basin_data()
+        for gen in (generate_dashboard_html, generate_history_html):
+            with self.subTest(page=gen.__name__):
+                self.assertIn('.ace-explain p a, .ace-explain p a:visited { color:var(--accent);', gen(basin_data))
+
     def test_every_page_links_to_it(self):
         basin_data = TestHTMLGeneration()._make_basin_data()
         for gen in (generate_dashboard_html, generate_history_html, generate_records_html):
