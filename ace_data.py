@@ -322,6 +322,36 @@ def _last_track_stamp(storm_obj):
 
 
 
+def _track_datetime(t):
+    """A Tropycal track time as a naive UTC datetime, or None if unreadable."""
+    try:
+        if hasattr(t, 'to_pydatetime'):
+            t = t.to_pydatetime()
+        if not isinstance(t, datetime):
+            return None
+        if t.tzinfo is not None:
+            t = t.astimezone(timezone.utc).replace(tzinfo=None)
+        return t
+    except Exception:
+        return None
+
+
+def latest_track_time(storm_objs):
+    """The newest best-track point across `storm_objs`, as an ISO-8601 UTC
+    string ('2026-09-27T00:00:00Z'), or None. This is how current the
+    season's data really is, which can lag the page build by hours."""
+    latest = None
+    for storm_obj in storm_objs:
+        try:
+            t = _track_datetime(storm_obj.time[-1])
+        except Exception:
+            t = None
+        if t and (latest is None or t > latest):
+            latest = t
+    return latest.strftime('%Y-%m-%dT%H:%M:%SZ') if latest else None
+
+
+
 def _drop_stale_storm_keys(cache, storm_id, keep_key, prefix):
     """Remove outdated cache entries for one in-progress storm, scoped to one
     key family (`cur` or `geo`): the legacy bare-id key plus any
@@ -768,19 +798,33 @@ def parse_hurdat2(basin_key, dataset=None):
 # CURRENT SEASON from Tropycal
 # ===============================================================================
 
+def _forecast_cycle_iso(cycle_key, fc):
+    """A forecast's initialization time as 'YYYY-MM-DDTHH:00:00Z', from its
+    'init' datetime or else its 'YYYYMMDDHH' cycle key; None if neither parses."""
+    init = fc.get('init') if isinstance(fc, dict) else None
+    if not isinstance(init, datetime):
+        try:
+            init = datetime.strptime(str(cycle_key), '%Y%m%d%H')
+        except ValueError:
+            return None
+    return init.strftime('%Y-%m-%dT%H:00:00Z')
+
+
 def _extract_spaghetti_tracks(storm_obj):
     """Latest-cycle forecast track per curated model, for the active-storm map overlay.
 
-    Returns {model_id: [{'lat', 'lon'}, ...]}, omitting models that are absent
-    or return no forward-looking (fhr >= 0) points for this storm/cycle — ICON
-    was observed doing this during testing.
+    Returns ({model_id: [{'lat', 'lon'}, ...]}, {model_id: cycle_iso}),
+    omitting models that are absent or return no forward-looking (fhr >= 0)
+    points for this storm/cycle — ICON was observed doing this during testing.
+    The cycle time is shown with each track so old guidance is visibly old.
     """
     tracks_by_model = {}
+    cycles_by_model = {}
     try:
         forecasts = storm_obj.get_operational_forecasts()
     except Exception as e:
         logger.debug(f"Could not fetch operational forecasts: {e}")
-        return tracks_by_model
+        return tracks_by_model, cycles_by_model
 
     for model in SPAGHETTI_MODELS:
         cycles = forecasts.get(model)
@@ -797,11 +841,14 @@ def _extract_spaghetti_tracks(storm_obj):
             ]
             if points:
                 tracks_by_model[model] = points
+                cycle = _forecast_cycle_iso(latest_cycle, fc)
+                if cycle:
+                    cycles_by_model[model] = cycle
         except Exception as e:
             logger.debug(f"Could not parse {model} forecast: {e}")
             continue
 
-    return tracks_by_model
+    return tracks_by_model, cycles_by_model
 
 
 def get_current_season(basin_key, dataset=None):
@@ -846,11 +893,13 @@ def get_current_season(basin_key, dataset=None):
 
                 storms = {}
                 storm_details = {}
+                season_storm_objs = []
 
                 # Process each storm in the season
                 for storm_id in season.dict.keys():
                     try:
                         storm_obj = dataset.get_storm(storm_id)
+                        season_storm_objs.append(storm_obj)
 
                         # Get storm name
                         storm_name = storm_obj.name.title() if storm_obj.name else 'UNNAMED'
@@ -932,6 +981,7 @@ def get_current_season(basin_key, dataset=None):
                         # last track timestamp so stale entries auto-invalidate
                         # when new track data arrives for an active storm.
                         landfall = get_landfall_locations(storm_obj)
+                        landfall_estimated = not landfall
                         if not landfall:
                             geo_key = f"geo:{storm_id}:{_last_track_stamp(storm_obj)}"
                             if _drop_stale_storm_keys(cs_lf_cache, storm_id, geo_key, 'geo'):
@@ -946,7 +996,8 @@ def get_current_season(basin_key, dataset=None):
 
                         # Spaghetti model tracks only matter (and are only
                         # worth the extra Tropycal call) while a storm is active.
-                        spaghetti = _extract_spaghetti_tracks(storm_obj) if is_active else {}
+                        spaghetti, spaghetti_cycles = (
+                            _extract_spaghetti_tracks(storm_obj) if is_active else ({}, {}))
 
                         # Store storm data
                         storms[storm_name] = storm_ace
@@ -957,7 +1008,9 @@ def get_current_season(basin_key, dataset=None):
                             'is_active': is_active,
                             'start_date': start_date_str,
                             'landfall': landfall,
+                            'landfall_estimated': landfall_estimated and bool(landfall),
                             'spaghetti': spaghetti,
+                            'spaghetti_cycles': spaghetti_cycles,
                         }
 
                     except Exception as e:
@@ -977,6 +1030,7 @@ def get_current_season(basin_key, dataset=None):
                         'storms': storms,
                         'storm_details': storm_details,
                         'total': total,
+                        'data_as_of': latest_track_time(season_storm_objs),
                     }
 
             except Exception as e:
@@ -1131,10 +1185,19 @@ def calculate_yearly_stats(storms):
 
 
 
+def made_ts_landfall(landfall):
+    """True if any (location, category) landfall entry is at tropical-storm
+    strength or stronger. A system that only crossed land as a depression
+    does not count as a landfalling storm."""
+    return any(entry[1] != 'TD' for entry in landfall or [] if len(entry) > 1)
+
+
 def landfall_ace_share(storms):
-    """How a season's ACE splits between storms that made landfall and
-    "fish storms" that stayed at sea. `storms` are dicts with 'ace',
-    'max_wind' and 'landfall' (a list; empty means no landfall).
+    """How a season's ACE splits between storms that made landfall at
+    tropical-storm strength or stronger and "fish storms" (including storms
+    that only crossed land as depressions). `storms` are dicts with 'ace',
+    'max_wind' and 'landfall' (a list of (location, category); empty means
+    no landfall).
 
     Returns {'landfall_pct', 'fish_pct', 'landfall_count', 'fish_count'},
     or None when the storms produced no ACE.
@@ -1143,7 +1206,7 @@ def landfall_ace_share(storms):
     total = sum(s.get('ace', 0.0) for s in named)
     if total <= 0:
         return None
-    landfalling = [s for s in named if s.get('landfall')]
+    landfalling = [s for s in named if made_ts_landfall(s.get('landfall'))]
     landfall_pct = round(sum(s.get('ace', 0.0) for s in landfalling) / total * 100)
     return {
         'landfall_pct': landfall_pct,
@@ -1769,15 +1832,22 @@ def generate_insights(basin_key, current, yearly_totals, historical_storms, year
     # 7b. Landfall share of ACE — how much of the season's energy came from
     # storms that hit land vs. fish storms. Uses current-season storm details
     # (their landfall list includes the geographic fallback for live tracks).
-    share = landfall_ace_share(list(current.get('storm_details', {}).values()))
+    details = list(current.get('storm_details', {}).values())
+    share = landfall_ace_share(details)
     if share:
         avg_share = average_landfall_share(yearly_stats, current_year)
         avg_note = f" ({START_YEAR}–{current_year - 1} average: {avg_share}%)" if avg_share is not None else ""
-        insights.append(
-            f"🏝️ Landfall share: {share['landfall_pct']}% of season ACE came from the "
-            f"{share['landfall_count']} storm{'s' if share['landfall_count'] != 1 else ''} that made landfall{avg_note}; "
-            f"{share['fish_pct']}% from {share['fish_count']} fish storm{'s' if share['fish_count'] != 1 else ''}"
-        )
+        label = f"🏝️ Landfall share{' (estimated)' if any(d.get('landfall_estimated') for d in details) else ''}"
+        fish = f"{share['fish_count']} fish storm{'s' if share['fish_count'] != 1 else ''}"
+        if share['landfall_count'] == 0:
+            insights.append(
+                f"{label}: no storm has made landfall at tropical-storm strength or stronger, "
+                f"so all season ACE came from {fish}{avg_note}")
+        else:
+            insights.append(
+                f"{label}: {share['landfall_pct']}% of season ACE came from the "
+                f"{share['landfall_count']} storm{'s' if share['landfall_count'] != 1 else ''} that made landfall "
+                f"at tropical-storm strength or stronger{avg_note}; {share['fish_pct']}% from {fish}")
 
     # 8. Named storms — same-date avg alongside full-season avg
     num_storms = len(storms)
@@ -2202,7 +2272,8 @@ def fetch_active_storm_cones(basin_key, storm_details):
     untouched (fail open) rather than losing active-storm UI to a transient outage.
 
     Returns a dict of storm_name -> relative path (e.g. 'cones/ep042026.png'),
-    or {} if nothing is active or the fetch fails.
+    or {} if nothing is active or the fetch fails. Also records each cone's
+    advisory time as storm_details[name]['cone_issued'] (ISO UTC).
     """
     import urllib.request
 
@@ -2277,6 +2348,9 @@ def fetch_active_storm_cones(basin_key, storm_details):
             for orig_name in storm_details:
                 if orig_name.upper() == name:
                     images[orig_name] = f'cones/{filename}'
+                    issued = ts if ts.tzinfo else ts.replace(tzinfo=timezone.utc)
+                    storm_details[orig_name]['cone_issued'] = (
+                        issued.astimezone(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'))
                     break
         except Exception as e:
             logger.warning(f"Could not fetch cone image for {name}: {e}")

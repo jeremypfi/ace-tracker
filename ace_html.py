@@ -265,6 +265,56 @@ def _ace_pace_html(pace, basin_key):
 # NHC ALERT BANNER
 # ===============================================================================
 
+def _parse_utc(value):
+    """An ISO-8601 or RFC 822 timestamp string as an aware UTC datetime, or None."""
+    from email.utils import parsedate_to_datetime
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
+    except ValueError:
+        try:
+            dt = parsedate_to_datetime(value)
+        except (TypeError, ValueError):
+            return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _utc_label(dt):
+    return f"{dt:%b} {dt.day}, {dt:%Y} {dt:%H:%M} UTC"
+
+
+def _timestamp_html(dt):
+    """A <time> element plus a relative-time slot filled in client-side."""
+    iso = dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+    return (f'<time datetime="{iso}">{_utc_label(dt)}</time>'
+            f' <span class="rel-time" data-ts="{iso}"></span>')
+
+
+def _cycle_label(iso):
+    """'00Z Sep 27' for a model cycle time, or '' if unreadable."""
+    dt = _parse_utc(iso)
+    return f"{dt:%H}Z {dt:%b} {dt.day}" if dt else ''
+
+
+def _data_as_of_html(data_as_of, outlook_issued=''):
+    """'Data as of' line for a basin: the newest best-track point (how current
+    the ACE numbers really are, as opposed to when the page was built) and,
+    when a disturbance banner is shown, when NHC issued that outlook."""
+    parts = []
+    track_dt = _parse_utc(data_as_of)
+    if track_dt:
+        parts.append(f'Best-track data as of {_timestamp_html(track_dt)}')
+    outlook_dt = _parse_utc(outlook_issued)
+    if outlook_dt:
+        parts.append(f'NHC outlook issued {_timestamp_html(outlook_dt)}')
+    if not parts:
+        return ''
+    return f'<p class="data-asof">{" &nbsp;·&nbsp; ".join(parts)}</p>'
+
+
 def _stale_data_banner_html():
     """Warning banner shown when live data was unavailable and the dashboard
     is falling back to placeholder data (see BACKUP_DATA, #98)."""
@@ -311,7 +361,7 @@ def _nhc_alert_html(disturbances):
             f'</div>'
         )
 
-    issued_html = f'<span class="nhc-issued">Data as of {html_escape(issued)}</span>' if issued else ''
+    issued_html = f'<span class="nhc-issued">Outlook issued {html_escape(issued)}</span>' if issued else ''
 
     return (
         f'<div class="nhc-alert">'
@@ -383,6 +433,7 @@ def generate_dashboard_html(basin_data):
         sorted_storms = sorted(storms.items(), key=lambda x: x[1], reverse=True)
         rows = []
         track_data = {}
+        any_estimated = False
         for name, ace in sorted_storms:
             d = details.get(name, {})
             pct = (ace / total * 100) if total > 0 else 0
@@ -407,11 +458,17 @@ def generate_dashboard_html(basin_data):
                 'category': cat,
                 'points': track_points,
                 'spaghetti': spaghetti,
+                'spaghetti_cycles': {m: _cycle_label(c) for m, c in (d.get('spaghetti_cycles') or {}).items()
+                                     if m in spaghetti and _cycle_label(c)},
             }
 
             landfall = d.get('landfall', [])
             if landfall:
                 lf_cell = ' · '.join(f'{html_escape(loc)} ({html_escape(cat)})' for loc, cat in landfall)
+                if d.get('landfall_estimated'):
+                    any_estimated = True
+                    lf_cell += (' <abbr class="lf-est" title="Estimated from the preliminary track; '
+                                'NHC confirms landfalls in its post-season report">est.</abbr>')
             else:
                 lf_cell = '<span class="dash-fish" data-tip="A storm that never made landfall and just pissed off fish">Fish Storm</span>'
 
@@ -428,10 +485,16 @@ def generate_dashboard_html(basin_data):
 
             cone_img = ''
             if is_active and cone_images.get(name):
+                cone_dt = _parse_utc(d.get('cone_issued'))
+                cone_alt = f'NHC forecast cone for {html_escape(name)}'
+                cone_when = ''
+                if cone_dt:
+                    cone_alt += f', advisory issued {_utc_label(cone_dt)}'
+                    cone_when = f' &middot; advisory issued {_timestamp_html(cone_dt)}'
                 cone_img = (
                     f'<div class="cone-graphic">'
-                    f'<img src="{html_escape(cone_images[name])}" alt="NHC forecast cone for {html_escape(name)}" loading="lazy">'
-                    f'<div class="cone-credit">Forecast cone via <a href="https://www.nhc.noaa.gov/" target="_blank" rel="noopener">NHC</a></div>'
+                    f'<img src="{html_escape(cone_images[name])}" alt="{cone_alt}" loading="lazy">'
+                    f'<div class="cone-credit">Forecast cone via <a href="https://www.nhc.noaa.gov/" target="_blank" rel="noopener">NHC</a>{cone_when}</div>'
                     f'</div>'
                 )
 
@@ -460,6 +523,7 @@ def generate_dashboard_html(basin_data):
                 f'<input type="checkbox" id="sptoggle-{slug}" checked onchange="_toggleSpaghetti(\'{slug}\')">'
                 f' Show model forecast tracks</label>'
                 f'<div class="track-legend spaghetti-legend" id="splegend-{slug}"></div>'
+                f'<div class="sp-note">Latest run of each model (UTC), shown as published.</div>'
             ) if spaghetti else ''
 
             map_div = (
@@ -491,7 +555,10 @@ def generate_dashboard_html(basin_data):
                 f'<td colspan="6"><div class="track-panel" id="trpanel-{slug}"><div class="track-inner">{panel_inner}</div></div></td>'
                 f'</tr>'
             )
-        return '\n'.join(rows), track_data
+        note = ('<p class="table-note"><abbr class="lf-est">est.</abbr> Landfall estimated from the storm\'s '
+                'preliminary track against coastlines. NHC confirms landfalls in its post-season Tropical '
+                'Cyclone Report.</p>') if any_estimated else ''
+        return '\n'.join(rows), track_data, note
 
     def insight_items_html(insights):
         return '\n'.join(f'<li>{i}</li>' for i in insights)
@@ -524,7 +591,7 @@ def generate_dashboard_html(basin_data):
             lower_section = _preseason_html(bd['basin_key'], yearly_totals, current_year)
         else:
             rank, total_seasons = rank_current_season(yearly_totals, current_year, current_ace)
-            storm_html, track_data = storm_rows_html(current, cone_images)
+            storm_html, track_data, landfall_note = storm_rows_html(current, cone_images)
             all_track_data.update(track_data)
             lower_section = f'''
       <h3>Storm Breakdown</h3>
@@ -546,6 +613,7 @@ def generate_dashboard_html(basin_data):
           </tfoot>
         </table>
       </div>
+      {landfall_note}
 
       <h3>Season Insights</h3>
       <ul class="insights">{insight_items_html(insights)}</ul>
@@ -572,7 +640,7 @@ def generate_dashboard_html(basin_data):
             stats_grid = f'''
       <div class="stats-grid">
         <div class="stat-box ace-total">
-          <div class="stat-label">Season ACE</div>
+          <div class="stat-label">Season ACE <span class="prelim" title="Preliminary: from NHC's real-time best track, revised in the post-season HURDAT2 release">preliminary</span></div>
           <div class="stat-value">{current_ace:.1f}</div>
           <div class="stat-sub">{pct_normal:.0f}% of normal ({normal})</div>
           <div class="gauge"><div class="gauge-fill" style="width:{gauge_pct/2}%"></div></div>
@@ -599,6 +667,7 @@ def generate_dashboard_html(basin_data):
       {_season_progress_html(bd['basin_key'], current_year)}
       {stale_banner}
       {nhc_alert}
+      {_data_as_of_html(current.get('data_as_of'), disturbances[0]['issued'] if disturbances else '')}
       {stats_grid}
       {pace_section}
       {lower_section}
@@ -654,7 +723,12 @@ def generate_dashboard_html(basin_data):
   .logo {{ height:1.5em; width:auto; vertical-align:middle; }}
   .header-actions {{ grid-column:3; justify-self:end; display:flex; gap:6px; align-items:center; }}
   .theme-btn, .unit-btn {{ background:transparent; border:1px solid var(--accent); color:var(--accent); border-radius:20px; padding:4px 10px; cursor:pointer; font-size:0.9em; }}
-  .updated {{ text-align:center; color:var(--muted); font-size:0.8em; margin-bottom:8px; }}
+  .data-asof {{ text-align:center; color:var(--muted); font-size:0.8em; margin:0 0 10px; }}
+  .data-asof time {{ color:var(--text); }}
+  .build-time {{ color:var(--muted); font-size:0.85em; }}
+  .prelim {{ font-size:0.72em; font-weight:600; text-transform:uppercase; letter-spacing:0.04em; color:var(--muted); border:1px solid var(--border); border-radius:4px; padding:0 4px; margin-left:4px; white-space:nowrap; }}
+  .lf-est {{ font-size:0.85em; color:var(--muted); text-decoration:underline dotted; cursor:help; }}
+  .table-note {{ font-size:0.75em; color:var(--muted); margin:6px 2px 0; }}
   .nav-link {{ text-align:center; margin-bottom:12px; display:flex; justify-content:center; gap:8px; flex-wrap:wrap; }}
   .nav-link a {{ color:var(--accent); text-decoration:none; font-size:0.85em; border:1px solid var(--accent); border-radius:20px; padding:4px 14px; }}
   .nav-link a:hover {{ background:var(--accent); color:var(--bg); }}
@@ -780,6 +854,8 @@ def generate_dashboard_html(basin_data):
   .legend-dot {{ width:9px; height:9px; border-radius:50%; flex-shrink:0; }}
   .spaghetti-toggle {{ display:flex; align-items:center; gap:6px; font-size:0.78em; color:var(--muted); margin-top:8px; cursor:pointer; }}
   .spaghetti-legend {{ margin-top:6px; }}
+  .sp-cycle {{ color:var(--muted); font-size:0.9em; }}
+  .sp-note {{ font-size:0.72em; color:var(--muted); margin-top:4px; }}
   .spaghetti-legend .legend-dot {{ width:14px; height:3px; border-radius:2px; }}
   .nhc-link {{ font-size:0.78em; color:var(--muted); text-align:right; margin-top:6px; }}
   .nhc-link a {{ color:var(--accent); text-decoration:none; }}
@@ -803,7 +879,6 @@ def generate_dashboard_html(basin_data):
     <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" aria-label="Toggle light and dark theme">☀</button>
   </div>
 </div>
-<div class="updated">Updated: {now.strftime('%B %d, %Y at %H:%M UTC')}</div>
 <div class="nav-link"><a href="history.html">📊 Season History ({START_YEAR}–present)</a><a href="records.html">🏆 Records</a><a href="what-is-ace.html">❓ What is ACE?</a></div>
 <details class="ace-explain">
   <summary>What is ACE? <span class="ace-explain-hint">(tap to expand)</span></summary>
@@ -824,9 +899,24 @@ def generate_dashboard_html(basin_data):
   <p>ACE (Accumulated Cyclone Energy) is calculated at 6-hourly synoptic times (0000/0600/1200/1800 UTC) for systems with status TS, HU, or SS and wind ≥34 kt — extratropical (EX) phases are excluded per NHC methodology. Formula: ACE = Σ(V²<sub>max</sub>) × 10⁻⁴. Categories use the Saffir-Simpson scale in knots.</p>
   <p><b>Basin note:</b> The East &amp; Central Pacific tab combines both the Eastern Pacific (NHC, east of 140°W) and Central Pacific (CPHC, 140°W–180°) basins, consistent with the NOAA HURDAT2 Northeast &amp; North Central Pacific dataset. NHC tracks these separately on their <a href="https://www.nhc.noaa.gov/data/tcr/" target="_blank" rel="noopener noreferrer">TCR pages</a> (epac / cpac).</p>
   <p class="disclaimer">⚠️ This site is maintained by a hurricane data enthusiast — not a meteorologist, forecaster, or weather professional of any kind. I just love the data. All information is sourced directly from official NOAA/NHC databases. For official forecasts, watches, warnings, and life-safety information, always refer to the <a href="https://www.nhc.noaa.gov/" target="_blank" rel="noopener noreferrer">National Hurricane Center</a>.</p>
+  <p class="build-time">Page built {now.strftime('%B %d, %Y at %H:%M UTC')}. The data-as-of line above each basin's numbers shows how current the storm data is.</p>
   <p class="kofi-link"><a href="https://ko-fi.com/aceofcanes" target="_blank" rel="noopener noreferrer">☕ Support this project on Ko-fi</a></p>
 </div>
 <script>
+function _relTimes(){{
+  var now=Date.now();
+  document.querySelectorAll('.rel-time[data-ts]').forEach(function(el){{
+    var t=Date.parse(el.getAttribute('data-ts'));
+    if(isNaN(t))return;
+    var m=Math.max(0,Math.round((now-t)/60000)),s;
+    if(m<1)s='just now';
+    else if(m<60)s=m+' min ago';
+    else if(m<48*60){{var h=Math.round(m/60);s=h+(h===1?' hour':' hours')+' ago';}}
+    else s=Math.round(m/1440)+' days ago';
+    el.textContent='('+s+')';
+  }});
+}}
+_relTimes();setInterval(_relTimes,60000);
 function show(id,btn) {{
   document.querySelectorAll('.basin-card').forEach(c=>c.classList.remove('active'));
   document.querySelectorAll('.toggle button').forEach(b=>{{b.classList.remove('active');b.setAttribute('aria-pressed','false');}});
@@ -1101,11 +1191,12 @@ function _buildMap(slug){{
       // sides of the antimeridian and the combined bounds would be wrong.
       var mlls=_unwrapSeries([lls[lls.length-1]].concat(mpts.map(function(p){{return[p.lat,p.lon];}}))).slice(1);
       var color=_SPAG_COLORS[model]||'#ffffff',label=_SPAG_LABELS[model]||model;
+      var cyc=(d.spaghetti_cycles||{{}})[model];
       L.polyline(mlls,{{color:color,weight:model==='OFCL'?3:2,opacity:0.85,dashArray:model==='OFCL'?null:'4,4'}})
-        .bindTooltip(label,{{sticky:true}}).addTo(spagGroup);
+        .bindTooltip(label+(cyc?' \xb7 '+cyc:''),{{sticky:true}}).addTo(spagGroup);
       L.circleMarker(mlls[mlls.length-1],{{radius:3,color:color,fillColor:color,fillOpacity:1,weight:1}}).addTo(spagGroup);
       boundsPts=boundsPts.concat(mlls);
-      legendHtml+='<div class="legend-item"><div class="legend-dot" style="background:'+color+'"></div>'+label+'</div>';
+      legendHtml+='<div class="legend-item"><div class="legend-dot" style="background:'+color+'"></div>'+label+(cyc?' <span class="sp-cycle">'+cyc+'</span>':'')+'</div>';
     }});
   }}
   spagGroup.addTo(map);
@@ -1271,6 +1362,9 @@ def generate_history_html(basin_data):
         def _csort(bc):
             return {'below': 0, 'near': 1, 'above': 2, 'extreme': 3}.get(bc, 1)
 
+        prelim_html = (' <span class="prelim" title="Preliminary: from NHC\'s real-time best track, '
+                       'revised in the post-season HURDAT2 release">preliminary</span>')
+
         # Build table rows (year descending default)
         rows = []
         for year in sorted(years_data.keys(), reverse=True):
@@ -1302,7 +1396,7 @@ def generate_history_html(basin_data):
                 f'<td data-v="{year}" style="white-space:nowrap">'
                 f'<button class="yr-expand-btn" id="yrbtn-{yr_key}" aria-expanded="false" aria-controls="yrpanel-{yr_key}" onclick="toggleYear(\'{yr_key}\')">'
                 f'<b>{year}</b>{active_label}<span class="yr-chevron">&#9658;</span></button></td>'
-                f'<td data-v="{ace:.4f}"><b>{ace:.1f}</b><div class="ace-bar"><div class="ace-bar-fill" style="width:{ace_bar_pct}%"></div></div></td>'
+                f'<td data-v="{ace:.4f}"><b>{ace:.1f}</b>{prelim_html if is_active else ""}<div class="ace-bar"><div class="ace-bar-fill" style="width:{ace_bar_pct}%"></div></div></td>'
                 f'<td data-v="{pct}">{pct}%</td>'
                 f'<td data-v="{_csort(bc)}"><span class="badge badge-{bc}">{classification}</span></td>'
                 f'<td data-v="{named_v}">{d["named"]}</td>'
@@ -1335,7 +1429,7 @@ def generate_history_html(basin_data):
 
         lf_avg = average_landfall_share(yearly_stats, current_year)
         lf_avg_note = (f'<p class="season-note">&#127965;&#65039; On average since {START_YEAR}, <b>{lf_avg}%</b> of a season\'s ACE '
-                       f'came from storms that made landfall. Open a season to see its split.</p>') if lf_avg is not None else ''
+                       f'came from storms that made landfall at tropical-storm strength or stronger. Open a season to see its split.</p>') if lf_avg is not None else ''
         basin_sections.append(f'''
     <div class="basin-card{' active' if not basin_sections else ''}" id="{bd['basin_key']}">
       <h2>{html_escape(basin['name'])} — All Seasons ({START_YEAR}–{current_year})</h2>
@@ -1470,6 +1564,7 @@ def generate_history_html(basin_data):
   .badge-near {{ background:var(--badge-near); }}
   .badge-below {{ background:var(--badge-below); }}
   .active-dot {{ color:var(--active-dot); font-size:0.65em; vertical-align:middle; margin-left:3px; }}
+  .prelim {{ font-size:0.68em; font-weight:600; text-transform:uppercase; letter-spacing:0.04em; color:var(--muted); border:1px solid var(--border); border-radius:4px; padding:0 3px; margin-left:4px; white-space:nowrap; }}
   .sources {{ background:var(--sources-bg); border-top:1px solid var(--border); margin-top:24px; padding:16px 12px; border-radius:8px; }}
   .sources h4 {{ color:var(--muted); font-size:0.8em; text-transform:uppercase; margin-bottom:8px; }}
   .sources a {{ color:var(--accent); text-decoration:none; font-size:0.78em; }}
@@ -1527,7 +1622,7 @@ def generate_history_html(basin_data):
   <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" aria-label="Toggle light and dark theme">☀</button>
 </div>
 <div class="updated">Updated: {now.strftime('%B %d, %Y at %H:%M UTC')}</div>
-<div class="nav-link"><a href="index.html">← Current Season</a><a href="records.html">🏆 Records</a><a href="what-is-ace.html">❓ What is ACE?</a></div>
+<div class="nav-link"><a href="/">← Current Season</a><a href="records.html">🏆 Records</a><a href="what-is-ace.html">❓ What is ACE?</a></div>
 <details class="ace-explain">
   <summary>What is ACE? <span class="ace-explain-hint">(tap to expand)</span></summary>
   <p>Accumulated Cyclone Energy (ACE) measures total hurricane season activity by combining storm intensity and duration. A major hurricane that lasts two weeks contributes far more than a brief tropical storm. NOAA uses seasonal ACE totals to classify years as <b>Below Normal</b> (&lt;73), <b>Near Normal</b> (73–126), <b>Above Normal</b> (126–159), or <b>Extremely Active</b> (159+). <a href="what-is-ace.html">More on ACE, plus a calculator →</a></p>
@@ -1841,7 +1936,7 @@ def generate_records_html(basin_data):
   <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" aria-label="Toggle light and dark theme">☀</button>
 </div>
 <div class="updated">Updated: {now.strftime('%B %d, %Y at %H:%M UTC')}</div>
-<div class="nav-link"><a href="index.html">← Current Season</a><a href="history.html">Season History</a><a href="what-is-ace.html">❓ What is ACE?</a></div>
+<div class="nav-link"><a href="/">← Current Season</a><a href="history.html">Season History</a><a href="what-is-ace.html">❓ What is ACE?</a></div>
 <div class="toggle">
   <button class="active" aria-pressed="true" onclick="show('atlantic',this)">Atlantic</button>
   <button aria-pressed="false" onclick="show('pacific',this)">E/C Pacific</button>
@@ -1917,8 +2012,8 @@ def _ace_fun_facts(basin_data):
         cur = bd['current'].get('total', 0.0)
         facts.append(
             f"The {current_year} {html_escape(name)} season is at <b>{cur:.1f} ACE</b> so far "
-            f"({get_noaa_classification(cur, bd['basin_key'])}). "
-            f"<a href=\"index.html#{bd['basin_key']}\">See the live dashboard</a>.")
+            f"(preliminary; {get_noaa_classification(cur, bd['basin_key'])}). "
+            f"<a href=\"/#{bd['basin_key']}\">See the live dashboard</a>.")
     return facts
 
 
@@ -2018,7 +2113,7 @@ def generate_about_html(basin_data):
   <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" aria-label="Toggle light and dark theme">☀</button>
 </div>
 <div class="updated">Updated: {now.strftime('%B %d, %Y at %H:%M UTC')}</div>
-<div class="nav-link"><a href="index.html">← Current Season</a><a href="history.html">📊 Season History</a><a href="records.html">🏆 Records</a></div>
+<div class="nav-link"><a href="/">← Current Season</a><a href="history.html">📊 Season History</a><a href="records.html">🏆 Records</a></div>
 
 <section class="card">
   <h2>Accumulated Cyclone Energy</h2>

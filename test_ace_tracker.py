@@ -40,6 +40,8 @@ from ace_data import (
     generate_insights,
     _drop_stale_storm_keys,
     _last_track_stamp,
+    latest_track_time,
+    _extract_spaghetti_tracks,
     SYNOPTIC_TIMES,
     ACE_STATUSES,
     MIN_NAMED_STORM_WIND,
@@ -47,6 +49,7 @@ from ace_data import (
 from ace_html import (
     generate_dashboard_html, generate_history_html, generate_records_html, generate_about_html,
     _decade_label, _nhc_tcr_links_html, _records_in_play_html, _year_storm_list_html,
+    _data_as_of_html,
 )
 
 
@@ -1268,6 +1271,17 @@ class TestLandfallAceShare(unittest.TestCase):
         self.assertEqual(landfall_ace_share(self.STORMS),
                          {'landfall_pct': 75, 'fish_pct': 25, 'landfall_count': 1, 'fish_count': 1})
 
+    def test_depression_strength_landfall_is_not_landfalling(self):
+        # A storm that only crossed land as a depression (Boris 2026 at
+        # Guerrero) stayed a fish storm for the share; any TS+ landfall counts.
+        storms = [
+            {'name': 'Crosser', 'ace': 20.0, 'max_wind': 70, 'landfall': [('Guerrero, Mexico', 'TD')]},
+            {'name': 'Hitter', 'ace': 20.0, 'max_wind': 70,
+             'landfall': [['Cuba', 'TD'], ['Florida', 'TS']]},
+        ]
+        self.assertEqual(landfall_ace_share(storms),
+                         {'landfall_pct': 50, 'fish_pct': 50, 'landfall_count': 1, 'fish_count': 1})
+
     def test_no_ace_returns_none(self):
         self.assertIsNone(landfall_ace_share([]))
         self.assertIsNone(landfall_ace_share([self.STORMS[2]]))
@@ -1493,6 +1507,178 @@ class TestColorContrast(unittest.TestCase):
                         continue
                     with self.subTest(page=name, theme=theme, badge=badge):
                         self.assertGreaterEqual(self._ratio('#ffffff', tok[badge]), 4.5)
+class TestDataFreshness(unittest.TestCase):
+    """The dashboard says how current its storm data is, not only when the
+    page was built: a stale page must look stale."""
+
+    class _Storm:
+        def __init__(self, *times):
+            self.time = list(times)
+
+    def test_latest_track_time_is_newest_point_across_storms(self):
+        from datetime import timezone
+        storms = [
+            self._Storm(datetime(2026, 9, 20, 0), datetime(2026, 9, 26, 18)),
+            self._Storm(datetime(2026, 9, 25, 6), datetime(2026, 9, 27, 0, tzinfo=timezone.utc)),
+            self._Storm(),  # no track points
+        ]
+        self.assertEqual(latest_track_time(storms), '2026-09-27T00:00:00Z')
+
+    def test_latest_track_time_none_without_tracks(self):
+        self.assertIsNone(latest_track_time([]))
+        self.assertIsNone(latest_track_time([self._Storm()]))
+
+    def test_data_as_of_line(self):
+        line = _data_as_of_html('2026-09-27T00:00:00Z')
+        self.assertIn('Best-track data as of <time datetime="2026-09-27T00:00:00Z">Sep 27, 2026 00:00 UTC</time>', line)
+        self.assertIn('class="rel-time" data-ts="2026-09-27T00:00:00Z"', line)
+        self.assertNotIn('outlook', line)
+
+    def test_data_as_of_line_with_outlook_time(self):
+        line = _data_as_of_html('2026-09-27T00:00:00Z', 'Sat, 27 Sep 2026 17:40:00 GMT')
+        self.assertIn('NHC outlook issued <time datetime="2026-09-27T17:40:00Z">Sep 27, 2026 17:40 UTC</time>', line)
+
+    def test_data_as_of_line_omitted_without_times(self):
+        self.assertEqual(_data_as_of_html(None), '')
+        self.assertEqual(_data_as_of_html(None, 'not a date'), '')
+
+    def test_dashboard_shows_data_time_and_moves_build_time_to_footer(self):
+        basin_data = TestHTMLGeneration()._make_basin_data()
+        basin_data[0]['current']['data_as_of'] = '2026-06-18T00:00:00Z'
+        html = generate_dashboard_html(basin_data)
+        self.assertIn('Best-track data as of <time datetime="2026-06-18T00:00:00Z">', html)
+        self.assertIn('function _relTimes()', html)
+        self.assertNotIn('<div class="updated">', html)
+        footer = html[html.index('<div class="sources">'):]
+        self.assertIn('Page built ', footer)
+
+
+class TestHonestyLabels(unittest.TestCase):
+    """In-season ACE is labelled preliminary and geocoded landfalls are
+    labelled estimated wherever they appear."""
+
+    def _data(self, estimated=True):
+        basin_data = TestHTMLGeneration()._make_basin_data()
+        basin_data[0]['current']['storm_details']['Arthur']['landfall_estimated'] = estimated
+        return basin_data
+
+    def test_dashboard_headline_is_preliminary(self):
+        html = generate_dashboard_html(self._data())
+        self.assertIn('<div class="stat-label">Season ACE <span class="prelim"', html)
+
+    def test_dashboard_marks_estimated_landfalls(self):
+        html = generate_dashboard_html(self._data())
+        self.assertIn('Texas (TS) <abbr class="lf-est"', html)
+        self.assertIn('class="table-note"', html)
+
+    def test_hurdat2_landfalls_not_marked_estimated(self):
+        html = generate_dashboard_html(self._data(estimated=False))
+        self.assertNotIn('<abbr class="lf-est"', html)
+        self.assertNotIn('class="table-note"', html)
+
+    def test_history_current_row_is_preliminary(self):
+        html = generate_history_html(self._data())
+        row = html[html.index('id="atlantic-yr-2026"'):]
+        row = row[:row.index('</tr>')]
+        self.assertIn('class="prelim"', row)
+        past = html[html.index('id="atlantic-yr-2005"'):]
+        self.assertNotIn('class="prelim"', past[:past.index('</tr>')])
+
+    def test_what_is_ace_fact_is_preliminary(self):
+        html = generate_about_html(self._data())
+        self.assertIn('ACE</b> so far (preliminary;', html)
+
+    def test_landfall_share_insight_labels(self):
+        bd = self._data()[0]
+        bd['yearly_stats'] = calculate_yearly_stats(bd['historical_storms'])
+        insights = generate_insights('atlantic', bd['current'], bd['yearly_totals'],
+                                     bd['historical_storms'], bd['yearly_stats'])
+        share = [i for i in insights if i.startswith('🏝️ Landfall share')][0]
+        self.assertTrue(share.startswith('🏝️ Landfall share (estimated):'))
+        self.assertIn('made landfall at tropical-storm strength or stronger', share)
+
+    def test_landfall_share_insight_with_no_ts_landfall(self):
+        bd = self._data()[0]
+        bd['current']['storm_details']['Arthur']['landfall'] = [('Guerrero, Mexico', 'TD')]
+        insights = generate_insights('atlantic', bd['current'], bd['yearly_totals'],
+                                     bd['historical_storms'], calculate_yearly_stats(bd['historical_storms']))
+        share = [i for i in insights if i.startswith('🏝️ Landfall share')][0]
+        self.assertIn(': no storm has made landfall at tropical-storm strength or stronger, '
+                      'so all season ACE came from 1 fish storm', share)
+        self.assertNotIn('0 storms', share)
+
+
+class TestGuidanceTimestamps(unittest.TestCase):
+    """Relayed model tracks and the NHC cone carry the time they were issued."""
+
+    class _Storm:
+        def get_operational_forecasts(self):
+            return {
+                'OFCL': {
+                    '2026092618': {'lat': [20.0], 'lon': [-60.0], 'fhr': [0]},
+                    '2026092700': {'lat': [20.5, 21.0], 'lon': [-61.0, -62.0], 'fhr': [0, 12],
+                                   'init': datetime(2026, 9, 27, 0)},
+                },
+                'AVNO': {'2026092606': {'lat': [20.0], 'lon': [-60.0], 'fhr': [6]}},
+                'EMX': {'2026092612': {'lat': [20.0], 'lon': [-60.0], 'fhr': [-6]}},  # nothing forward
+            }
+
+    def test_spaghetti_returns_latest_cycle_per_model(self):
+        tracks, cycles = _extract_spaghetti_tracks(self._Storm())
+        self.assertEqual(sorted(tracks), ['AVNO', 'OFCL'])
+        self.assertEqual(len(tracks['OFCL']), 2)
+        self.assertEqual(cycles, {'OFCL': '2026-09-27T00:00:00Z', 'AVNO': '2026-09-26T06:00:00Z'})
+
+    def test_spaghetti_fetch_failure_returns_empty(self):
+        class Broken:
+            def get_operational_forecasts(self):
+                raise RuntimeError('offline')
+        self.assertEqual(_extract_spaghetti_tracks(Broken()), ({}, {}))
+
+    def test_dashboard_shows_model_cycle_and_cone_advisory_time(self):
+        from unittest import mock
+        basin_data = TestHTMLGeneration()._make_basin_data()
+        arthur = basin_data[0]['current']['storm_details']['Arthur']
+        arthur.update({
+            'is_active': True,
+            'spaghetti': {'OFCL': [{'lat': 26.0, 'lon': -91.0}]},
+            'spaghetti_cycles': {'OFCL': '2026-09-27T00:00:00Z'},
+            'cone_issued': '2026-09-27T03:00:00Z',
+        })
+        with mock.patch('ace_html.fetch_active_storm_cones', return_value={'Arthur': 'cones/al012026.png'}), \
+             mock.patch('ace_html.fetch_nhc_disturbances', return_value=[]):
+            html = generate_dashboard_html(basin_data)
+        self.assertIn('"spaghetti_cycles": {"OFCL": "00Z Sep 27"}', html)
+        self.assertIn('Latest run of each model (UTC)', html)
+        self.assertIn('alt="NHC forecast cone for Arthur, advisory issued Sep 27, 2026 03:00 UTC"', html)
+        self.assertIn('advisory issued <time datetime="2026-09-27T03:00:00Z">', html)
+
+    def test_cone_without_issue_time_keeps_plain_credit(self):
+        from unittest import mock
+        basin_data = TestHTMLGeneration()._make_basin_data()
+        basin_data[0]['current']['storm_details']['Arthur']['is_active'] = True
+        with mock.patch('ace_html.fetch_active_storm_cones', return_value={'Arthur': 'cones/al012026.png'}), \
+             mock.patch('ace_html.fetch_nhc_disturbances', return_value=[]):
+            html = generate_dashboard_html(basin_data)
+        self.assertIn('alt="NHC forecast cone for Arthur"', html)
+        self.assertNotIn('advisory issued', html)
+
+
+class TestCanonicalHomeLinks(unittest.TestCase):
+    """Links back to the dashboard use its canonical URL "/" so search
+    engines do not see "/" and "/index.html" as two pages."""
+
+    def test_pages_link_home_to_root(self):
+        basin_data = TestHTMLGeneration()._make_basin_data()
+        for gen in (generate_history_html, generate_records_html, generate_about_html):
+            with self.subTest(page=gen.__name__):
+                html = gen(basin_data)
+                self.assertIn('<a href="/">← Current Season</a>', html)
+                self.assertNotIn('index.html', html)
+
+    def test_what_is_ace_dashboard_link_keeps_basin_anchor(self):
+        html = generate_about_html(TestHTMLGeneration()._make_basin_data())
+        self.assertIn('<a href="/#atlantic">See the live dashboard</a>', html)
 
 
 def run_tests():
