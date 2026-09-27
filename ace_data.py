@@ -322,6 +322,36 @@ def _last_track_stamp(storm_obj):
 
 
 
+def _track_datetime(t):
+    """A Tropycal track time as a naive UTC datetime, or None if unreadable."""
+    try:
+        if hasattr(t, 'to_pydatetime'):
+            t = t.to_pydatetime()
+        if not isinstance(t, datetime):
+            return None
+        if t.tzinfo is not None:
+            t = t.astimezone(timezone.utc).replace(tzinfo=None)
+        return t
+    except Exception:
+        return None
+
+
+def latest_track_time(storm_objs):
+    """The newest best-track point across `storm_objs`, as an ISO-8601 UTC
+    string ('2026-09-27T00:00:00Z'), or None. This is how current the
+    season's data really is, which can lag the page build by hours."""
+    latest = None
+    for storm_obj in storm_objs:
+        try:
+            t = _track_datetime(storm_obj.time[-1])
+        except Exception:
+            t = None
+        if t and (latest is None or t > latest):
+            latest = t
+    return latest.strftime('%Y-%m-%dT%H:%M:%SZ') if latest else None
+
+
+
 def _drop_stale_storm_keys(cache, storm_id, keep_key, prefix):
     """Remove outdated cache entries for one in-progress storm, scoped to one
     key family (`cur` or `geo`): the legacy bare-id key plus any
@@ -846,11 +876,13 @@ def get_current_season(basin_key, dataset=None):
 
                 storms = {}
                 storm_details = {}
+                season_storm_objs = []
 
                 # Process each storm in the season
                 for storm_id in season.dict.keys():
                     try:
                         storm_obj = dataset.get_storm(storm_id)
+                        season_storm_objs.append(storm_obj)
 
                         # Get storm name
                         storm_name = storm_obj.name.title() if storm_obj.name else 'UNNAMED'
@@ -977,6 +1009,7 @@ def get_current_season(basin_key, dataset=None):
                         'storms': storms,
                         'storm_details': storm_details,
                         'total': total,
+                        'data_as_of': latest_track_time(season_storm_objs),
                     }
 
             except Exception as e:

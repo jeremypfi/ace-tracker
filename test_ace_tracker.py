@@ -40,6 +40,7 @@ from ace_data import (
     generate_insights,
     _drop_stale_storm_keys,
     _last_track_stamp,
+    latest_track_time,
     SYNOPTIC_TIMES,
     ACE_STATUSES,
     MIN_NAMED_STORM_WIND,
@@ -47,6 +48,7 @@ from ace_data import (
 from ace_html import (
     generate_dashboard_html, generate_history_html, generate_records_html, generate_about_html,
     _decade_label, _nhc_tcr_links_html, _records_in_play_html, _year_storm_list_html,
+    _data_as_of_html,
 )
 
 
@@ -1379,6 +1381,52 @@ class TestLandfallCacheInvalidation(unittest.TestCase):
             def time(self):
                 raise RuntimeError('no track')
         self.assertEqual(_last_track_stamp(Broken()), 'unknown')
+
+
+class TestDataFreshness(unittest.TestCase):
+    """The dashboard says how current its storm data is, not only when the
+    page was built: a stale page must look stale."""
+
+    class _Storm:
+        def __init__(self, *times):
+            self.time = list(times)
+
+    def test_latest_track_time_is_newest_point_across_storms(self):
+        from datetime import timezone
+        storms = [
+            self._Storm(datetime(2026, 9, 20, 0), datetime(2026, 9, 26, 18)),
+            self._Storm(datetime(2026, 9, 25, 6), datetime(2026, 9, 27, 0, tzinfo=timezone.utc)),
+            self._Storm(),  # no track points
+        ]
+        self.assertEqual(latest_track_time(storms), '2026-09-27T00:00:00Z')
+
+    def test_latest_track_time_none_without_tracks(self):
+        self.assertIsNone(latest_track_time([]))
+        self.assertIsNone(latest_track_time([self._Storm()]))
+
+    def test_data_as_of_line(self):
+        line = _data_as_of_html('2026-09-27T00:00:00Z')
+        self.assertIn('Best-track data as of <time datetime="2026-09-27T00:00:00Z">Sep 27, 2026 00:00 UTC</time>', line)
+        self.assertIn('class="rel-time" data-ts="2026-09-27T00:00:00Z"', line)
+        self.assertNotIn('outlook', line)
+
+    def test_data_as_of_line_with_outlook_time(self):
+        line = _data_as_of_html('2026-09-27T00:00:00Z', 'Sat, 27 Sep 2026 17:40:00 GMT')
+        self.assertIn('NHC outlook issued <time datetime="2026-09-27T17:40:00Z">Sep 27, 2026 17:40 UTC</time>', line)
+
+    def test_data_as_of_line_omitted_without_times(self):
+        self.assertEqual(_data_as_of_html(None), '')
+        self.assertEqual(_data_as_of_html(None, 'not a date'), '')
+
+    def test_dashboard_shows_data_time_and_moves_build_time_to_footer(self):
+        basin_data = TestHTMLGeneration()._make_basin_data()
+        basin_data[0]['current']['data_as_of'] = '2026-06-18T00:00:00Z'
+        html = generate_dashboard_html(basin_data)
+        self.assertIn('Best-track data as of <time datetime="2026-06-18T00:00:00Z">', html)
+        self.assertIn('function _relTimes()', html)
+        self.assertNotIn('<div class="updated">', html)
+        footer = html[html.index('<div class="sources">'):]
+        self.assertIn('Page built ', footer)
 
 
 def run_tests():

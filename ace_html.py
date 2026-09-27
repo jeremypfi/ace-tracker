@@ -265,6 +265,50 @@ def _ace_pace_html(pace, basin_key):
 # NHC ALERT BANNER
 # ===============================================================================
 
+def _parse_utc(value):
+    """An ISO-8601 or RFC 822 timestamp string as an aware UTC datetime, or None."""
+    from email.utils import parsedate_to_datetime
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
+    except ValueError:
+        try:
+            dt = parsedate_to_datetime(value)
+        except (TypeError, ValueError):
+            return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _utc_label(dt):
+    return f"{dt:%b} {dt.day}, {dt:%Y} {dt:%H:%M} UTC"
+
+
+def _timestamp_html(dt):
+    """A <time> element plus a relative-time slot filled in client-side."""
+    iso = dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+    return (f'<time datetime="{iso}">{_utc_label(dt)}</time>'
+            f' <span class="rel-time" data-ts="{iso}"></span>')
+
+
+def _data_as_of_html(data_as_of, outlook_issued=''):
+    """'Data as of' line for a basin: the newest best-track point (how current
+    the ACE numbers really are, as opposed to when the page was built) and,
+    when a disturbance banner is shown, when NHC issued that outlook."""
+    parts = []
+    track_dt = _parse_utc(data_as_of)
+    if track_dt:
+        parts.append(f'Best-track data as of {_timestamp_html(track_dt)}')
+    outlook_dt = _parse_utc(outlook_issued)
+    if outlook_dt:
+        parts.append(f'NHC outlook issued {_timestamp_html(outlook_dt)}')
+    if not parts:
+        return ''
+    return f'<p class="data-asof">{" &nbsp;·&nbsp; ".join(parts)}</p>'
+
+
 def _stale_data_banner_html():
     """Warning banner shown when live data was unavailable and the dashboard
     is falling back to placeholder data (see BACKUP_DATA, #98)."""
@@ -311,7 +355,7 @@ def _nhc_alert_html(disturbances):
             f'</div>'
         )
 
-    issued_html = f'<span class="nhc-issued">Data as of {html_escape(issued)}</span>' if issued else ''
+    issued_html = f'<span class="nhc-issued">Outlook issued {html_escape(issued)}</span>' if issued else ''
 
     return (
         f'<div class="nhc-alert">'
@@ -599,6 +643,7 @@ def generate_dashboard_html(basin_data):
       {_season_progress_html(bd['basin_key'], current_year)}
       {stale_banner}
       {nhc_alert}
+      {_data_as_of_html(current.get('data_as_of'), disturbances[0]['issued'] if disturbances else '')}
       {stats_grid}
       {pace_section}
       {lower_section}
@@ -653,7 +698,9 @@ def generate_dashboard_html(basin_data):
   .logo {{ height:1.5em; width:auto; vertical-align:middle; }}
   .header-actions {{ grid-column:3; justify-self:end; display:flex; gap:6px; align-items:center; }}
   .theme-btn, .unit-btn {{ background:transparent; border:1px solid var(--accent); color:var(--accent); border-radius:20px; padding:4px 10px; cursor:pointer; font-size:0.9em; }}
-  .updated {{ text-align:center; color:var(--muted); font-size:0.8em; margin-bottom:8px; }}
+  .data-asof {{ text-align:center; color:var(--muted); font-size:0.8em; margin:0 0 10px; }}
+  .data-asof time {{ color:var(--text); }}
+  .build-time {{ color:var(--muted); font-size:0.85em; }}
   .nav-link {{ text-align:center; margin-bottom:12px; display:flex; justify-content:center; gap:8px; flex-wrap:wrap; }}
   .nav-link a {{ color:var(--accent); text-decoration:none; font-size:0.85em; border:1px solid var(--accent); border-radius:20px; padding:4px 14px; }}
   .nav-link a:hover {{ background:var(--accent); color:var(--bg); }}
@@ -801,7 +848,6 @@ def generate_dashboard_html(basin_data):
     <button class="theme-btn" id="themeBtn" onclick="toggleTheme()">☀</button>
   </div>
 </div>
-<div class="updated">Updated: {now.strftime('%B %d, %Y at %H:%M UTC')}</div>
 <div class="nav-link"><a href="history.html">📊 Season History ({START_YEAR}–present)</a><a href="records.html">🏆 Records</a><a href="what-is-ace.html">❓ What is ACE?</a></div>
 <details class="ace-explain">
   <summary>What is ACE? <span class="ace-explain-hint">(tap to expand)</span></summary>
@@ -822,9 +868,24 @@ def generate_dashboard_html(basin_data):
   <p>ACE (Accumulated Cyclone Energy) is calculated at 6-hourly synoptic times (0000/0600/1200/1800 UTC) for systems with status TS, HU, or SS and wind ≥34 kt — extratropical (EX) phases are excluded per NHC methodology. Formula: ACE = Σ(V²<sub>max</sub>) × 10⁻⁴. Categories use the Saffir-Simpson scale in knots.</p>
   <p><b>Basin note:</b> The East &amp; Central Pacific tab combines both the Eastern Pacific (NHC, east of 140°W) and Central Pacific (CPHC, 140°W–180°) basins, consistent with the NOAA HURDAT2 Northeast &amp; North Central Pacific dataset. NHC tracks these separately on their <a href="https://www.nhc.noaa.gov/data/tcr/" target="_blank" rel="noopener noreferrer">TCR pages</a> (epac / cpac).</p>
   <p class="disclaimer">⚠️ This site is maintained by a hurricane data enthusiast — not a meteorologist, forecaster, or weather professional of any kind. I just love the data. All information is sourced directly from official NOAA/NHC databases. For official forecasts, watches, warnings, and life-safety information, always refer to the <a href="https://www.nhc.noaa.gov/" target="_blank" rel="noopener noreferrer">National Hurricane Center</a>.</p>
+  <p class="build-time">Page built {now.strftime('%B %d, %Y at %H:%M UTC')}. The data-as-of line above each basin's numbers shows how current the storm data is.</p>
   <p class="kofi-link"><a href="https://ko-fi.com/aceofcanes" target="_blank" rel="noopener noreferrer">☕ Support this project on Ko-fi</a></p>
 </div>
 <script>
+function _relTimes(){{
+  var now=Date.now();
+  document.querySelectorAll('.rel-time[data-ts]').forEach(function(el){{
+    var t=Date.parse(el.getAttribute('data-ts'));
+    if(isNaN(t))return;
+    var m=Math.max(0,Math.round((now-t)/60000)),s;
+    if(m<1)s='just now';
+    else if(m<60)s=m+' min ago';
+    else if(m<48*60){{var h=Math.round(m/60);s=h+(h===1?' hour':' hours')+' ago';}}
+    else s=Math.round(m/1440)+' days ago';
+    el.textContent='('+s+')';
+  }});
+}}
+_relTimes();setInterval(_relTimes,60000);
 function show(id,btn) {{
   document.querySelectorAll('.basin-card').forEach(c=>c.classList.remove('active'));
   document.querySelectorAll('.toggle button').forEach(b=>b.classList.remove('active'));
