@@ -1223,6 +1223,27 @@ def made_ts_landfall(landfall):
     return any(entry[1] != 'TD' for entry in landfall or [] if len(entry) > 1)
 
 
+def depression_only_landfalls(storms):
+    """Named storms whose only landfalls were at depression strength: shown
+    with a landfall in the storm table, but counted as fish storms in the
+    landfall share. Explaining them keeps the two from looking contradictory."""
+    return [s for s in storms
+            if s.get('max_wind', 0) >= MIN_NAMED_STORM_WIND and s.get('landfall')
+            and not made_ts_landfall(s.get('landfall'))]
+
+
+def _depression_landfall_note(storms):
+    """', including Boris, which reached Guerrero, Mexico only as a
+    depression' (or several), or '' when there are none."""
+    items = [f"{s.get('name', 'one storm')} ({s['landfall'][0][0]})" for s in depression_only_landfalls(storms)]
+    if not items:
+        return ''
+    if len(items) == 1:
+        name, place = items[0].rsplit(' (', 1)
+        return f", including {name}, which reached {place[:-1]} only as a depression"
+    return f", including {', '.join(items[:-1])} and {items[-1]}, which reached land only as depressions"
+
+
 def landfall_ace_share(storms):
     """How a season's ACE splits between storms that made landfall at
     tropical-storm strength or stronger and "fish storms" (including storms
@@ -1863,22 +1884,25 @@ def generate_insights(basin_key, current, yearly_totals, historical_storms, year
     # 7b. Landfall share of ACE — how much of the season's energy came from
     # storms that hit land vs. fish storms. Uses current-season storm details
     # (their landfall list includes the geographic fallback for live tracks).
-    details = list(current.get('storm_details', {}).values())
+    details = [dict(d, name=n) for n, d in current.get('storm_details', {}).items()]
     share = landfall_ace_share(details)
     if share:
         avg_share = average_landfall_share(yearly_stats, current_year)
         avg_note = f" ({START_YEAR}–{current_year - 1} average: {avg_share}%)" if avg_share is not None else ""
         label = f"🏝️ Landfall share{' (estimated)' if any(d.get('landfall_estimated') for d in details) else ''}"
         fish = f"{share['fish_count']} fish storm{'s' if share['fish_count'] != 1 else ''}"
+        td_note = _depression_landfall_note(details)
         if share['landfall_count'] == 0:
             insights.append(
-                f"{label}: no storm has made landfall at tropical-storm strength or stronger, "
-                f"so all season ACE came from {fish}{avg_note}")
+                f"{label}: no storm has made landfall at tropical-storm strength or stronger{avg_note}, "
+                f"so {'all ' if share['fish_count'] > 1 else ''}{share['fish_count']} "
+                f"storm{'s' if share['fish_count'] != 1 else ''} count{'' if share['fish_count'] != 1 else 's'} "
+                f"as {'fish storms' if share['fish_count'] != 1 else 'a fish storm'}{td_note}")
         else:
             insights.append(
                 f"{label}: {share['landfall_pct']}% of season ACE came from the "
                 f"{share['landfall_count']} storm{'s' if share['landfall_count'] != 1 else ''} that made landfall "
-                f"at tropical-storm strength or stronger{avg_note}; {share['fish_pct']}% from {fish}")
+                f"at tropical-storm strength or stronger{avg_note}; {share['fish_pct']}% from {fish}{td_note}")
 
     # 8. Named storms — same-date avg alongside full-season avg
     num_storms = len(storms)
