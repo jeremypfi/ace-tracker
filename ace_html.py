@@ -697,7 +697,8 @@ def generate_dashboard_html(basin_data):
 <meta name="twitter:description" content="Track Accumulated Cyclone Energy (ACE) for the {season_year} Atlantic and Eastern Pacific hurricane seasons in real time. Updated every 3 hours from official NOAA data.">
 <meta name="twitter:image" content="https://aceofcanes.com/ace_preview.png">
 <link rel="icon" type="image/png" href="ace.png">
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous" />
+<link rel="stylesheet" href="vendor/leaflet-1.9.4/leaflet.css" integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous" media="print" onload="this.media='all'">
+<noscript><link rel="stylesheet" href="vendor/leaflet-1.9.4/leaflet.css"></noscript>
 <title>{page_title}</title>
 <script>(function(){{try{{var t=localStorage.getItem('ace-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light');else if(!t&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches)document.documentElement.setAttribute('data-theme','light');}}catch(e){{}}}})();</script>
 <style>
@@ -854,6 +855,7 @@ def generate_dashboard_html(basin_data):
   .legend-dot {{ width:9px; height:9px; border-radius:50%; flex-shrink:0; }}
   .spaghetti-toggle {{ display:flex; align-items:center; gap:6px; font-size:0.78em; color:var(--muted); margin-top:8px; cursor:pointer; }}
   .spaghetti-legend {{ margin-top:6px; }}
+  .lib-missing {{ color:var(--muted); font-size:0.85em; text-align:center; padding:24px 8px; }}
   .sp-cycle {{ color:var(--muted); font-size:0.9em; }}
   .sp-note {{ font-size:0.72em; color:var(--muted); margin-top:4px; }}
   .spaghetti-legend .legend-dot {{ width:14px; height:3px; border-radius:2px; }}
@@ -1055,11 +1057,16 @@ function _hexToRgba(hex,a){{
   var r=parseInt(h.substring(0,2),16),g=parseInt(h.substring(2,4),16),b=parseInt(h.substring(4,6),16);
   return 'rgba('+r+','+g+','+b+','+a+')';
 }}
+function _libMissing(box,msg){{
+  if(!box||box.querySelector('.lib-missing'))return;
+  var p=document.createElement('p');p.className='lib-missing';p.textContent=msg;box.appendChild(p);
+}}
 function _renderPaceChart(basinKey){{
   if(_paceCharts[basinKey])return;
   var d=ACE_PACE[basinKey];
   var el=document.getElementById('pace-canvas-'+basinKey);
-  if(!d||!el||typeof Chart==='undefined')return;
+  if(!d||!el)return;
+  if(typeof Chart==='undefined'){{el.style.display='none';_libMissing(el.parentNode,'Chart unavailable right now. The numbers below are unaffected.');return;}}
   var colors=_paceColors();
   var datasets=[
     {{label:'p75',data:d.climatology_p75,borderWidth:0,pointRadius:0,fill:false}},
@@ -1161,6 +1168,7 @@ function _buildMap(slug){{
   var d=ACE_TRACKS[slug];
   var el=document.getElementById('trmap-'+slug);
   if(!d||!d.points||!d.points.length||!el||el._leaflet_id){{_hideTrackSkeleton(slug);return;}}
+  if(typeof L==='undefined'){{_hideTrackSkeleton(slug);_libMissing(el,'Map unavailable right now. Storm details are shown above.');return;}}
   var map=L.map(el,{{zoomControl:true,attributionControl:true}});
   var tiles=L.tileLayer('https://{{s}}.basemaps.cartocdn.com/dark_all/{{z}}/{{x}}/{{y}}{{r}}.png?key=cb1_2ju7_1_dab4d1e9c4e0819a594bda11',{{
     attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>',
@@ -1213,8 +1221,8 @@ function _toggleSpaghetti(slug){{
   if(cb.checked)group.addTo(map);else map.removeLayer(group);
 }}
 </script>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script>
-<script src="https://unpkg.com/chart.js@4.5.1/dist/chart.umd.min.js" integrity="sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ" crossorigin="anonymous"></script>
+<script src="vendor/leaflet-1.9.4/leaflet.js" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script>
+<script src="vendor/chart.js-4.5.1/chart.umd.min.js" integrity="sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ" crossorigin="anonymous"></script>
 <div id="global-tip" class="global-tip"></div>
 <script>
 (function(){{
