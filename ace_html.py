@@ -1144,7 +1144,6 @@ function _toggleSpaghetti(slug){{
     el.addEventListener('mouseleave',hide);
     el.addEventListener('touchstart',show,{{passive:true}});
     el.addEventListener('touchend',hide);
-    if(!el.hasAttribute('tabindex'))el.setAttribute('tabindex','0');
     el.addEventListener('focus',show);
     el.addEventListener('blur',hide);
   }});
@@ -1659,7 +1658,6 @@ function toggleYear(key){{
     el.addEventListener('mouseleave',hide);
     el.addEventListener('touchstart',show,{{passive:true}});
     el.addEventListener('touchend',hide);
-    if(!el.hasAttribute('tabindex'))el.setAttribute('tabindex','0');
     el.addEventListener('focus',show);
     el.addEventListener('blur',hide);
   }});

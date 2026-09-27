@@ -1381,6 +1381,27 @@ class TestLandfallCacheInvalidation(unittest.TestCase):
         self.assertEqual(_last_track_stamp(Broken()), 'unknown')
 
 
+class TestKeyboardAndAria(unittest.TestCase):
+    """Keyboard reachability, ARIA state and focus styling on every page."""
+
+    def _pages(self):
+        basin_data = TestHTMLGeneration()._make_basin_data()
+        return {
+            'dashboard': generate_dashboard_html(basin_data),
+            'history': generate_history_html(basin_data),
+            'records': generate_records_html(basin_data),
+            'what-is-ace': generate_about_html(basin_data),
+        }
+
+    def test_tooltips_do_not_add_tab_stops(self):
+        # Every [data-tip] used to get tabindex=0: ~1,300 tab stops on the
+        # history page (every category chip and Fish Storm label).
+        for name, html in self._pages().items():
+            with self.subTest(page=name):
+                self.assertNotIn("setAttribute('tabindex'", html)
+                self.assertNotIn('tabindex="0"', html)
+
+
 def run_tests():
     """Run all tests"""
     unittest.main(verbosity=2)
