@@ -1485,6 +1485,16 @@ class TestHonestyLabels(unittest.TestCase):
         self.assertTrue(share.startswith('🏝️ Landfall share (estimated):'))
         self.assertIn('made landfall at tropical-storm strength or stronger', share)
 
+    def test_landfall_share_insight_with_no_ts_landfall(self):
+        bd = self._data()[0]
+        bd['current']['storm_details']['Arthur']['landfall'] = [('Guerrero, Mexico', 'TD')]
+        insights = generate_insights('atlantic', bd['current'], bd['yearly_totals'],
+                                     bd['historical_storms'], calculate_yearly_stats(bd['historical_storms']))
+        share = [i for i in insights if i.startswith('🏝️ Landfall share')][0]
+        self.assertIn(': no storm has made landfall at tropical-storm strength or stronger, '
+                      'so all season ACE came from 1 fish storm', share)
+        self.assertNotIn('0 storms', share)
+
 
 class TestGuidanceTimestamps(unittest.TestCase):
     """Relayed model tracks and the NHC cone carry the time they were issued."""

@@ -1837,13 +1837,17 @@ def generate_insights(basin_key, current, yearly_totals, historical_storms, year
     if share:
         avg_share = average_landfall_share(yearly_stats, current_year)
         avg_note = f" ({START_YEAR}–{current_year - 1} average: {avg_share}%)" if avg_share is not None else ""
-        estimated = any(d.get('landfall_estimated') for d in details)
-        insights.append(
-            f"🏝️ Landfall share{' (estimated)' if estimated else ''}: {share['landfall_pct']}% of season ACE came from the "
-            f"{share['landfall_count']} storm{'s' if share['landfall_count'] != 1 else ''} that made landfall "
-            f"at tropical-storm strength or stronger{avg_note}; "
-            f"{share['fish_pct']}% from {share['fish_count']} fish storm{'s' if share['fish_count'] != 1 else ''}"
-        )
+        label = f"🏝️ Landfall share{' (estimated)' if any(d.get('landfall_estimated') for d in details) else ''}"
+        fish = f"{share['fish_count']} fish storm{'s' if share['fish_count'] != 1 else ''}"
+        if share['landfall_count'] == 0:
+            insights.append(
+                f"{label}: no storm has made landfall at tropical-storm strength or stronger, "
+                f"so all season ACE came from {fish}{avg_note}")
+        else:
+            insights.append(
+                f"{label}: {share['landfall_pct']}% of season ACE came from the "
+                f"{share['landfall_count']} storm{'s' if share['landfall_count'] != 1 else ''} that made landfall "
+                f"at tropical-storm strength or stronger{avg_note}; {share['fish_pct']}% from {fish}")
 
     # 8. Named storms — same-date avg alongside full-season avg
     num_storms = len(storms)
