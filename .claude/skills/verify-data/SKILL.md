@@ -34,7 +34,7 @@ Use `basin='east_pacific'` for Pacific storms.
 
 ## 3. Compare Against Tracker Output
 
-Find storms in the **Historical Storms** tab of the Excel files. For each storm:
+Find each storm on the history page (`data/history.html`: expand its year) or in the `historical_storms` list from `parse_hurdat2()`. For each storm:
 
 | Field | Tolerance |
 |---|---|
