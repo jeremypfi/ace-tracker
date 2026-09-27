@@ -2,7 +2,7 @@
 
 **Atlantic & Eastern Pacific Hurricane ACE Tracker**
 
-Tracks Accumulated Cyclone Energy (ACE) for Atlantic and Eastern Pacific hurricane seasons with storm-by-storm data from 1991 onward. Publishes a live web dashboard updated every 3 hours during hurricane season.
+Tracks Accumulated Cyclone Energy (ACE) for Atlantic and Eastern Pacific hurricane seasons with storm-by-storm data from 1991 onward. Publishes a web dashboard rebuilt every 3 hours from NOAA/NHC data. It's a hobby data site, not a forecast: for watches, warnings, and forecasts, go to the [National Hurricane Center](https://www.nhc.noaa.gov/).
 
 [![Tests](https://github.com/jeremypfi/ace-tracker/actions/workflows/tests.yml/badge.svg)](https://github.com/jeremypfi/ace-tracker/actions/workflows/tests.yml)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
@@ -20,27 +20,28 @@ Tracks Accumulated Cyclone Energy (ACE) for Atlantic and Eastern Pacific hurrica
 | Records Since 1991 | https://aceofcanes.com/records.html |
 | What Is ACE? (explainer + calculator) | https://aceofcanes.com/what-is-ace.html |
 
-Updated every 3 hours during hurricane season (Eastern Pacific: May 15 – Nov 30 · Atlantic: Jun 1 – Nov 30).
+Rebuilt every 3 hours, year-round. Hurricane seasons: Eastern Pacific May 15 – Nov 30, Atlantic Jun 1 – Nov 30. Each basin shows when its storm data is from ("Best-track data as of …"), which can lag the page build by a few hours; the build time is in the footer.
 
 ---
 
 ## Features
 
-- **Real-time tracking** — current season ACE updated every 3 hours via NHC best track data
+- **Live season tracking** — current season ACE rebuilt every 3 hours from NHC's real-time best track, with a **data-as-of stamp** (and relative "x hours ago") next to each basin's numbers
+- **Honest labels** — in-season ACE is marked **preliminary** (it's revised in NOAA's spring HURDAT2 release), and landfalls estimated from a live track are marked **est.**
 - **Dual basin** — Atlantic and Eastern Pacific, toggle between them on each page
 - **Dark/light mode** — defaults to system preference for first-time visitors, persisted across sessions after that
 - **Season progress bar** — shows current day and percent complete
-- **Landfall data** — each storm shows where it made landfall and its intensity at the moment of impact (not just peak). Multi-landfall storms show all locations (e.g. `Florida (Cat 1) · Louisiana (Cat 3)`). Storms that never made landfall are labeled **Fish Storm**
+- **Landfall data** — each storm shows where it made landfall and its intensity at the moment of impact (not just peak). Multi-landfall storms show all locations (e.g. `Florida (Cat 1) · Louisiana (Cat 3)`). Storms that never made landfall are labeled **Fish Storm**. For the current season, landfalls come from the preliminary track and are marked **est.** until NHC's post-season report
 - **NHC development alert** — amber banner appears when NHC is tracking an area with Medium (≥40%) or High (≥70%) formation chances, with direct link to the NHC Tropical Weather Outlook
 - **Honest season comparisons** — Season Insights show both same-date historical averages (what's typical by this point in the season) and full-season averages, so early-season numbers aren't misleadingly compared against totals that take six months to accumulate
 - **Storm track maps** — interactive Leaflet maps per storm with intensity color-coding; expandable inline on the dashboard, with a loading indicator while tiles load
-- **Spaghetti model tracks** — active storms overlay multi-model forecast tracks on the storm map, toggleable per storm
+- **Spaghetti model tracks** — active storms overlay multi-model forecast tracks on the storm map, toggleable per storm. Each model is labeled with its run time (e.g. `GFS 18Z Sep 26`), and a model whose latest run is more than 24 hours behind the newest run for that storm is left off
 - **Wind speed unit toggle** — switch the dashboard between knots, mph, and km/h; persisted across visits, defaults to knots
 - **Shareable storm links** — copy a direct link to any storm on the dashboard via the 🔗 button on each row; opening the link auto-switches basin and expands that storm
-- **NHC forecast cone** — active storms show their official 5-day forecast cone graphic, fetched from NHC once per run and served from our own domain (not hotlinked)
+- **NHC forecast cone** — active storms show their official 5-day forecast cone graphic with its advisory time, fetched from NHC once per run and served from our own domain (not hotlinked)
 - **Season history page** — all seasons 1991–present in a sortable table with classification badges, top-5 highlights, per-year storm accordions with landfall data, and a long-term average row. Filter by decade (shareable links like `history.html#pacific&decade=2010s`)
 - **NHC storm reports** — each storm on the history page links to its official NHC Tropical Cyclone Report, with season-level report links as a fallback
-- **Landfall ACE share** — how much of each season's ACE came from storms that made landfall vs. fish storms, compared with the 1991–present average
+- **Landfall ACE share** — how much of each season's ACE came from storms that made landfall at tropical-storm strength or stronger vs. fish storms (a storm that only crossed land as a depression counts as a fish storm), compared with the 1991–present average
 - **Records page** — highest single-storm ACE, longest-lived storm, strongest landfall, and earliest/latest-forming named storms since 1991 (formation = first tropical/subtropical storm point, not the first track point)
 - **Records in Play** — the dashboard lists season records being set or within reach (latest first hurricane/major, lowest or most ACE for the date, fastest to 100 ACE), based on history only, never a forecast
 - **What Is ACE? page** — formula, worked example, NOAA thresholds, an ACE calculator (kt, mph, or km/h), and facts from the site's own data
@@ -49,7 +50,9 @@ Updated every 3 hours during hurricane season (Eastern Pacific: May 15 – Nov 3
 - **ACE pace chart** — plots the season's cumulative ACE against historical climatology (mean and 25th/75th percentile band) and last year's pace
 - **On this day in hurricane history** — Season Insights surface the strongest historical storm (by ACE) active on today's calendar date in a past season
 - **NOAA classifications** — Below Normal / Near Normal / Above Normal / Extremely Active
-- **Season projection widget** — shows the daily ACE rate needed for the rest of the season to reach each remaining NOAA classification by Nov 30
+- **Season projection widget** — shows the daily ACE rate needed for the rest of the season to reach each remaining NOAA classification by Nov 30 (arithmetic, not a forecast)
+- **Accessible** — keyboard-operable sort headers and storm/season rows (with `aria-sort`, `aria-expanded`, `aria-pressed`), a visible focus ring on every page, and text and badge colors that meet WCAG AA contrast in both themes
+- **No third-party CDN** — Leaflet and Chart.js are self-hosted; if either ever fails to load, the map or chart says so instead of staying blank
 
 ---
 
@@ -115,7 +118,7 @@ All tests must pass before committing. Use the `/pre-commit` skill in Claude Cod
 ```
 ace-tracker/
 ├── ace_data.py             # Data fetch, ACE calc, plain-text report generation
-├── ace_html.py             # Dashboard + history HTML rendering
+├── ace_html.py             # Dashboard, history, records, and What Is ACE? page rendering
 ├── ace_tracker.py          # CLI entrypoint — wires ace_data.py + ace_html.py together
 ├── test_ace_tracker.py     # unit + smoke tests
 ├── verify_pr.py            # Consolidated PR check: tests + syntax check + a live tracker run
@@ -137,12 +140,13 @@ ace-tracker/
 │   ├── dependabot.yml      # Automated dependency updates
 │   └── CODEOWNERS          # @jeremypfi must approve all PRs
 ├── SECURITY.md
-└── data/                   # Generated output (html gitignored, images committed)
+└── data/                   # Published as the site (html generated + gitignored; ace.png and vendor/ committed)
     ├── ace.png
-    ├── ACE_Dashboard.html
+    ├── ACE_Dashboard.html  # copied to index.html at publish time
     ├── history.html
     ├── records.html
     ├── what-is-ace.html
+    ├── vendor/             # Self-hosted Leaflet 1.9.4 and Chart.js 4.5.1, with licenses
     └── cones/              # NHC forecast cone images, fetched fresh each run (gitignored)
 ```
 
@@ -161,7 +165,7 @@ ace-tracker/
 
 ## How Landfall Detection Works
 
-Historical storms (completed seasons) use the official HURDAT2 `'L'` landfall markers, which record the exact time and position of each landfall. These markers aren't added to the real-time best-track data until the post-season analysis, so active-season storms use a geographic fallback: track points are checked against Natural Earth shapefiles using exact point-in-polygon containment. Results are cached in `landfall_cache.json` and persisted via GitHub Actions cache so geocoding only runs for new or updated storms.
+Historical storms (completed seasons) use the official HURDAT2 `'L'` landfall markers, which record the exact time and position of each landfall. These markers aren't added to the real-time best-track data until the post-season analysis, so active-season storms use a geographic fallback: track points are checked against Natural Earth shapefiles using exact point-in-polygon containment. Those landfalls are shown as **est.**, and only landfalls at tropical-storm strength or stronger count toward the landfall ACE share. Results are cached in `landfall_cache.json` and persisted via GitHub Actions cache so geocoding only runs for new or updated storms.
 
 ---
 
@@ -176,6 +180,8 @@ Key constants, mostly in `ace_data.py` (`OUTPUT_FOLDER` is the one exception —
 | `LANDFALL_CACHE_PATH` | Path to the landfall geocoding cache (default: repo root) |
 | `BASINS` | Normal ACE values and average storm counts per basin |
 | `BACKUP_DATA` | Fallback season data used if NOAA is unreachable |
+| `SPAGHETTI_MODELS` | Forecast models drawn on active-storm maps |
+| `SPAGHETTI_MAX_RUN_LAG_HOURS` | A model whose latest run trails the storm's newest model run by more than this is left off the map (default: 24) |
 
 ---
 
