@@ -1617,7 +1617,7 @@ def generate_history_html(basin_data):
   <button class="theme-btn" id="themeBtn" onclick="toggleTheme()">☀</button>
 </div>
 <div class="updated">Updated: {now.strftime('%B %d, %Y at %H:%M UTC')}</div>
-<div class="nav-link"><a href="index.html">← Current Season</a><a href="records.html">🏆 Records</a><a href="what-is-ace.html">❓ What is ACE?</a></div>
+<div class="nav-link"><a href="/">← Current Season</a><a href="records.html">🏆 Records</a><a href="what-is-ace.html">❓ What is ACE?</a></div>
 <details class="ace-explain">
   <summary>What is ACE? <span class="ace-explain-hint">(tap to expand)</span></summary>
   <p>Accumulated Cyclone Energy (ACE) measures total hurricane season activity by combining storm intensity and duration. A major hurricane that lasts two weeks contributes far more than a brief tropical storm. NOAA uses seasonal ACE totals to classify years as <b>Below Normal</b> (&lt;73), <b>Near Normal</b> (73–126), <b>Above Normal</b> (126–159), or <b>Extremely Active</b> (159+). <a href="what-is-ace.html">More on ACE, plus a calculator →</a></p>
@@ -1928,7 +1928,7 @@ def generate_records_html(basin_data):
   <button class="theme-btn" id="themeBtn" onclick="toggleTheme()">☀</button>
 </div>
 <div class="updated">Updated: {now.strftime('%B %d, %Y at %H:%M UTC')}</div>
-<div class="nav-link"><a href="index.html">← Current Season</a><a href="history.html">Season History</a><a href="what-is-ace.html">❓ What is ACE?</a></div>
+<div class="nav-link"><a href="/">← Current Season</a><a href="history.html">Season History</a><a href="what-is-ace.html">❓ What is ACE?</a></div>
 <div class="toggle">
   <button class="active" onclick="show('atlantic',this)">Atlantic</button>
   <button onclick="show('pacific',this)">E/C Pacific</button>
@@ -2004,7 +2004,7 @@ def _ace_fun_facts(basin_data):
         facts.append(
             f"The {current_year} {html_escape(name)} season is at <b>{cur:.1f} ACE</b> so far "
             f"(preliminary; {get_noaa_classification(cur, bd['basin_key'])}). "
-            f"<a href=\"index.html#{bd['basin_key']}\">See the live dashboard</a>.")
+            f"<a href=\"/#{bd['basin_key']}\">See the live dashboard</a>.")
     return facts
 
 
@@ -2103,7 +2103,7 @@ def generate_about_html(basin_data):
   <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" aria-label="Toggle light and dark theme">☀</button>
 </div>
 <div class="updated">Updated: {now.strftime('%B %d, %Y at %H:%M UTC')}</div>
-<div class="nav-link"><a href="index.html">← Current Season</a><a href="history.html">📊 Season History</a><a href="records.html">🏆 Records</a></div>
+<div class="nav-link"><a href="/">← Current Season</a><a href="history.html">📊 Season History</a><a href="records.html">🏆 Records</a></div>
 
 <section class="card">
   <h2>Accumulated Cyclone Energy</h2>

@@ -1542,6 +1542,23 @@ class TestGuidanceTimestamps(unittest.TestCase):
         self.assertNotIn('advisory issued', html)
 
 
+class TestCanonicalHomeLinks(unittest.TestCase):
+    """Links back to the dashboard use its canonical URL "/" so search
+    engines do not see "/" and "/index.html" as two pages."""
+
+    def test_pages_link_home_to_root(self):
+        basin_data = TestHTMLGeneration()._make_basin_data()
+        for gen in (generate_history_html, generate_records_html, generate_about_html):
+            with self.subTest(page=gen.__name__):
+                html = gen(basin_data)
+                self.assertIn('<a href="/">← Current Season</a>', html)
+                self.assertNotIn('index.html', html)
+
+    def test_what_is_ace_dashboard_link_keeps_basin_anchor(self):
+        html = generate_about_html(TestHTMLGeneration()._make_basin_data())
+        self.assertIn('<a href="/#atlantic">See the live dashboard</a>', html)
+
+
 def run_tests():
     """Run all tests"""
     unittest.main(verbosity=2)
