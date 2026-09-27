@@ -34,6 +34,10 @@ from ace_data import (
     parse_tcr_index,
     match_tcr_reports,
     _first_tropical_storm_time,
+    _first_track_time,
+    _date_reached_ace,
+    RECORD_WATCH_DAYS,
+    fetch_tcr_reports,
     _clean_landfalls,
     landfall_ace_share,
     average_landfall_share,
@@ -663,6 +667,34 @@ class TestRecordsInPlay(unittest.TestCase):
 
     def test_empty_history_returns_no_records(self):
         self.assertEqual(calculate_records_in_play([], 'atlantic', 10), [])
+
+    def test_watch_window_boundary(self):
+        # Latest first hurricane in the fixture is Sep 11; the panel starts
+        # watching RECORD_WATCH_DAYS (14) days before, and not a day earlier.
+        self.assertEqual(RECORD_WATCH_DAYS, 14)
+        on_edge = calculate_records_in_play(self._history(), 'atlantic', 0, datetime(2026, 8, 28))
+        hu = next(r for r in on_edge if 'first hurricane' in r['title'])
+        self.assertEqual(hu['status'], 'in_play')
+        self.assertIn('14 days from now', hu['detail'])
+        outside = calculate_records_in_play(self._history(), 'atlantic', 0, datetime(2026, 8, 27))
+        self.assertFalse(any('first hurricane' in r['title'] for r in outside))
+
+    def test_one_day_left_is_singular(self):
+        records = calculate_records_in_play(self._history(), 'atlantic', 0, datetime(2026, 9, 10))
+        hu = next(r for r in records if 'first hurricane' in r['title'])
+        self.assertIn('1 day from now', hu['detail'])
+
+    def test_panel_is_empty_in_january(self):
+        self.assertEqual(calculate_records_in_play(self._history(), 'atlantic', 0, datetime(2026, 1, 15)), [])
+
+    def test_date_reached_ace(self):
+        storms = [self._storm(2025, 'Erin', datetime(2025, 8, 1), 10, 120)]
+        reached = _date_reached_ace(storms, 2025, 100)
+        self.assertIsNotNone(reached)
+        self.assertTrue(datetime(2025, 8, 1) <= reached <= datetime(2025, 8, 11))
+        self.assertLess(_date_reached_ace(storms, 2025, 50), reached)
+        self.assertIsNone(_date_reached_ace(storms, 2025, 200))
+        self.assertIsNone(_date_reached_ace([], 2025, 1))
 
     def test_panel_html_escapes_and_hides_when_empty(self):
         self.assertEqual(_records_in_play_html([]), '')
@@ -1751,6 +1783,50 @@ class TestVendoredLibraries(unittest.TestCase):
         self.assertIn('Chart unavailable right now.', html)
 
 
+class TestFirstHurricaneDates(unittest.TestCase):
+    """hurricane_date / major_date come from the first HU point at 64 / 96 kt."""
+
+    class _Storm:
+        def __init__(self, rows):
+            self.time = [r[0] for r in rows]
+            self.type = [r[1] for r in rows]
+            self.vmax = [r[2] for r in rows]
+
+    def test_thresholds(self):
+        t = [datetime(2026, 9, 1, h) for h in (0, 6, 12, 18)] + [datetime(2026, 9, 2, 0)]
+        storm = self._Storm([(t[0], 'TS', 55), (t[1], 'HU', 60), (t[2], 'HU', 64),
+                             (t[3], 'HU', 95), (t[4], 'HU', 96)])
+        self.assertEqual(_first_track_time(storm, {'HU'}, 64), t[2])  # HU at 60 kt doesn't count
+        self.assertEqual(_first_track_time(storm, {'HU'}, 96), t[4])
+
+    def test_extratropical_winds_do_not_count(self):
+        t = [datetime(2026, 10, 1, h) for h in (0, 6)]
+        storm = self._Storm([(t[0], 'TS', 60), (t[1], 'EX', 100)])
+        self.assertIsNone(_first_track_time(storm, {'HU'}, 64))
+
+    def test_unreadable_track_returns_none(self):
+        class Broken:
+            @property
+            def time(self):
+                raise RuntimeError('no track')
+        self.assertIsNone(_first_track_time(Broken(), {'HU'}, 64))
+
+
+class TestTcrFetchFailure(unittest.TestCase):
+    """The NHC report index failing to download degrades to season links."""
+
+    def test_network_error_returns_empty(self):
+        from unittest import mock
+        import ace_data
+        saved = ace_data._tcr_rows_cache
+        ace_data._tcr_rows_cache = None
+        try:
+            with mock.patch('urllib.request.urlopen', side_effect=OSError('offline')):
+                self.assertEqual(fetch_tcr_reports([{'id': 'AL012005', 'name': 'Arlene', 'year': 2005}],
+                                                   'atlantic'), {})
+            self.assertIsNone(ace_data._tcr_rows_cache)
+        finally:
+            ace_data._tcr_rows_cache = saved
 class TestHurdatSanitizer(unittest.TestCase):
     """Malformed HURDAT2 rows are dropped and attributed to their storm, so
     the log says whether they matter for this site (1991+)."""
