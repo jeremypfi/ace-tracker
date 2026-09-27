@@ -70,10 +70,20 @@ jobs:
     # would silently drop estimated landfalls for live storms. The files are
     # static; bump the key suffix to force a fresh download.
     - name: Restore Natural Earth boundaries
+      id: naturalearth
       uses: actions/cache@v6
       with:
         path: ~/.local/share/cartopy
         key: naturalearth-10m-cultural-v1
+
+    # Download on a cache miss even if this run needs no geocoding, so the
+    # path above always exists and gets saved (otherwise the cache only
+    # fills on a run that happens to geocode, and other runs log a path
+    # warning).
+    - name: Download Natural Earth boundaries (cache miss)
+      if: steps.naturalearth.outputs.cache-hit != 'true'
+      run: |
+        python -c "import cartopy.io.shapereader as s; [s.natural_earth(resolution='10m', category='cultural', name=n) for n in ('admin_1_states_provinces', 'admin_0_countries')]"
 
     - name: Generate dashboard
       env:
