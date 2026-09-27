@@ -541,7 +541,7 @@ def generate_dashboard_html(basin_data):
 
             rows.append(
                 f'<tr class="{row_classes}" id="storm-row-{slug}">'
-                f'<td data-v="{html_escape(name)}"><button class="storm-name-btn" id="trbtn-{slug}" onclick="toggleTrack(\'{slug}\')">'
+                f'<td data-v="{html_escape(name)}"><button class="storm-name-btn" id="trbtn-{slug}" aria-expanded="false" aria-controls="trpanel-{slug}" onclick="toggleTrack(\'{slug}\')">'
                 f'{active_dot}{html_escape(name)}<span class="storm-chevron">&#9658;</span></button>'
                 f'<button class="storm-share-btn" type="button" data-tip="Copy link to this storm" '
                 f'aria-label="Copy link to {html_escape(name)}" onclick="copyStormLink(event,\'{slug}\')">&#128279;</button></td>'
@@ -598,11 +598,11 @@ def generate_dashboard_html(basin_data):
       <div class="table-wrap">
         <table>
           <thead><tr>
-            <th class="sort-th" onclick="sortDash(this,0,'s')">Storm <span class="sa"></span></th>
-            <th class="sort-th" onclick="sortDash(this,1,'n')">ACE <span class="sa">&#9660;</span></th>
-            <th class="sort-th" onclick="sortDash(this,2,'n')">% <span class="sa"></span></th>
-            <th class="sort-th" onclick="sortDash(this,3,'n')">Category <span class="sa"></span></th>
-            <th class="sort-th" onclick="sortDash(this,4,'n')"><span class="wind-th-label" data-kt-label="Wind (kt)" data-mph-label="Wind (mph)" data-kmh-label="Wind (km/h)">Wind (kt)</span> <span class="sa"></span></th>
+            <th class="sort-th"><button type="button" class="sort-btn" onclick="sortDash(this,0,'s')">Storm <span class="sa" aria-hidden="true"></span></button></th>
+            <th class="sort-th" aria-sort="descending"><button type="button" class="sort-btn" onclick="sortDash(this,1,'n')">ACE <span class="sa" aria-hidden="true">&#9660;</span></button></th>
+            <th class="sort-th"><button type="button" class="sort-btn" onclick="sortDash(this,2,'n')">% <span class="sa" aria-hidden="true"></span></button></th>
+            <th class="sort-th"><button type="button" class="sort-btn" onclick="sortDash(this,3,'n')">Category <span class="sa" aria-hidden="true"></span></button></th>
+            <th class="sort-th"><button type="button" class="sort-btn" onclick="sortDash(this,4,'n')"><span class="wind-th-label" data-kt-label="Wind (kt)" data-mph-label="Wind (mph)" data-kmh-label="Wind (km/h)">Wind (kt)</span> <span class="sa" aria-hidden="true"></span></button></th>
             <th>Landfall</th>
           </tr></thead>
           <tbody id="storm-{bd['basin_key']}">
@@ -703,19 +703,20 @@ def generate_dashboard_html(basin_data):
 <style>
   :root {{
     --bg:#0a1628; --card:#132238; --box:#1a2d4a; --accent:#4fc3f7; --accent2:#29b6f6;
-    --accent-h3:#81d4fa; --text:#e0e6ed; --text-strong:#ffffff; --muted:#78909c;
-    --muted-dark:#546e7a; --border:#1e3a5f; --danger:#ef5350; --danger-bg:#2a1a1a;
+    --accent-h3:#81d4fa; --text:#e0e6ed; --text-strong:#ffffff; --muted:#8aa0ab;
+    --muted-dark:#78909c; --border:#1e3a5f; --danger:#ef5350; --danger-bg:#2a1a1a;
     --danger-text:#ef8a80; --total-row:#1a2d4a; --sources-bg:#0d1b2a; --gauge-bg:#1e3a5f;
     --pace-last:#ffb74d;
   }}
   [data-theme="light"] {{
     --bg:#f0f4f8; --card:#ffffff; --box:#e8f0fe; --accent:#0277bd; --accent2:#0288d1;
-    --accent-h3:#01579b; --text:#1a2d4a; --text-strong:#0a1628; --muted:#607d8b;
+    --accent-h3:#01579b; --text:#1a2d4a; --text-strong:#0a1628; --muted:#4f6773;
     --muted-dark:#455a64; --border:#b0bec5; --danger:#d32f2f; --danger-bg:#ffeaea;
     --danger-text:#c62828; --total-row:#e8f0fe; --sources-bg:#e2ecf7; --gauge-bg:#c9daf8;
     --pace-last:#e65100;
   }}
   * {{ margin:0; padding:0; box-sizing:border-box; }}
+  :focus-visible {{ outline:2px solid var(--accent); outline-offset:2px; }}
   body {{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:var(--bg); color:var(--text); padding:12px; transition:background 0.2s,color 0.2s; }}
   .header {{ display:grid; grid-template-columns:1fr auto 1fr; align-items:center; margin:8px 0; padding:0 4px; }}
   h1 {{ grid-column:2; color:var(--accent); font-size:1.4em; text-align:center; display:flex; align-items:center; justify-content:center; gap:8px; }}
@@ -771,6 +772,7 @@ def generate_dashboard_html(basin_data):
   table {{ width:100%; border-collapse:collapse; font-size:0.85em; }}
   th {{ background:var(--box); color:var(--accent); padding:8px 6px; text-align:left; position:sticky; top:0; }}
   th.sort-th {{ cursor:pointer; user-select:none; padding:10px 6px; }}
+  .sort-btn {{ background:none; border:0; padding:0; font:inherit; color:inherit; cursor:pointer; text-align:inherit; white-space:inherit; }}
   th.sort-th:hover {{ color:var(--text-strong); }}
   .sa {{ font-size:0.7em; margin-left:2px; opacity:0.7; }}
   td {{ padding:6px; border-bottom:1px solid var(--border); color:var(--text); }}
@@ -830,8 +832,8 @@ def generate_dashboard_html(basin_data):
   @keyframes trpulse {{ 0%{{box-shadow:0 0 0 0 rgba(76,175,80,0.7);}} 70%{{box-shadow:0 0 0 6px rgba(76,175,80,0);}} 100%{{box-shadow:0 0 0 0 rgba(76,175,80,0);}} }}
   tr.active-storm-row {{ border-left:3px solid #4caf50; }}
   .track-row td {{ padding:0; border-bottom:2px solid var(--border); }}
-  .track-panel {{ overflow:hidden; max-height:0; transition:max-height 0.35s ease; background:var(--card); }}
-  .track-panel.open {{ max-height:1500px; }}
+  .track-panel {{ overflow:hidden; max-height:0; visibility:hidden; transition:max-height 0.35s ease, visibility 0s linear 0.35s; background:var(--card); }}
+  .track-panel.open {{ max-height:1500px; visibility:visible; transition:max-height 0.35s ease, visibility 0s; }}
   .track-inner {{ padding:12px 14px 14px; }}
   .track-map {{ height:320px; border-radius:8px; border:1px solid var(--border); margin-bottom:10px; }}
   .track-map-wrap {{ position:relative; margin-bottom:10px; }}
@@ -873,8 +875,8 @@ def generate_dashboard_html(basin_data):
 <div class="header">
   <h1><img src="ace.png" class="logo" alt="" aria-hidden="true"> Hurricane ACE Dashboard</h1>
   <div class="header-actions">
-    <button class="unit-btn" id="unitBtn" onclick="toggleWindUnit()" title="Wind speed unit">kt</button>
-    <button class="theme-btn" id="themeBtn" onclick="toggleTheme()">☀</button>
+    <button class="unit-btn" id="unitBtn" onclick="toggleWindUnit()" title="Wind speed unit" aria-label="Wind speed unit: kt">kt</button>
+    <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" aria-label="Toggle light and dark theme">☀</button>
   </div>
 </div>
 <div class="nav-link"><a href="history.html">📊 Season History ({START_YEAR}–present)</a><a href="records.html">🏆 Records</a><a href="what-is-ace.html">❓ What is ACE?</a></div>
@@ -883,8 +885,8 @@ def generate_dashboard_html(basin_data):
   <p>Accumulated Cyclone Energy (ACE) measures total hurricane season activity by combining storm intensity and duration. A major hurricane that lasts two weeks contributes far more than a brief tropical storm. NOAA uses seasonal ACE totals to classify years as <b>Below Normal</b> (&lt;73), <b>Near Normal</b> (73–126), <b>Above Normal</b> (126–159), or <b>Extremely Active</b> (159+). <a href="what-is-ace.html">More on ACE, plus a calculator →</a></p>
 </details>
 <div class="toggle">
-  <button class="active" onclick="show('atlantic',this)">Atlantic</button>
-  <button onclick="show('pacific',this)">E/C Pacific</button>
+  <button class="active" aria-pressed="true" onclick="show('atlantic',this)">Atlantic</button>
+  <button aria-pressed="false" onclick="show('pacific',this)">E/C Pacific</button>
 </div>
 {''.join(sections)}
 <div class="sources">
@@ -917,9 +919,10 @@ function _relTimes(){{
 _relTimes();setInterval(_relTimes,60000);
 function show(id,btn) {{
   document.querySelectorAll('.basin-card').forEach(c=>c.classList.remove('active'));
-  document.querySelectorAll('.toggle button').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.toggle button').forEach(b=>{{b.classList.remove('active');b.setAttribute('aria-pressed','false');}});
   document.getElementById(id)?.classList.add('active');
   btn.classList.add('active');
+  btn.setAttribute('aria-pressed','true');
   try{{history.replaceState(null,'','#'+id);}}catch(e){{}}
   _renderPaceChart(id);
 }}
@@ -928,7 +931,7 @@ function toggleTheme() {{
   var light=h.getAttribute('data-theme')==='light';
   h.setAttribute('data-theme',light?'dark':'light');
   try{{localStorage.setItem('ace-theme',light?'dark':'light');}}catch(e){{}}
-  document.getElementById('themeBtn').textContent=light?'☀':'☾';
+  document.getElementById('themeBtn').textContent=light?'☀':'☾';document.getElementById('themeBtn').setAttribute('aria-label',document.documentElement.getAttribute('data-theme')==='light'?'Switch to dark mode':'Switch to light mode');
   _restylePaceCharts();
 }}
 var WIND_UNITS=['kt','mph','kmh'];
@@ -949,7 +952,7 @@ function _fmtWind(kt) {{
 function applyWindUnit() {{
   var unit=_windUnit();
   var btn=document.getElementById('unitBtn');
-  if(btn)btn.textContent=WIND_UNIT_LABELS[unit];
+  if(btn){{btn.textContent=WIND_UNIT_LABELS[unit];btn.setAttribute('aria-label','Wind speed unit: '+WIND_UNIT_LABELS[unit]);}}
   document.querySelectorAll('.wind-val').forEach(function(el){{
     el.textContent=String(_convertWind(parseFloat(el.getAttribute('data-kt'))));
   }});
@@ -990,7 +993,7 @@ function copyStormLink(e,slug) {{
   }}
 }}
 document.addEventListener('DOMContentLoaded',function() {{
-  document.getElementById('themeBtn').textContent=document.documentElement.getAttribute('data-theme')==='light'?'☾':'☀';
+  document.getElementById('themeBtn').textContent=document.documentElement.getAttribute('data-theme')==='light'?'☾':'☀';document.getElementById('themeBtn').setAttribute('aria-label',document.documentElement.getAttribute('data-theme')==='light'?'Switch to dark mode':'Switch to light mode');
   applyWindUnit();
   var hash=location.hash.replace('#','');
   var match=[].slice.call(document.querySelectorAll('.toggle button')).filter(function(b){{return(b.getAttribute('onclick')||'').indexOf("'"+hash+"'")>=0;}})[0];
@@ -1036,6 +1039,7 @@ function sortDash(th,col,type){{
     if(tr)tbody.appendChild(tr);
   }});
   card.querySelectorAll('.sort-th .sa').forEach(function(s,i){{s.innerHTML=i===col?(asc?'&#9650;':'&#9660;'):''}});
+  card.querySelectorAll('th.sort-th').forEach(function(h,i){{if(i===col)h.setAttribute('aria-sort',asc?'ascending':'descending');else h.removeAttribute('aria-sort');}});
 }}
 var ACE_TRACKS={_track_json};
 var ACE_PACE={_pace_json};
@@ -1132,9 +1136,9 @@ function toggleTrack(slug){{
   var btn=document.getElementById('trbtn-'+slug);
   if(!panel)return;
   var open=panel.classList.contains('open');
-  if(open){{panel.classList.remove('open');if(btn)btn.classList.remove('open');return;}}
+  if(open){{panel.classList.remove('open');if(btn){{btn.classList.remove('open');btn.setAttribute('aria-expanded','false');}}return;}}
   panel.classList.add('open');
-  if(btn)btn.classList.add('open');
+  if(btn){{btn.classList.add('open');btn.setAttribute('aria-expanded','true');}}
   if(!_trMaps[slug]){{_trMaps[slug]=true;setTimeout(function(){{_buildMap(slug);}},25);}}
 }}
 function _hideTrackSkeleton(slug){{
@@ -1235,7 +1239,6 @@ function _toggleSpaghetti(slug){{
     el.addEventListener('mouseleave',hide);
     el.addEventListener('touchstart',show,{{passive:true}});
     el.addEventListener('touchend',hide);
-    if(!el.hasAttribute('tabindex'))el.setAttribute('tabindex','0');
     el.addEventListener('focus',show);
     el.addEventListener('blur',hide);
   }});
@@ -1391,7 +1394,7 @@ def generate_history_html(basin_data):
             rows.append(
                 f'<tr class="{row_cls} yr-data-row" id="{yr_key}" data-decade="{decade}">'
                 f'<td data-v="{year}" style="white-space:nowrap">'
-                f'<button class="yr-expand-btn" id="yrbtn-{yr_key}" onclick="toggleYear(\'{yr_key}\')">'
+                f'<button class="yr-expand-btn" id="yrbtn-{yr_key}" aria-expanded="false" aria-controls="yrpanel-{yr_key}" onclick="toggleYear(\'{yr_key}\')">'
                 f'<b>{year}</b>{active_label}<span class="yr-chevron">&#9658;</span></button></td>'
                 f'<td data-v="{ace:.4f}"><b>{ace:.1f}</b>{prelim_html if is_active else ""}<div class="ace-bar"><div class="ace-bar-fill" style="width:{ace_bar_pct}%"></div></div></td>'
                 f'<td data-v="{pct}">{pct}%</td>'
@@ -1436,15 +1439,15 @@ def generate_history_html(basin_data):
         <table class="hist-table">
           <thead>
             <tr>
-              <th class="sort-th" onclick="sortHist(this,0,'n')">Year <span class="sa">▼</span></th>
-              <th class="sort-th" onclick="sortHist(this,1,'n')">ACE <span class="sa"></span></th>
-              <th class="sort-th" onclick="sortHist(this,2,'n')">% Normal <span class="sa"></span></th>
-              <th class="sort-th" onclick="sortHist(this,3,'n')">Classification <span class="sa"></span></th>
-              <th class="sort-th" onclick="sortHist(this,4,'n')">Named <span class="sa"></span></th>
-              <th class="sort-th" onclick="sortHist(this,5,'n')">Hurr. <span class="sa"></span></th>
-              <th class="sort-th" onclick="sortHist(this,6,'n')">Major <span class="sa"></span></th>
-              <th class="sort-th" onclick="sortHist(this,7,'s')">ACE Leader <span class="sa"></span></th>
-              <th class="sort-th" onclick="sortHist(this,8,'n')">Rank <span class="sa"></span></th>
+              <th class="sort-th" aria-sort="descending"><button type="button" class="sort-btn" onclick="sortHist(this,0,'n')">Year <span class="sa" aria-hidden="true">▼</span></button></th>
+              <th class="sort-th"><button type="button" class="sort-btn" onclick="sortHist(this,1,'n')">ACE <span class="sa" aria-hidden="true"></span></button></th>
+              <th class="sort-th"><button type="button" class="sort-btn" onclick="sortHist(this,2,'n')">% Normal <span class="sa" aria-hidden="true"></span></button></th>
+              <th class="sort-th"><button type="button" class="sort-btn" onclick="sortHist(this,3,'n')">Classification <span class="sa" aria-hidden="true"></span></button></th>
+              <th class="sort-th"><button type="button" class="sort-btn" onclick="sortHist(this,4,'n')">Named <span class="sa" aria-hidden="true"></span></button></th>
+              <th class="sort-th"><button type="button" class="sort-btn" onclick="sortHist(this,5,'n')">Hurr. <span class="sa" aria-hidden="true"></span></button></th>
+              <th class="sort-th"><button type="button" class="sort-btn" onclick="sortHist(this,6,'n')">Major <span class="sa" aria-hidden="true"></span></button></th>
+              <th class="sort-th"><button type="button" class="sort-btn" onclick="sortHist(this,7,'s')">ACE Leader <span class="sa" aria-hidden="true"></span></button></th>
+              <th class="sort-th"><button type="button" class="sort-btn" onclick="sortHist(this,8,'n')">Rank <span class="sa" aria-hidden="true"></span></button></th>
             </tr>
           </thead>
           <tbody id="hist-{bd['basin_key']}">{''.join(rows)}</tbody>
@@ -1489,23 +1492,24 @@ def generate_history_html(basin_data):
 <style>
   :root {{
     --bg:#0a1628; --card:#132238; --box:#1a2d4a; --accent:#4fc3f7;
-    --text:#e0e6ed; --text-strong:#ffffff; --muted:#78909c; --border:#1e3a5f;
+    --text:#e0e6ed; --text-strong:#ffffff; --muted:#8aa0ab; --border:#1e3a5f;
     --sources-bg:#0d1b2a; --gauge-bg:#1e3a5f;
     --row-extreme:rgba(239,83,80,0.10); --row-above:rgba(255,143,0,0.10);
     --row-below:rgba(66,165,245,0.10); --row-near:transparent;
     --current-border:#4fc3f7; --active-dot:#4fc3f7;
-    --badge-extreme:#ef5350; --badge-above:#ff8f00; --badge-near:#546e7a; --badge-below:#1976d2;
+    --badge-extreme:#c62828; --badge-above:#b45309; --badge-near:#546e7a; --badge-below:#1976d2;
   }}
   [data-theme="light"] {{
     --bg:#f0f4f8; --card:#ffffff; --box:#e8f0fe; --accent:#0277bd;
-    --text:#1a2d4a; --text-strong:#0a1628; --muted:#607d8b; --border:#b0bec5;
+    --text:#1a2d4a; --text-strong:#0a1628; --muted:#4f6773; --border:#b0bec5;
     --sources-bg:#e2ecf7; --gauge-bg:#c9daf8;
     --row-extreme:rgba(198,40,40,0.07); --row-above:rgba(230,81,0,0.07);
     --row-below:rgba(21,101,192,0.07); --row-near:transparent;
     --current-border:#0277bd; --active-dot:#0277bd;
-    --badge-extreme:#c62828; --badge-above:#e65100; --badge-near:#546e7a; --badge-below:#1565c0;
+    --badge-extreme:#c62828; --badge-above:#b45309; --badge-near:#546e7a; --badge-below:#1565c0;
   }}
   * {{ margin:0; padding:0; box-sizing:border-box; }}
+  :focus-visible {{ outline:2px solid var(--accent); outline-offset:2px; }}
   body {{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:var(--bg); color:var(--text); padding:12px; transition:background 0.2s,color 0.2s; }}
   .header {{ display:grid; grid-template-columns:1fr auto 1fr; align-items:center; margin:8px 0; padding:0 4px; }}
   h1 {{ grid-column:2; color:var(--accent); font-size:1.4em; text-align:center; display:flex; align-items:center; justify-content:center; gap:8px; }}
@@ -1533,6 +1537,7 @@ def generate_history_html(basin_data):
   table {{ width:100%; border-collapse:collapse; font-size:0.85em; }}
   th {{ background:var(--box); color:var(--accent); padding:8px 6px; text-align:left; position:sticky; top:0; white-space:nowrap; }}
   th.sort-th {{ cursor:pointer; user-select:none; padding:10px 6px; white-space:nowrap; }}
+  .sort-btn {{ background:none; border:0; padding:0; font:inherit; color:inherit; cursor:pointer; text-align:inherit; white-space:inherit; }}
   th.sort-th:hover {{ color:var(--text-strong); }}
   .sa {{ font-size:0.7em; margin-left:2px; opacity:0.7; }}
   .hist-table th:first-child, .hist-table td:first-child {{ position:sticky; left:0; z-index:1; background:var(--box); border-right:1px solid var(--border); }}
@@ -1564,7 +1569,7 @@ def generate_history_html(basin_data):
   .sources h4 {{ color:var(--muted); font-size:0.8em; text-transform:uppercase; margin-bottom:8px; }}
   .sources a {{ color:var(--accent); text-decoration:none; font-size:0.78em; }}
   .sources a:hover {{ text-decoration:underline; }}
-  .sources p {{ color:var(--muted-dark,#546e7a); font-size:0.75em; margin-top:8px; line-height:1.5; }}
+  .sources p {{ color:var(--muted); font-size:0.75em; margin-top:8px; line-height:1.5; }}
   .sources ul {{ list-style:none; padding:0; margin:0; }}
   .sources li {{ color:var(--muted); font-size:0.78em; margin:4px 0; padding-left:12px; position:relative; }}
   .sources li::before {{ content:"•"; position:absolute; left:0; color:var(--accent); }}
@@ -1579,8 +1584,8 @@ def generate_history_html(basin_data):
   .yr-chevron {{ font-size:0.65em; color:var(--muted); display:inline-block; transition:transform 0.2s; margin-left:3px; }}
   .yr-expand-btn.open .yr-chevron {{ transform:rotate(90deg); }}
   .yr-expand-row td {{ padding:0; border-bottom:1px solid var(--border); }}
-  .yr-panel {{ overflow:hidden; max-height:0; transition:max-height 0.3s ease; background:var(--sources-bg); }}
-  .yr-panel.open {{ max-height:2000px; }}
+  .yr-panel {{ overflow:hidden; max-height:0; visibility:hidden; transition:max-height 0.3s ease, visibility 0s linear 0.3s; background:var(--sources-bg); }}
+  .yr-panel.open {{ max-height:2000px; visibility:visible; transition:max-height 0.3s ease, visibility 0s; }}
   .yr-panel-inner {{ padding:8px 12px 10px; }}
   .yr-lfshare {{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-size:0.8em; color:var(--muted); padding:2px 0 8px; margin-bottom:4px; border-bottom:1px solid var(--border); }}
   .yr-lfshare b {{ color:var(--text); }}
@@ -1614,7 +1619,7 @@ def generate_history_html(basin_data):
 <body>
 <div class="header">
   <h1><img src="ace.png" class="logo" alt="" aria-hidden="true"> Hurricane ACE History</h1>
-  <button class="theme-btn" id="themeBtn" onclick="toggleTheme()">☀</button>
+  <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" aria-label="Toggle light and dark theme">☀</button>
 </div>
 <div class="updated">Updated: {now.strftime('%B %d, %Y at %H:%M UTC')}</div>
 <div class="nav-link"><a href="/">← Current Season</a><a href="records.html">🏆 Records</a><a href="what-is-ace.html">❓ What is ACE?</a></div>
@@ -1623,8 +1628,8 @@ def generate_history_html(basin_data):
   <p>Accumulated Cyclone Energy (ACE) measures total hurricane season activity by combining storm intensity and duration. A major hurricane that lasts two weeks contributes far more than a brief tropical storm. NOAA uses seasonal ACE totals to classify years as <b>Below Normal</b> (&lt;73), <b>Near Normal</b> (73–126), <b>Above Normal</b> (126–159), or <b>Extremely Active</b> (159+). <a href="what-is-ace.html">More on ACE, plus a calculator →</a></p>
 </details>
 <div class="toggle">
-  <button class="active" onclick="show('atlantic',this)">Atlantic</button>
-  <button onclick="show('pacific',this)">E/C Pacific</button>
+  <button class="active" aria-pressed="true" onclick="show('atlantic',this)">Atlantic</button>
+  <button aria-pressed="false" onclick="show('pacific',this)">E/C Pacific</button>
 </div>
 <div class="legend">
   <span class="badge badge-extreme">Extremely Active ≥159</span>
@@ -1649,9 +1654,10 @@ def generate_history_html(basin_data):
 <script>
 function show(id,btn) {{
   document.querySelectorAll('.basin-card').forEach(c=>c.classList.remove('active'));
-  document.querySelectorAll('.toggle button').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.toggle button').forEach(b=>{{b.classList.remove('active');b.setAttribute('aria-pressed','false');}});
   document.getElementById(id)?.classList.add('active');
   btn.classList.add('active');
+  btn.setAttribute('aria-pressed','true');
   _syncHash();
 }}
 var _decade='all';
@@ -1688,10 +1694,10 @@ function toggleTheme() {{
   var light=h.getAttribute('data-theme')==='light';
   h.setAttribute('data-theme',light?'dark':'light');
   try{{localStorage.setItem('ace-theme',light?'dark':'light');}}catch(e){{}}
-  document.getElementById('themeBtn').textContent=light?'☀':'☾';
+  document.getElementById('themeBtn').textContent=light?'☀':'☾';document.getElementById('themeBtn').setAttribute('aria-label',document.documentElement.getAttribute('data-theme')==='light'?'Switch to dark mode':'Switch to light mode');
 }}
 document.addEventListener('DOMContentLoaded',function() {{
-  document.getElementById('themeBtn').textContent=document.documentElement.getAttribute('data-theme')==='light'?'☾':'☀';
+  document.getElementById('themeBtn').textContent=document.documentElement.getAttribute('data-theme')==='light'?'☾':'☀';document.getElementById('themeBtn').setAttribute('aria-label',document.documentElement.getAttribute('data-theme')==='light'?'Switch to dark mode':'Switch to light mode');
   var parts=location.hash.replace('#','').split('&');
   var hash=parts[0];
   parts.slice(1).forEach(function(p){{if(p.indexOf('decade=')===0)filterDecade(p.slice(7));}});
@@ -1720,6 +1726,7 @@ function sortHist(th,col,type){{
     if(xrow)tbody.appendChild(xrow);
   }});
   card.querySelectorAll('.sort-th .sa').forEach(function(s,i){{s.innerHTML=i===col?(asc?'&#9650;':'&#9660;'):''}});
+  card.querySelectorAll('th.sort-th').forEach(function(h,i){{if(i===col)h.setAttribute('aria-sort',asc?'ascending':'descending');else h.removeAttribute('aria-sort');}});
 }}
 function toggleYear(key){{
   var panel=document.getElementById('yrpanel-'+key);
@@ -1728,6 +1735,7 @@ function toggleYear(key){{
   var open=panel.classList.contains('open');
   if(open){{panel.classList.remove('open');if(btn)btn.classList.remove('open');}}
   else{{panel.classList.add('open');if(btn)btn.classList.add('open');}}
+  if(btn)btn.setAttribute('aria-expanded',open?'false':'true');
 }}
 </script>
 <div id="global-tip" class="global-tip"></div>
@@ -1754,7 +1762,6 @@ function toggleYear(key){{
     el.addEventListener('mouseleave',hide);
     el.addEventListener('touchstart',show,{{passive:true}});
     el.addEventListener('touchend',hide);
-    if(!el.hasAttribute('tabindex'))el.setAttribute('tabindex','0');
     el.addEventListener('focus',show);
     el.addEventListener('blur',hide);
   }});
@@ -1875,15 +1882,16 @@ def generate_records_html(basin_data):
 <style>
   :root {{
     --bg:#0a1628; --card:#132238; --box:#1a2d4a; --accent:#4fc3f7;
-    --text:#e0e6ed; --text-strong:#ffffff; --muted:#78909c; --border:#1e3a5f;
+    --text:#e0e6ed; --text-strong:#ffffff; --muted:#8aa0ab; --border:#1e3a5f;
     --sources-bg:#0d1b2a;
   }}
   [data-theme="light"] {{
     --bg:#f0f4f8; --card:#ffffff; --box:#e8f0fe; --accent:#0277bd;
-    --text:#1a2d4a; --text-strong:#0a1628; --muted:#607d8b; --border:#b0bec5;
+    --text:#1a2d4a; --text-strong:#0a1628; --muted:#4f6773; --border:#b0bec5;
     --sources-bg:#e2ecf7;
   }}
   * {{ margin:0; padding:0; box-sizing:border-box; }}
+  :focus-visible {{ outline:2px solid var(--accent); outline-offset:2px; }}
   body {{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:var(--bg); color:var(--text); padding:12px; transition:background 0.2s,color 0.2s; }}
   .header {{ display:grid; grid-template-columns:1fr auto 1fr; align-items:center; margin:8px 0; padding:0 4px; }}
   h1 {{ grid-column:2; color:var(--accent); font-size:1.4em; text-align:center; display:flex; align-items:center; justify-content:center; gap:8px; }}
@@ -1925,13 +1933,13 @@ def generate_records_html(basin_data):
 <body>
 <div class="header">
   <h1><img src="ace.png" class="logo" alt="" aria-hidden="true"> Hurricane Records</h1>
-  <button class="theme-btn" id="themeBtn" onclick="toggleTheme()">☀</button>
+  <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" aria-label="Toggle light and dark theme">☀</button>
 </div>
 <div class="updated">Updated: {now.strftime('%B %d, %Y at %H:%M UTC')}</div>
 <div class="nav-link"><a href="/">← Current Season</a><a href="history.html">Season History</a><a href="what-is-ace.html">❓ What is ACE?</a></div>
 <div class="toggle">
-  <button class="active" onclick="show('atlantic',this)">Atlantic</button>
-  <button onclick="show('pacific',this)">E/C Pacific</button>
+  <button class="active" aria-pressed="true" onclick="show('atlantic',this)">Atlantic</button>
+  <button aria-pressed="false" onclick="show('pacific',this)">E/C Pacific</button>
 </div>
 {''.join(basin_sections)}
 <div class="sources">
@@ -1946,9 +1954,10 @@ def generate_records_html(basin_data):
 <script>
 function show(id,btn) {{
   document.querySelectorAll('.basin-card').forEach(c=>c.classList.remove('active'));
-  document.querySelectorAll('.toggle button').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.toggle button').forEach(b=>{{b.classList.remove('active');b.setAttribute('aria-pressed','false');}});
   document.getElementById(id)?.classList.add('active');
   btn.classList.add('active');
+  btn.setAttribute('aria-pressed','true');
   try{{history.replaceState(null,'','#'+id);}}catch(e){{}}
 }}
 function toggleTheme() {{
@@ -1956,10 +1965,10 @@ function toggleTheme() {{
   var light=h.getAttribute('data-theme')==='light';
   h.setAttribute('data-theme',light?'dark':'light');
   try{{localStorage.setItem('ace-theme',light?'dark':'light');}}catch(e){{}}
-  document.getElementById('themeBtn').textContent=light?'☀':'☾';
+  document.getElementById('themeBtn').textContent=light?'☀':'☾';document.getElementById('themeBtn').setAttribute('aria-label',document.documentElement.getAttribute('data-theme')==='light'?'Switch to dark mode':'Switch to light mode');
 }}
 document.addEventListener('DOMContentLoaded',function() {{
-  document.getElementById('themeBtn').textContent=document.documentElement.getAttribute('data-theme')==='light'?'☾':'☀';
+  document.getElementById('themeBtn').textContent=document.documentElement.getAttribute('data-theme')==='light'?'☾':'☀';document.getElementById('themeBtn').setAttribute('aria-label',document.documentElement.getAttribute('data-theme')==='light'?'Switch to dark mode':'Switch to light mode');
   var hash=location.hash.replace('#','');
   var match=[].slice.call(document.querySelectorAll('.toggle button')).filter(function(b){{return(b.getAttribute('onclick')||'').indexOf("'"+hash+"'")>=0;}})[0];
   if(match)match.click();
@@ -2047,16 +2056,17 @@ def generate_about_html(basin_data):
 <style>
   :root {{
     --bg:#0a1628; --card:#132238; --box:#1a2d4a; --accent:#4fc3f7;
-    --text:#e0e6ed; --text-strong:#ffffff; --muted:#78909c; --border:#1e3a5f;
+    --text:#e0e6ed; --text-strong:#ffffff; --muted:#8aa0ab; --border:#1e3a5f;
     --sources-bg:#0d1b2a;
-    --badge-extreme:#ef5350; --badge-above:#ff8f00; --badge-near:#546e7a; --badge-below:#1976d2;
+    --badge-extreme:#c62828; --badge-above:#b45309; --badge-near:#546e7a; --badge-below:#1976d2;
   }}
   [data-theme="light"] {{
     --bg:#f0f4f8; --card:#ffffff; --box:#e8f0fe; --accent:#0277bd;
-    --text:#1a2d4a; --text-strong:#0a1628; --muted:#607d8b; --border:#b0bec5;
+    --text:#1a2d4a; --text-strong:#0a1628; --muted:#4f6773; --border:#b0bec5;
     --sources-bg:#e2ecf7;
   }}
   * {{ margin:0; padding:0; box-sizing:border-box; }}
+  :focus-visible {{ outline:2px solid var(--accent); outline-offset:2px; }}
   body {{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:var(--bg); color:var(--text); padding:12px; line-height:1.55; transition:background 0.2s,color 0.2s; }}
   .header {{ display:grid; grid-template-columns:1fr auto 1fr; align-items:center; margin:8px 0; padding:0 4px; }}
   h1 {{ grid-column:2; color:var(--accent); font-size:1.4em; text-align:center; display:flex; align-items:center; justify-content:center; gap:8px; }}
@@ -2192,9 +2202,9 @@ function toggleTheme() {{
   var light=h.getAttribute('data-theme')==='light';
   h.setAttribute('data-theme',light?'dark':'light');
   try{{localStorage.setItem('ace-theme',light?'dark':'light');}}catch(e){{}}
-  document.getElementById('themeBtn').textContent=light?'☀':'☾';
+  document.getElementById('themeBtn').textContent=light?'☀':'☾';document.getElementById('themeBtn').setAttribute('aria-label',document.documentElement.getAttribute('data-theme')==='light'?'Switch to dark mode':'Switch to light mode');
 }}
-document.getElementById('themeBtn').textContent=document.documentElement.getAttribute('data-theme')==='light'?'☾':'☀';
+document.getElementById('themeBtn').textContent=document.documentElement.getAttribute('data-theme')==='light'?'☾':'☀';document.getElementById('themeBtn').setAttribute('aria-label',document.documentElement.getAttribute('data-theme')==='light'?'Switch to dark mode':'Switch to light mode');
 </script>
 <!-- Cloudflare Web Analytics --><script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{{"token": "775dfcf117b94ff59e3c118c330d02aa"}}'></script><!-- End Cloudflare Web Analytics -->
 </body>

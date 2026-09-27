@@ -1395,6 +1395,118 @@ class TestLandfallCacheInvalidation(unittest.TestCase):
         self.assertEqual(_last_track_stamp(Broken()), 'unknown')
 
 
+class TestKeyboardAndAria(unittest.TestCase):
+    """Keyboard reachability, ARIA state and focus styling on every page."""
+
+    def _pages(self):
+        basin_data = TestHTMLGeneration()._make_basin_data()
+        return {
+            'dashboard': generate_dashboard_html(basin_data),
+            'history': generate_history_html(basin_data),
+            'records': generate_records_html(basin_data),
+            'what-is-ace': generate_about_html(basin_data),
+        }
+
+    def test_tooltips_do_not_add_tab_stops(self):
+        # Every [data-tip] used to get tabindex=0: ~1,300 tab stops on the
+        # history page (every category chip and Fish Storm label).
+        for name, html in self._pages().items():
+            with self.subTest(page=name):
+                self.assertNotIn("setAttribute('tabindex'", html)
+                self.assertNotIn('tabindex="0"', html)
+
+    def test_sort_headers_are_buttons_with_aria_sort(self):
+        pages = self._pages()
+        for name, fn, n, default in (('dashboard', 'sortDash', 5, 'ACE'), ('history', 'sortHist', 9, 'Year')):
+            with self.subTest(page=name):
+                html = pages[name]
+                self.assertNotIn('<th class="sort-th" onclick', html)
+                self.assertEqual(html.count(f'<button type="button" class="sort-btn" onclick="{fn}('), n)
+                self.assertIn(f'<th class="sort-th" aria-sort="descending"><button type="button" class="sort-btn" '
+                              f'onclick="{fn}(this,{0 if default == "Year" else 1},\'n\')">{default} ', html)
+                self.assertIn("h.setAttribute('aria-sort',asc?'ascending':'descending')", html)
+
+    def test_toggles_and_icon_buttons_have_state_and_names(self):
+        for name, html in self._pages().items():
+            with self.subTest(page=name):
+                self.assertIn('id="themeBtn" onclick="toggleTheme()" aria-label="Toggle light and dark theme"', html)
+                self.assertIn("'Switch to dark mode':'Switch to light mode'", html)
+                if name != 'what-is-ace':
+                    self.assertIn('<button class="active" aria-pressed="true" onclick="show(\'atlantic\',this)">', html)
+                    self.assertIn('<button aria-pressed="false" onclick="show(\'pacific\',this)">', html)
+                    self.assertIn("btn.setAttribute('aria-pressed','true')", html)
+        dashboard = self._pages()['dashboard']
+        self.assertIn('id="unitBtn" onclick="toggleWindUnit()" title="Wind speed unit" aria-label="Wind speed unit: kt"', dashboard)
+        self.assertIn("btn.setAttribute('aria-label','Wind speed unit: '+WIND_UNIT_LABELS[unit])", dashboard)
+
+    def test_collapsed_panels_leave_the_tab_order(self):
+        # max-height:0 alone left ~540 report links in collapsed season
+        # panels reachable by Tab; visibility:hidden removes them, and the
+        # delayed visibility transition keeps the close animation.
+        pages = self._pages()
+        self.assertIn('.track-panel { overflow:hidden; max-height:0; visibility:hidden;', pages['dashboard'])
+        self.assertIn('.track-panel.open { max-height:1500px; visibility:visible;', pages['dashboard'])
+        self.assertIn('.yr-panel { overflow:hidden; max-height:0; visibility:hidden;', pages['history'])
+        self.assertIn('.yr-panel.open { max-height:2000px; visibility:visible;', pages['history'])
+
+    def test_every_page_has_a_focus_ring(self):
+        for name, html in self._pages().items():
+            with self.subTest(page=name):
+                self.assertIn(':focus-visible {{ outline:2px solid var(--accent); outline-offset:2px; }}'
+                              .replace('{{', '{').replace('}}', '}'), html)
+
+    def test_row_buttons_expose_expanded_state(self):
+        pages = self._pages()
+        self.assertIn('id="trbtn-arthur" aria-expanded="false" aria-controls="trpanel-arthur"', pages['dashboard'])
+        self.assertIn("btn.setAttribute('aria-expanded','true')", pages['dashboard'])
+        self.assertIn('id="yrbtn-atlantic-yr-2005" aria-expanded="false" aria-controls="yrpanel-atlantic-yr-2005"',
+                      pages['history'])
+        self.assertIn("btn.setAttribute('aria-expanded',open?'false':'true')", pages['history'])
+
+
+class TestColorContrast(unittest.TestCase):
+    """Text colors defined as theme tokens meet WCAG AA (4.5:1) against the
+    surfaces they sit on, computed from each page's generated CSS."""
+
+    @staticmethod
+    def _ratio(fg, bg):
+        def lum(h):
+            c = [int(h[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+            c = [x / 12.92 if x <= 0.03928 else ((x + 0.055) / 1.055) ** 2.4 for x in c]
+            return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
+        hi, lo = sorted((lum(fg), lum(bg)), reverse=True)
+        return (hi + 0.05) / (lo + 0.05)
+
+    @staticmethod
+    def _themes(html):
+        import re
+        dark = re.search(r':root \{(.*?)\}', html, re.S).group(1)
+        light = re.search(r'\[data-theme="light"\] \{(.*?)\}', html, re.S).group(1)
+        parse = lambda block: dict(re.findall(r'--([\w-]+):(#[0-9a-fA-F]{6})', block))
+        return {'dark': parse(dark), 'light': parse(light)}
+
+    def test_muted_text_on_page_surfaces(self):
+        pages = TestKeyboardAndAria()._pages()
+        for name, html in pages.items():
+            for theme, tok in self._themes(html).items():
+                for surface in ('card', 'box', 'sources-bg', 'bg'):
+                    if surface not in tok:
+                        continue
+                    with self.subTest(page=name, theme=theme, surface=surface):
+                        self.assertGreaterEqual(self._ratio(tok['muted'], tok[surface]), 4.5)
+                if 'muted-dark' in tok and 'sources-bg' in tok:
+                    with self.subTest(page=name, theme=theme, token='muted-dark'):
+                        self.assertGreaterEqual(self._ratio(tok['muted-dark'], tok['sources-bg']), 4.5)
+
+    def test_classification_badges_with_white_text(self):
+        pages = TestKeyboardAndAria()._pages()
+        for name in ('history', 'what-is-ace'):
+            for theme, tok in self._themes(pages[name]).items():
+                for badge in ('badge-extreme', 'badge-above', 'badge-near', 'badge-below'):
+                    if badge not in tok:
+                        continue
+                    with self.subTest(page=name, theme=theme, badge=badge):
+                        self.assertGreaterEqual(self._ratio('#ffffff', tok[badge]), 4.5)
 class TestDataFreshness(unittest.TestCase):
     """The dashboard says how current its storm data is, not only when the
     page was built: a stale page must look stale."""
