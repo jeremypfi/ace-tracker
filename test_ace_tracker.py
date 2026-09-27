@@ -1401,6 +1401,17 @@ class TestKeyboardAndAria(unittest.TestCase):
                 self.assertNotIn("setAttribute('tabindex'", html)
                 self.assertNotIn('tabindex="0"', html)
 
+    def test_sort_headers_are_buttons_with_aria_sort(self):
+        pages = self._pages()
+        for name, fn, n, default in (('dashboard', 'sortDash', 5, 'ACE'), ('history', 'sortHist', 9, 'Year')):
+            with self.subTest(page=name):
+                html = pages[name]
+                self.assertNotIn('<th class="sort-th" onclick', html)
+                self.assertEqual(html.count(f'<button type="button" class="sort-btn" onclick="{fn}('), n)
+                self.assertIn(f'<th class="sort-th" aria-sort="descending"><button type="button" class="sort-btn" '
+                              f'onclick="{fn}(this,{0 if default == "Year" else 1},\'n\')">{default} ', html)
+                self.assertIn("h.setAttribute('aria-sort',asc?'ascending':'descending')", html)
+
 
 def run_tests():
     """Run all tests"""

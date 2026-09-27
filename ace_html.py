@@ -531,11 +531,11 @@ def generate_dashboard_html(basin_data):
       <div class="table-wrap">
         <table>
           <thead><tr>
-            <th class="sort-th" onclick="sortDash(this,0,'s')">Storm <span class="sa"></span></th>
-            <th class="sort-th" onclick="sortDash(this,1,'n')">ACE <span class="sa">&#9660;</span></th>
-            <th class="sort-th" onclick="sortDash(this,2,'n')">% <span class="sa"></span></th>
-            <th class="sort-th" onclick="sortDash(this,3,'n')">Category <span class="sa"></span></th>
-            <th class="sort-th" onclick="sortDash(this,4,'n')"><span class="wind-th-label" data-kt-label="Wind (kt)" data-mph-label="Wind (mph)" data-kmh-label="Wind (km/h)">Wind (kt)</span> <span class="sa"></span></th>
+            <th class="sort-th"><button type="button" class="sort-btn" onclick="sortDash(this,0,'s')">Storm <span class="sa" aria-hidden="true"></span></button></th>
+            <th class="sort-th" aria-sort="descending"><button type="button" class="sort-btn" onclick="sortDash(this,1,'n')">ACE <span class="sa" aria-hidden="true">&#9660;</span></button></th>
+            <th class="sort-th"><button type="button" class="sort-btn" onclick="sortDash(this,2,'n')">% <span class="sa" aria-hidden="true"></span></button></th>
+            <th class="sort-th"><button type="button" class="sort-btn" onclick="sortDash(this,3,'n')">Category <span class="sa" aria-hidden="true"></span></button></th>
+            <th class="sort-th"><button type="button" class="sort-btn" onclick="sortDash(this,4,'n')"><span class="wind-th-label" data-kt-label="Wind (kt)" data-mph-label="Wind (mph)" data-kmh-label="Wind (km/h)">Wind (kt)</span> <span class="sa" aria-hidden="true"></span></button></th>
             <th>Landfall</th>
           </tr></thead>
           <tbody id="storm-{bd['basin_key']}">
@@ -697,6 +697,7 @@ def generate_dashboard_html(basin_data):
   table {{ width:100%; border-collapse:collapse; font-size:0.85em; }}
   th {{ background:var(--box); color:var(--accent); padding:8px 6px; text-align:left; position:sticky; top:0; }}
   th.sort-th {{ cursor:pointer; user-select:none; padding:10px 6px; }}
+  .sort-btn {{ background:none; border:0; padding:0; font:inherit; color:inherit; cursor:pointer; text-align:inherit; white-space:inherit; }}
   th.sort-th:hover {{ color:var(--text-strong); }}
   .sa {{ font-size:0.7em; margin-left:2px; opacity:0.7; }}
   td {{ padding:6px; border-bottom:1px solid var(--border); color:var(--text); }}
@@ -946,6 +947,7 @@ function sortDash(th,col,type){{
     if(tr)tbody.appendChild(tr);
   }});
   card.querySelectorAll('.sort-th .sa').forEach(function(s,i){{s.innerHTML=i===col?(asc?'&#9650;':'&#9660;'):''}});
+  card.querySelectorAll('th.sort-th').forEach(function(h,i){{if(i===col)h.setAttribute('aria-sort',asc?'ascending':'descending');else h.removeAttribute('aria-sort');}});
 }}
 var ACE_TRACKS={_track_json};
 var ACE_PACE={_pace_json};
@@ -1341,15 +1343,15 @@ def generate_history_html(basin_data):
         <table class="hist-table">
           <thead>
             <tr>
-              <th class="sort-th" onclick="sortHist(this,0,'n')">Year <span class="sa">▼</span></th>
-              <th class="sort-th" onclick="sortHist(this,1,'n')">ACE <span class="sa"></span></th>
-              <th class="sort-th" onclick="sortHist(this,2,'n')">% Normal <span class="sa"></span></th>
-              <th class="sort-th" onclick="sortHist(this,3,'n')">Classification <span class="sa"></span></th>
-              <th class="sort-th" onclick="sortHist(this,4,'n')">Named <span class="sa"></span></th>
-              <th class="sort-th" onclick="sortHist(this,5,'n')">Hurr. <span class="sa"></span></th>
-              <th class="sort-th" onclick="sortHist(this,6,'n')">Major <span class="sa"></span></th>
-              <th class="sort-th" onclick="sortHist(this,7,'s')">ACE Leader <span class="sa"></span></th>
-              <th class="sort-th" onclick="sortHist(this,8,'n')">Rank <span class="sa"></span></th>
+              <th class="sort-th" aria-sort="descending"><button type="button" class="sort-btn" onclick="sortHist(this,0,'n')">Year <span class="sa" aria-hidden="true">▼</span></button></th>
+              <th class="sort-th"><button type="button" class="sort-btn" onclick="sortHist(this,1,'n')">ACE <span class="sa" aria-hidden="true"></span></button></th>
+              <th class="sort-th"><button type="button" class="sort-btn" onclick="sortHist(this,2,'n')">% Normal <span class="sa" aria-hidden="true"></span></button></th>
+              <th class="sort-th"><button type="button" class="sort-btn" onclick="sortHist(this,3,'n')">Classification <span class="sa" aria-hidden="true"></span></button></th>
+              <th class="sort-th"><button type="button" class="sort-btn" onclick="sortHist(this,4,'n')">Named <span class="sa" aria-hidden="true"></span></button></th>
+              <th class="sort-th"><button type="button" class="sort-btn" onclick="sortHist(this,5,'n')">Hurr. <span class="sa" aria-hidden="true"></span></button></th>
+              <th class="sort-th"><button type="button" class="sort-btn" onclick="sortHist(this,6,'n')">Major <span class="sa" aria-hidden="true"></span></button></th>
+              <th class="sort-th"><button type="button" class="sort-btn" onclick="sortHist(this,7,'s')">ACE Leader <span class="sa" aria-hidden="true"></span></button></th>
+              <th class="sort-th"><button type="button" class="sort-btn" onclick="sortHist(this,8,'n')">Rank <span class="sa" aria-hidden="true"></span></button></th>
             </tr>
           </thead>
           <tbody id="hist-{bd['basin_key']}">{''.join(rows)}</tbody>
@@ -1438,6 +1440,7 @@ def generate_history_html(basin_data):
   table {{ width:100%; border-collapse:collapse; font-size:0.85em; }}
   th {{ background:var(--box); color:var(--accent); padding:8px 6px; text-align:left; position:sticky; top:0; white-space:nowrap; }}
   th.sort-th {{ cursor:pointer; user-select:none; padding:10px 6px; white-space:nowrap; }}
+  .sort-btn {{ background:none; border:0; padding:0; font:inherit; color:inherit; cursor:pointer; text-align:inherit; white-space:inherit; }}
   th.sort-th:hover {{ color:var(--text-strong); }}
   .sa {{ font-size:0.7em; margin-left:2px; opacity:0.7; }}
   .hist-table th:first-child, .hist-table td:first-child {{ position:sticky; left:0; z-index:1; background:var(--box); border-right:1px solid var(--border); }}
@@ -1624,6 +1627,7 @@ function sortHist(th,col,type){{
     if(xrow)tbody.appendChild(xrow);
   }});
   card.querySelectorAll('.sort-th .sa').forEach(function(s,i){{s.innerHTML=i===col?(asc?'&#9650;':'&#9660;'):''}});
+  card.querySelectorAll('th.sort-th').forEach(function(h,i){{if(i===col)h.setAttribute('aria-sort',asc?'ascending':'descending');else h.removeAttribute('aria-sort');}});
 }}
 function toggleYear(key){{
   var panel=document.getElementById('yrpanel-'+key);
