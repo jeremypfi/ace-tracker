@@ -10,8 +10,14 @@ Usage:
     python3 test_ace_tracker.py
 """
 
+import io
+import json
+import os
 import unittest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from unittest import mock
+
+import ace_data
 from ace_data import (
     get_category,
     is_major,
@@ -1893,6 +1899,439 @@ class TestHurdatSanitizer(unittest.TestCase):
         kept, dropped = _drop_malformed_hurdat_rows(clean)
         self.assertEqual(dropped, [])
         self.assertEqual(len(kept), 5)
+
+
+# ===============================================================================
+# FIXTURE TESTS FOR NETWORK-DEPENDENT FETCHERS (#112)
+# Tropycal objects are faked in-process; NHC responses are files in fixtures/.
+# ===============================================================================
+
+
+FIXTURES = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures')
+
+
+def _fixture_bytes(name):
+    with open(os.path.join(FIXTURES, name), 'rb') as f:
+        return f.read()
+
+
+class _Resp(io.BytesIO):
+    """Stands in for the context manager urllib.request.urlopen returns."""
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+class FakeStorm:
+    """Minimal Tropycal Storm: parallel track arrays plus the attributes
+    ace_data reads. `points` are (time, type, vmax, lat, lon) tuples."""
+
+    def __init__(self, storm_id, name, points, special=None, forecasts=None):
+        self.id = storm_id
+        self.name = name
+        self.year = points[0][0].year
+        self.time = [p[0] for p in points]
+        self.type = [p[1] for p in points]
+        self.vmax = [p[2] for p in points]
+        self.lat = [p[3] for p in points]
+        self.lon = [p[4] for p in points]
+        self.special = special or [''] * len(points)
+        self.ace = 0.0
+        self._forecasts = forecasts
+
+    def get_operational_forecasts(self):
+        if self._forecasts is None:
+            raise RuntimeError('no forecasts')
+        return self._forecasts
+
+
+class FakeDataset:
+    """Minimal Tropycal TrackDataset. get_season raises for a year with no
+    storms, like Tropycal does; get_storm raises for an id in `broken`."""
+
+    def __init__(self, storms, broken=()):
+        self._storms = {s.id: s for s in storms}
+        self._broken = set(broken)
+        self._seasons = {}
+        for s in storms:
+            self._seasons.setdefault(s.year, []).append(s.id)
+        for sid, year in self._broken:
+            self._seasons.setdefault(year, []).append(sid)
+
+    def get_season(self, year):
+        if year not in self._seasons:
+            raise ValueError(f'no {year} season')
+        return mock.Mock(dict={sid: {} for sid in self._seasons[year]})
+
+    def get_storm(self, storm_id):
+        if storm_id not in self._storms:
+            raise RuntimeError(f'corrupt storm {storm_id}')
+        return self._storms[storm_id]
+
+
+class TestParseHurdat2Fixtures(unittest.TestCase):
+    """parse_hurdat2 turns Tropycal storms into the historical storm records
+    the whole site is built from."""
+
+    ANA_1991 = [
+        (datetime(1991, 6, 29, 18), 'TD', 25, 31.5, -78.5),
+        (datetime(1991, 6, 30, 0), 'TS', 35, 32.0, -77.8),
+        (datetime(1991, 6, 30, 3), 'TS', 45, 32.3, -77.3),   # off-synoptic: no ACE
+        (datetime(1991, 6, 30, 6), 'TS', 40, 32.6, -76.9),
+        (datetime(1991, 6, 30, 12), 'EX', 70, 33.4, -75.6),  # extratropical: no ACE, no peak
+    ]
+    FAY_2026 = [
+        (datetime(2026, 9, 1, 0), 'TS', 50, 25.0, -60.0),
+        (datetime(2026, 9, 1, 6), 'HU', 90, 26.0, -61.0),
+    ]
+
+    def _run(self, dataset, cache):
+        with mock.patch.object(ace_data, '_utc_now', return_value=datetime(2026, 10, 3, 12)), \
+             mock.patch.object(ace_data, '_load_landfall_cache', return_value=cache), \
+             mock.patch.object(ace_data, '_save_landfall_cache') as save, \
+             mock.patch.object(ace_data, 'get_landfall_locations',
+                               return_value=[('Bermuda', 'Cat 1')]) as geo:
+            storms = ace_data.parse_hurdat2('atlantic', dataset=dataset)
+        return storms, save, geo
+
+    def test_builds_records_from_tropical_synoptic_points(self):
+        dataset = FakeDataset([FakeStorm('AL011991', 'ANA', self.ANA_1991),
+                               FakeStorm('AL062026', 'FAY', self.FAY_2026)])
+        storms, _, _ = self._run(dataset, {'AL011991': [('North Carolina', 'TS')]})
+        by_id = {s['id']: s for s in storms}
+        ana = by_id['AL011991']
+        self.assertEqual(ana['name'], 'Ana')
+        self.assertEqual(ana['wind_readings'], [35, 40])
+        self.assertAlmostEqual(ana['ace'], 0.2825)
+        self.assertEqual(ana['max_wind'], 45)
+        self.assertEqual(ana['formation_date'], datetime(1991, 6, 30, 0))
+        self.assertIsNone(ana['hurricane_date'])
+        fay = by_id['AL062026']
+        self.assertAlmostEqual(fay['ace'], 1.06)
+        self.assertEqual(fay['category'], 'Cat 2')
+        self.assertEqual(fay['hurricane_date'], datetime(2026, 9, 1, 6))
+
+    def test_landfall_cache_keys_by_id_for_past_and_by_track_for_current(self):
+        dataset = FakeDataset([FakeStorm('AL011991', 'ANA', self.ANA_1991),
+                               FakeStorm('AL062026', 'FAY', self.FAY_2026)])
+        cache = {'AL011991': [('North Carolina', 'TS')],
+                 'cur:AL062026:2026083100': [('Old', 'TS')]}
+        storms, save, geo = self._run(dataset, cache)
+        by_id = {s['id']: s for s in storms}
+        self.assertEqual(by_id['AL011991']['landfall'], [('North Carolina', 'TS')])
+        self.assertEqual(by_id['AL062026']['landfall'], [('Bermuda', 'Cat 1')])
+        geo.assert_called_once()  # only the uncached current-season storm
+        saved = save.call_args[0][0]
+        self.assertIn('cur:AL062026:2026090106', saved)
+        self.assertNotIn('cur:AL062026:2026083100', saved)
+
+    def test_cache_fully_hit_skips_save(self):
+        dataset = FakeDataset([FakeStorm('AL011991', 'ANA', self.ANA_1991)])
+        _, save, geo = self._run(dataset, {'AL011991': []})
+        geo.assert_not_called()
+        save.assert_not_called()
+
+    def test_one_corrupt_storm_does_not_drop_the_season(self):
+        dataset = FakeDataset([FakeStorm('AL011991', 'ANA', self.ANA_1991)],
+                              broken=[('AL021991', 1991)])
+        storms, _, _ = self._run(dataset, {'AL011991': []})
+        self.assertEqual([s['id'] for s in storms], ['AL011991'])
+
+    def test_dataset_build_failure_returns_none_for_backup(self):
+        with mock.patch.object(ace_data, '_build_track_dataset', side_effect=RuntimeError('down')):
+            self.assertIsNone(ace_data.parse_hurdat2('atlantic'))
+
+
+class TestGetCurrentSeasonFixtures(unittest.TestCase):
+    """get_current_season builds the dashboard's live storm table."""
+
+    def setUp(self):
+        now = datetime.now(timezone.utc).replace(tzinfo=None, minute=0, second=0, microsecond=0)
+        self.base = now - timedelta(hours=now.hour % 6)
+        b = self.base
+        self.rachel = FakeStorm('EP182026', 'RACHEL', [
+            (b - timedelta(hours=12), 'TS', 45, 17.0, -108.0),
+            (b - timedelta(hours=6), 'HU', 70, 18.0, -110.0),
+            (b, 'HU', 75, 19.8, -112.5),
+        ])
+        self.bertha = FakeStorm('EP022026', 'BERTHA', [
+            (datetime(2026, 7, 1, 0), 'TS', 40, 15.0, -100.0),
+            (datetime(2026, 7, 1, 3), 'TS', 42, 15.2, -100.4),
+            (datetime(2026, 7, 1, 6), 'TS', 45, 15.5, -101.0),
+        ])
+        self.one = FakeStorm('EP012026', 'ONE', [(datetime(2026, 6, 1, 0), 'TD', 30, 12.0, -95.0)])
+        self.unnamed = FakeStorm('EP902026', None, [(datetime(2026, 6, 2, 0), 'TS', 40, 12.0, -95.0)])
+        for s in (self.rachel, self.bertha, self.one, self.unnamed):
+            s.year = 2026
+
+    def _run(self, dataset, today=datetime(2026, 10, 3, 12), landfalls=None):
+        landfalls = landfalls or {}
+        with mock.patch.object(ace_data, '_utc_now', return_value=today), \
+             mock.patch.object(ace_data, '_load_landfall_cache', return_value={}), \
+             mock.patch.object(ace_data, '_save_landfall_cache') as save, \
+             mock.patch.object(ace_data, 'get_landfall_locations',
+                               side_effect=lambda s: landfalls.get(s.id, [])), \
+             mock.patch.object(ace_data, '_detect_landfall_from_track',
+                               return_value=[('Baja California Sur, Mexico', 'Cat 1')]) as detect, \
+             mock.patch.object(ace_data, '_extract_spaghetti_tracks',
+                               return_value=({'OFCL': [{'lat': 20.0, 'lon': -113.0}]},
+                                             {'OFCL': '2026-10-03T18:00:00Z'})) as spag:
+            result = ace_data.get_current_season('pacific', dataset=dataset)
+        return result, save, detect, spag
+
+    def test_named_storms_with_ace_track_and_active_flag(self):
+        dataset = FakeDataset([self.rachel, self.bertha, self.one, self.unnamed])
+        result, _, _, spag = self._run(dataset, landfalls={'EP022026': [('Guerrero, Mexico', 'TS')]})
+        self.assertEqual(result['year'], 2026)
+        self.assertEqual(set(result['storms']), {'Rachel', 'Bertha'})
+        self.assertAlmostEqual(result['storms']['Rachel'], 1.255)
+        self.assertAlmostEqual(result['total'], 1.255 + ace_from_winds([40, 45]))
+        rachel, bertha = result['storm_details']['Rachel'], result['storm_details']['Bertha']
+        self.assertTrue(rachel['is_active'])
+        self.assertFalse(bertha['is_active'])
+        self.assertEqual(len(bertha['track_points']), 2)  # synoptic times only
+        self.assertEqual(bertha['track_points'][0]['time'], '7/1 00Z')
+        self.assertEqual(bertha['start_date'], '7/1')
+        self.assertEqual(rachel['spaghetti'], {'OFCL': [{'lat': 20.0, 'lon': -113.0}]})
+        self.assertEqual(bertha['spaghetti'], {})
+        spag.assert_called_once_with(self.rachel)  # model tracks only for active storms
+        self.assertEqual(result['data_as_of'], self.base.strftime('%Y-%m-%dT%H:%M:%SZ'))
+
+    def test_landfall_marked_estimated_only_when_geo_fallback_used(self):
+        dataset = FakeDataset([self.rachel, self.bertha])
+        result, save, detect, _ = self._run(dataset, landfalls={'EP022026': [('Guerrero, Mexico', 'TS')]})
+        rachel, bertha = result['storm_details']['Rachel'], result['storm_details']['Bertha']
+        self.assertEqual(rachel['landfall'], [('Baja California Sur, Mexico', 'Cat 1')])
+        self.assertTrue(rachel['landfall_estimated'])
+        self.assertEqual(bertha['landfall'], [('Guerrero, Mexico', 'TS')])
+        self.assertFalse(bertha['landfall_estimated'])
+        detect.assert_called_once_with(self.rachel)
+        geo_key = f"geo:EP182026:{self.base.strftime('%Y%m%d%H')}"
+        self.assertIn(geo_key, save.call_args[0][0])
+
+    def test_in_season_with_no_named_storms_returns_empty_season(self):
+        result, _, _, _ = self._run(FakeDataset([self.one]))
+        self.assertEqual(result, {'year': 2026, 'storms': {}, 'storm_details': {}, 'total': 0.0})
+
+    def test_off_season_with_no_storms_uses_flagged_backup(self):
+        result, _, _, _ = self._run(FakeDataset([self.one]), today=datetime(2027, 1, 15))
+        self.assertTrue(result['is_backup'])
+        self.assertEqual(result['year'], 2027)
+
+    def test_tropycal_failure_in_season_returns_empty_not_backup(self):
+        with mock.patch.object(ace_data, '_utc_now', return_value=datetime(2026, 10, 3, 12)), \
+             mock.patch.object(ace_data, '_build_track_dataset', side_effect=RuntimeError('down')):
+            result = ace_data.get_current_season('atlantic')
+        self.assertEqual(result['storms'], {})
+        self.assertNotIn('is_backup', result)
+
+
+class TestHurdatDownloadFixtures(unittest.TestCase):
+    """The HURDAT2 download is sanitized before Tropycal parses it."""
+
+    def test_sanitized_file_drops_malformed_rows_and_logs_impact(self):
+        with mock.patch('urllib.request.urlopen',
+                        return_value=_Resp(_fixture_bytes('hurdat2_snippet.txt'))), \
+             self.assertLogs('ace_data', level='WARNING') as logs:
+            path = ace_data._sanitize_hurdat_file('https://example.invalid/hurdat2.txt')
+        try:
+            with open(path) as f:
+                text = f.read()
+        finally:
+            os.remove(path)
+        self.assertNotIn('25.0N70.0W', text)
+        self.assertIn('19691110, 0600', text)
+        self.assertIn('AL011991', text)
+        self.assertIn('AL211969 (all before 1991, so no effect', logs.output[0])
+
+    def test_dataset_uses_sanitized_file(self):
+        with mock.patch.object(ace_data, 'find_latest_hurdat_files', return_value=('atl.txt', 'pac.txt')), \
+             mock.patch.object(ace_data, '_sanitize_hurdat_file', return_value='/tmp/clean.txt') as clean, \
+             mock.patch.object(ace_data.tracks, 'TrackDataset') as ds:
+            ace_data._build_track_dataset('pacific')
+        clean.assert_called_once_with('pac.txt')
+        self.assertEqual(ds.call_args.kwargs['pacific_url'], '/tmp/clean.txt')
+        self.assertEqual(ds.call_args.kwargs['basin'], 'east_pacific')
+
+    def test_dataset_falls_back_to_tropycal_fetch_when_download_fails(self):
+        with mock.patch.object(ace_data, 'find_latest_hurdat_files', side_effect=OSError('offline')), \
+             mock.patch.object(ace_data.tracks, 'TrackDataset') as ds, \
+             self.assertLogs('ace_data', level='WARNING'):
+            ace_data._build_track_dataset('atlantic')
+        self.assertNotIn('atlantic_url', ds.call_args.kwargs)
+        self.assertTrue(ds.call_args.kwargs['include_btk'])
+
+
+class TestNhcOutlookFixtures(unittest.TestCase):
+    """NHC Tropical Weather Outlook parsing, from saved TWO feeds."""
+
+    def _parse(self, fixture, basin):
+        with mock.patch('urllib.request.urlopen', return_value=_Resp(_fixture_bytes(fixture))) as op:
+            result = ace_data.fetch_nhc_disturbances(basin)
+        return result, op.call_args[0][0].full_url
+
+    def test_active_systems_paragraph_is_not_a_disturbance(self):
+        # Real EP outlook, Oct 3 2026: advisories on Nolo and Rachel, plus one
+        # unnumbered disturbance. The live site labelled it "Active Systems".
+        result, url = self._parse('nhc_two_ep_active_systems.xml', 'pacific')
+        self.assertTrue(url.endswith('TWOEP.xml'))
+        self.assertEqual(len(result), 1)
+        d = result[0]
+        self.assertEqual(d['area'], 'South of Southern Mexico')
+        self.assertTrue(d['desc'].startswith('An area of low pressure is forecast'))
+        self.assertNotIn('Nolo', d['desc'])
+        self.assertEqual((d['level_48h'], d['pct_48h'], d['level_7d'], d['pct_7d']), ('LOW', 0, 'HIGH', 90))
+        self.assertEqual(d['issued'], 'Sat, 03 Oct 2026 23:29:09 +0000')
+        self.assertIn('basin=epac', d['nhc_url'])
+
+    def test_numbered_outlook_keeps_only_medium_or_high(self):
+        result, url = self._parse('nhc_two_at_numbered.xml', 'atlantic')
+        self.assertTrue(url.endswith('TWOAT.xml'))
+        self.assertEqual([d['area'] for d in result], ['Central Tropical Atlantic (AL95)'])
+        self.assertEqual((result[0]['level_48h'], result[0]['pct_48h']), ('MEDIUM', 60))
+        self.assertTrue(result[0]['desc'].startswith('Showers and thunderstorms'))
+
+    def test_low_chance_only_outlook_is_empty(self):
+        result, _ = self._parse('nhc_two_at_quiet.xml', 'atlantic')
+        self.assertEqual(result, [])
+
+    def test_network_failure_returns_empty(self):
+        with mock.patch('urllib.request.urlopen', side_effect=OSError('offline')), \
+             self.assertLogs('ace_data', level='WARNING'):
+            self.assertEqual(ace_data.fetch_nhc_disturbances('atlantic'), [])
+
+    def test_unknown_basin_makes_no_request(self):
+        with mock.patch('urllib.request.urlopen') as op:
+            self.assertEqual(ace_data.fetch_nhc_disturbances('west_pacific'), [])
+        op.assert_not_called()
+
+
+class TestForecastConeFixtures(unittest.TestCase):
+    """Cone downloads and the NHC active-list cross-check, from a saved
+    CurrentStorms.json (Oct 3 2026: Rachel EP3, Nolo CP2)."""
+
+    def _run(self, basin, details, storms_json=None, image=b'PNG'):
+        storms_json = storms_json or _fixture_bytes('nhc_current_storms.json')
+        responses = [_Resp(storms_json)]
+
+        def urlopen(req, timeout=None):
+            if responses:
+                return responses.pop(0)
+            if isinstance(image, Exception):
+                raise image
+            return _Resp(image)
+
+        with mock.patch('urllib.request.urlopen', side_effect=urlopen) as op, \
+             mock.patch.object(ace_data.os, 'makedirs'), \
+             mock.patch('ace_data.open', mock.mock_open(), create=True) as written:
+            images = ace_data.fetch_active_storm_cones(basin, details)
+        urls = [c[0][0].full_url for c in op.call_args_list]
+        return images, urls, written
+
+    def test_downloads_cone_and_clears_storms_nhc_no_longer_lists(self):
+        details = {'Rachel': {'is_active': True}, 'Priscilla': {'is_active': True},
+                   'Bertha': {'is_active': False}}
+        images, urls, written = self._run('pacific', details)
+        self.assertEqual(images, {'Rachel': 'cones/ep182026.png'})
+        self.assertEqual(urls[1], 'https://www.nhc.noaa.gov/storm_graphics/EP18/refresh/'
+                                  'EP182026_5day_cone+png/032053_5day_cone.png')
+        self.assertEqual(details['Rachel']['cone_issued'], '2026-10-03T20:53:08Z')
+        self.assertTrue(details['Rachel']['is_active'])
+        self.assertFalse(details['Priscilla']['is_active'])
+        written().write.assert_called_once_with(b'PNG')
+
+    def test_atlantic_cone_path_uses_at_prefix(self):
+        storms_json = json.dumps({'activeStorms': [{
+            'id': 'al062026', 'binNumber': 'AT1', 'name': 'Fay',
+            'forecastGraphics': {'fileUpdateTime': '2026-09-02T08:51:00.000Z'}}]}).encode()
+        images, urls, _ = self._run('atlantic', {'Fay': {'is_active': True}}, storms_json)
+        self.assertEqual(images, {'Fay': 'cones/al062026.png'})
+        self.assertEqual(urls[1], 'https://www.nhc.noaa.gov/storm_graphics/AT06/refresh/'
+                                  'AL062026_5day_cone+png/020851_5day_cone.png')
+
+    def test_other_basins_storms_do_not_count(self):
+        details = {'Rachel': {'is_active': True}}
+        images, urls, _ = self._run('atlantic', details)
+        self.assertEqual(images, {})
+        self.assertFalse(details['Rachel']['is_active'])
+        self.assertEqual(len(urls), 1)
+
+    def test_no_active_storms_makes_no_request(self):
+        with mock.patch('urllib.request.urlopen') as op:
+            self.assertEqual(ace_data.fetch_active_storm_cones('pacific', {'Bertha': {'is_active': False}}), {})
+        op.assert_not_called()
+
+    def test_feed_failure_leaves_active_flags_alone(self):
+        details = {'Rachel': {'is_active': True}}
+        with mock.patch('urllib.request.urlopen', side_effect=OSError('offline')), \
+             self.assertLogs('ace_data', level='WARNING'):
+            self.assertEqual(ace_data.fetch_active_storm_cones('pacific', details), {})
+        self.assertTrue(details['Rachel']['is_active'])
+
+    def test_image_failure_keeps_storm_active_without_cone(self):
+        details = {'Rachel': {'is_active': True}}
+        with self.assertLogs('ace_data', level='WARNING'):
+            images, _, _ = self._run('pacific', details, image=OSError('404'))
+        self.assertEqual(images, {})
+        self.assertTrue(details['Rachel']['is_active'])
+        self.assertNotIn('cone_issued', details['Rachel'])
+
+
+class TestLandfallGeocodingFixtures(unittest.TestCase):
+    """Landfall naming and track-crossing detection against fake Natural
+    Earth records (boxes), so no shapefile download is needed."""
+
+    @staticmethod
+    def _geocoder():
+        from shapely.geometry import box
+
+        def rec(geom, attrs):
+            r = mock.Mock(geometry=geom, attributes=attrs)
+            return (r, geom.bounds)
+        states = [rec(box(-87, 25, -80, 31), {'name': 'Florida', 'admin': 'United States of America'}),
+                  rec(box(-89, 18, -86.7, 21.6), {'name': 'Quintana Roo', 'admin': 'Mexico'})]
+        countries = [rec(box(-85, 19.8, -74, 23.2), {'NAME': 'Cuba'})]
+        return states, countries
+
+    def setUp(self):
+        patcher = mock.patch.object(ace_data, '_build_landfall_geocoder', side_effect=self._geocoder)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_reverse_geocode_prefers_state_then_country(self):
+        self.assertEqual(ace_data._reverse_geocode(25.2, -80.5), 'Florida')  # within the coastal buffer
+        self.assertEqual(ace_data._reverse_geocode(20.0, -87.5), 'Quintana Roo, Mexico')
+        self.assertEqual(ace_data._reverse_geocode(23.5, -79.0), 'Cuba')
+        self.assertIsNone(ace_data._reverse_geocode(10.0, -40.0))
+
+    def test_hurdat_l_markers_give_category_at_landfall(self):
+        storm = FakeStorm('AL092026', 'IAN', [
+            (datetime(2026, 9, 27, 6), 'HU', 110, 22.5, -83.5),
+            (datetime(2026, 9, 28, 18), 'HU', 130, 26.7, -82.2),
+            (datetime(2026, 9, 29, 0), 'HU', 120, 27.0, -82.0),
+        ], special=['L', 'L', ''])
+        self.assertEqual(ace_data.get_landfall_locations(storm), [('Cuba', 'Cat 3'), ('Florida', 'Cat 4')])
+
+    def test_track_crossing_water_to_land_is_a_landfall(self):
+        storm = FakeStorm('AL102026', 'JULIA', [
+            (datetime(2026, 10, 1, 0), 'TS', 50, 22.0, -88.0),    # water
+            (datetime(2026, 10, 1, 6), 'HU', 70, 22.0, -80.0),    # Cuba
+            (datetime(2026, 10, 1, 12), 'HU', 65, 24.0, -81.0),   # water
+            (datetime(2026, 10, 1, 15), 'TS', 55, 26.0, -81.0),   # off-synoptic: ignored
+            (datetime(2026, 10, 1, 18), 'TS', 50, 26.0, -81.0),   # Florida
+            (datetime(2026, 10, 2, 0), 'TS', 40, 27.0, -81.0),    # still over Florida
+        ])
+        self.assertEqual(ace_data._detect_landfall_from_track(storm),
+                         [('Cuba', 'Cat 1'), ('Florida', 'TS')])
+
+    def test_track_starting_over_land_is_not_a_landfall(self):
+        storm = FakeStorm('AL112026', 'KARL', [
+            (datetime(2026, 10, 5, 0), 'TD', 30, 28.0, -82.0),
+            (datetime(2026, 10, 5, 6), 'TS', 40, 29.0, -82.0),
+        ])
+        self.assertEqual(ace_data._detect_landfall_from_track(storm), [])
 
 
 def run_tests():

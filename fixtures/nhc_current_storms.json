@@ -1,0 +1,32 @@
+{
+  "activeStorms": [
+    {
+      "id": "ep182026",
+      "binNumber": "EP3",
+      "name": "Rachel",
+      "classification": "HU",
+      "intensity": "70",
+      "lastUpdate": "2026-10-03T21:00:00.000Z",
+      "forecastGraphics": {
+        "advNum": "027",
+        "issuance": "2026-10-03T21:00:00.000Z",
+        "fileUpdateTime": "2026-10-03T20:53:08.062Z",
+        "url": "https://www.nhc.noaa.gov/graphics_ep3.shtml"
+      }
+    },
+    {
+      "id": "ep152026",
+      "binNumber": "CP2",
+      "name": "Nolo",
+      "classification": "HU",
+      "intensity": "105",
+      "lastUpdate": "2026-10-04T00:00:00.000Z",
+      "forecastGraphics": {
+        "advNum": "053a",
+        "issuance": "2026-10-04T00:00:00.000Z",
+        "fileUpdateTime": "2026-10-03T23:43:39.528Z",
+        "url": "https://www.nhc.noaa.gov/graphics_cp2.shtml"
+      }
+    }
+  ]
+}
