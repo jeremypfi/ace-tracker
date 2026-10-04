@@ -11,9 +11,9 @@ from datetime import datetime, timezone
 from email.utils import format_datetime
 from xml.sax.saxutils import escape
 
+from ace_data import SITE_URL
 from ace_storm_pages import storm_page_url
 
-SITE_URL = 'https://aceofcanes.com'
 API_V1_PATH = 'api/v1/season.json'
 FEED_PATH = 'feed.xml'
 FEED_ITEM_LIMIT = 50

@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 
 from ace_data import (
     BASINS,
+    SITE_URL,
     START_YEAR,
     get_category,
     get_noaa_classification,
@@ -398,15 +399,29 @@ def _nhc_alert_html(disturbances):
     )
 
 
-def _records_in_play_html(records):
+def _record_share_button(record, basin_key, basin_name, year):
+    """Share button for one Records in Play item: a ready-to-post line plus a
+    link to the basin's tab. Shares via the OS sheet on touch devices, else
+    copies the post to the clipboard (see shareRecord() in the page JS)."""
+    text = f'{record["title"]}: {record["detail"]} ({basin_name} {year})'
+    url = f'{SITE_URL}/#{basin_key}'
+    return (f'<button class="rip-share-btn" type="button" data-tip="Share this stat" '
+            f'aria-label="Share: {html_escape(record["title"])}" '
+            f'data-share-text="{html_escape(text)}" data-share-url="{html_escape(url)}" '
+            f'onclick="shareRecord(event)">&#128279;</button>')
+
+
+def _records_in_play_html(records, basin_key=None, basin_name='', year=None):
     """'Records in Play' panel: season records the current season is setting
-    or close to, versus every season since START_YEAR. Omitted when empty."""
+    or close to, versus every season since START_YEAR. Omitted when empty.
+    Share buttons appear when the basin is given."""
     if not records:
         return ''
     badges = {'set': ('rip-set', 'Record'), 'in_play': ('rip-watch', 'In play')}
     items = ''.join(
         f'<li class="rip-item"><span class="rip-badge {badges[r["status"]][0]}">{badges[r["status"]][1]}</span>'
-        f'<span class="rip-body"><b>{html_escape(r["title"])}</b> {html_escape(r["detail"])}</span></li>'
+        f'<span class="rip-body"><b>{html_escape(r["title"])}</b> {html_escape(r["detail"])}</span>'
+        f'{_record_share_button(r, basin_key, basin_name, year) if basin_key else ""}</li>'
         for r in records)
     return f'''
       <h3>Records in Play</h3>
@@ -650,7 +665,7 @@ def render_dashboard_html(payloads, share_image=None, share_alt=None):
 
       <h3>Season Insights</h3>
       <ul class="insights">{insight_items_html(bd['insights'])}</ul>
-      {_records_in_play_html(bd['records_in_play'])}
+      {_records_in_play_html(bd['records_in_play'], basin_key, bd['basin_name'], current_year)}
       {_season_projection_html(bd['projection'])}'''
 
         gauge_pct = min(pct_normal, 200)
@@ -796,6 +811,8 @@ def render_dashboard_html(payloads, share_image=None, share_alt=None):
   .rip-badge {{ flex:none; font-size:0.72em; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; padding:2px 7px; border-radius:10px; margin-top:1px; }}
   .rip-set {{ background:#c0392b; color:#fff; }}
   .rip-watch {{ background:#e67e22; color:#fff; }}
+  .rip-share-btn {{ flex:none; margin-left:auto; background:none; border:none; color:var(--muted); cursor:pointer; font-size:0.95em; padding:0 2px; align-self:center; }}
+  .rip-share-btn:hover {{ color:var(--accent); }}
   .rip-caption {{ font-size:0.75em; color:var(--muted); margin:4px 0 0; }}
   .insights li {{ background:var(--box); padding:8px 10px; margin:4px 0; border-radius:6px; font-size:0.85em; border-left:3px solid var(--accent); color:var(--text); }}
   .projection-widget {{ background:var(--box); border-radius:8px; padding:10px 12px; margin-top:6px; }}
@@ -917,23 +934,35 @@ function toggleTheme() {{
   _restylePaceCharts();
 }}
 {WIND_JS}
-function copyStormLink(e,slug) {{
-  var url=location.origin+location.pathname+'#storm-row-'+slug;
-  var btn=e.currentTarget;
-  function done(ok) {{
-    var prev=btn.innerHTML;
-    btn.innerHTML=ok?'&#10003;':'&#9888;';
-    setTimeout(function(){{btn.innerHTML=prev;}},1400);
-  }}
+function _copyText(text,done) {{
   if(navigator.clipboard&&navigator.clipboard.writeText) {{
-    navigator.clipboard.writeText(url).then(function(){{done(true);}},function(){{done(false);}});
+    navigator.clipboard.writeText(text).then(function(){{done(true);}},function(){{done(false);}});
   }} else {{
     try {{
       var ta=document.createElement('textarea');
-      ta.value=url;ta.style.position='fixed';ta.style.opacity='0';
+      ta.value=text;ta.style.position='fixed';ta.style.opacity='0';
       document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);
       done(true);
     }} catch(err) {{ done(false); }}
+  }}
+}}
+function _flashBtn(btn,ok) {{
+  var prev=btn.innerHTML;
+  btn.innerHTML=ok?'&#10003;':'&#9888;';
+  setTimeout(function(){{btn.innerHTML=prev;}},1400);
+}}
+function copyStormLink(e,slug) {{
+  var url=location.origin+location.pathname+'#storm-row-'+slug;
+  var btn=e.currentTarget;
+  _copyText(url,function(ok){{_flashBtn(btn,ok);}});
+}}
+function shareRecord(e) {{
+  var btn=e.currentTarget,text=btn.getAttribute('data-share-text'),url=btn.getAttribute('data-share-url');
+  var viaClipboard=function(){{_copyText(text+' '+url,function(ok){{_flashBtn(btn,ok);}});}};
+  if(navigator.share&&window.matchMedia&&window.matchMedia('(pointer:coarse)').matches) {{
+    navigator.share({{text:text,url:url}}).catch(function(err){{if(!err||err.name!=='AbortError')viaClipboard();}});
+  }} else {{
+    viaClipboard();
   }}
 }}
 document.addEventListener('DOMContentLoaded',function() {{
