@@ -211,6 +211,7 @@ data/*.xlsx
 data/*.html
 data/cones/
 data/api/
+data/og/
 data/feed.xml
 docs/html/
 docs/pdf/

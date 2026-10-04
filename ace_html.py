@@ -172,10 +172,12 @@ def _season_year(basin_data):
     return max(years) if years else datetime.now(timezone.utc).year
 
 
-def _share_image_meta(alt):
-    """Open Graph / Twitter image tags for the 1200x630 share card."""
+def _share_image_meta(alt, image='ace_preview.png'):
+    """Open Graph / Twitter image tags for the 1200x630 share card. `image`
+    is a path relative to the site root."""
     alt = html_escape(alt)
-    return (f'<meta property="og:image" content="https://aceofcanes.com/ace_preview.png">\n'
+    url = html_escape(f'https://aceofcanes.com/{image}')
+    return (f'<meta property="og:image" content="{url}">\n'
             f'<meta property="og:image:width" content="1200">\n'
             f'<meta property="og:image:height" content="630">\n'
             f'<meta property="og:image:alt" content="{alt}">\n'
@@ -441,8 +443,10 @@ def generate_dashboard_html(basin_data):
     return render_dashboard_html([build_season_payload(bd) for bd in basin_data if bd])
 
 
-def render_dashboard_html(payloads):
-    """Render the dashboard from build_season_payload() results (no I/O here)."""
+def render_dashboard_html(payloads, share_image=None, share_alt=None):
+    """Render the dashboard from build_season_payload() results (no I/O here).
+    `share_image` is the site-relative path of a generated share card; the
+    static ace_preview.png is used without one."""
     now = datetime.now(timezone.utc)
 
     def storm_rows_html(storms):
@@ -696,10 +700,10 @@ def render_dashboard_html(payloads):
 <meta property="og:url" content="https://aceofcanes.com/">
 <meta property="og:title" content="{page_title}">
 <meta property="og:description" content="Track Accumulated Cyclone Energy (ACE) for the {season_year} Atlantic and Eastern Pacific hurricane seasons in real time. Updated every 3 hours from official NOAA data.">
-{_share_image_meta(SHARE_IMAGE_ALT)}
+{_share_image_meta(share_alt or SHARE_IMAGE_ALT, share_image or 'ace_preview.png')}
 <meta name="twitter:title" content="{page_title}">
 <meta name="twitter:description" content="Track Accumulated Cyclone Energy (ACE) for the {season_year} Atlantic and Eastern Pacific hurricane seasons in real time. Updated every 3 hours from official NOAA data.">
-<meta name="twitter:image" content="https://aceofcanes.com/ace_preview.png">
+<meta name="twitter:image" content="https://aceofcanes.com/{html_escape(share_image or 'ace_preview.png')}">
 <link rel="icon" type="image/png" href="ace.png">
 <link rel="stylesheet" href="vendor/leaflet-1.9.4/leaflet.css" integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous" media="print" onload="this.media='all'">
 <noscript><link rel="stylesheet" href="vendor/leaflet-1.9.4/leaflet.css"></noscript>
