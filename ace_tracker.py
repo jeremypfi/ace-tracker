@@ -21,12 +21,14 @@ Author: Built with Claude for JP
 """
 
 import os
+import shutil
 import logging
 from datetime import datetime, timezone
 
 from ace_data import (
     BASINS,
     build_season_payload,
+    ensure_unique_page_slugs,
     BACKUP_DATA,
     START_YEAR,
     _tropycal_basin_name,
@@ -43,7 +45,8 @@ from ace_data import (
     generate_console_report,
 )
 from ace_html import render_dashboard_html, generate_history_html, generate_records_html, generate_about_html
-from ace_feeds import api_v1_json, build_rss, API_V1_PATH, FEED_PATH
+from ace_feeds import api_v1_json, build_rss, build_sitemap, API_V1_PATH, FEED_PATH
+from ace_storm_pages import render_storm_page_html, storm_page_path
 import ace_cards
 
 # logging.basicConfig() lives in ace_data.py, which every import path here
@@ -158,6 +161,61 @@ def write_share_card(payloads, output_folder, generated_at=None):
 
 
 
+def write_storm_pages(payloads, output_folder, generated_at=None):
+    """Write one page (and share card) per current-season storm under
+    output_folder/storm/. Each storm is isolated: a failure skips that storm,
+    never the publish. Returns the payloads that actually got pages, with
+    the failed storms removed, for the sitemap."""
+    storm_dir = os.path.join(output_folder, 'storm')
+    shutil.rmtree(storm_dir, ignore_errors=True)
+    os.makedirs(storm_dir, exist_ok=True)
+    published = []
+    for p in payloads:
+        if p['preseason'] or p['is_backup']:
+            continue
+        ok = []
+        for s in p['storms']:
+            try:
+                image = alt = None
+                try:
+                    image = ace_cards.storm_card_name(p, s, generated_at)
+                    full = os.path.join(output_folder, image)
+                    os.makedirs(os.path.dirname(full), exist_ok=True)
+                    with open(full, 'wb') as f:
+                        f.write(ace_cards.render_storm_card(p, s, generated_at))
+                    alt = ace_cards.storm_card_alt(p, s)
+                except Exception as e:
+                    logger.error(f"Could not generate share card for {s['name']}: {e}")
+                    image = alt = None
+                page = render_storm_page_html(p, s, image, alt)  # render first: a failure must not leave an empty file
+                with open(os.path.join(output_folder, storm_page_path(s)), 'w', encoding='utf-8') as f:
+                    f.write(page)
+                ok.append(s)
+            except Exception as e:
+                logger.error(f"Failed to write storm page for {s['name']}: {e}")
+        if ok:
+            published.append(dict(p, storms=ok))
+    return published
+
+
+def write_sitemap(published, output_folder, base_path=None, generated_at=None):
+    """data/sitemap.xml = the repo's static sitemap plus storm pages. On any
+    failure the static sitemap is published unchanged."""
+    base_path = base_path or os.path.join(os.path.dirname(os.path.abspath(__file__)), 'sitemap.xml')
+    out_path = os.path.join(output_folder, 'sitemap.xml')
+    with open(base_path, encoding='utf-8') as f:
+        base = f.read()
+    try:
+        content = build_sitemap(base, published, generated_at)
+    except Exception as e:
+        logger.error(f"Could not add storm pages to the sitemap: {e}")
+        content = base
+    with open(out_path, 'w', encoding='utf-8') as f:
+        f.write(content)
+    return out_path
+
+
+
 # ===============================================================================
 # MAIN
 # ===============================================================================
@@ -196,6 +254,7 @@ def main():
         # One payload per basin, shared by the dashboard and the feeds so the
         # NHC cone/outlook fetches happen once per run.
         payloads = [build_season_payload(r) for r in basin_results]
+        ensure_unique_page_slugs(payloads)
         share_image, share_alt = write_share_card(payloads, OUTPUT_FOLDER)
         if share_image:
             print(f"  ✓ Share card saved to: {os.path.join(OUTPUT_FOLDER, share_image)}")
@@ -221,6 +280,15 @@ def main():
             except (OSError, PermissionError) as e:
                 logger.error(f"Failed to save {feed_path}: {e}")
                 print(f"  ✗ Error: Could not save {rel_path}")
+
+        try:
+            published = write_storm_pages(payloads, OUTPUT_FOLDER)
+            print(f"  ✓ {sum(len(p['storms']) for p in published)} storm pages saved to: "
+                  f"{os.path.join(OUTPUT_FOLDER, 'storm')}")
+            output_files.append(write_sitemap(published, OUTPUT_FOLDER))
+        except (OSError, PermissionError) as e:
+            logger.error(f"Failed to save storm pages / sitemap: {e}")
+            print("  ✗ Error: Could not save storm pages / sitemap")
 
         history_html = generate_history_html(basin_results)
         history_path = os.path.join(OUTPUT_FOLDER, 'history.html')

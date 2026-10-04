@@ -577,7 +577,8 @@ def render_dashboard_html(payloads, share_image=None, share_alt=None):
                 row_classes += ' active-storm-row'
 
             active_dot = '<span class="active-pulse"></span> ' if is_active else ''
-            panel_inner = _storm_panel_inner_html(st)
+            panel_inner = _storm_panel_inner_html(st) + (
+                f'<div class="storm-page-link"><a href="storm/{html_escape(st["page_slug"])}.html">Open {html_escape(name)} page &rarr;</a></div>')
 
             wind_cell = '—' if wind <= 0 else f"<span class='wind-val' data-kt='{wind}'>{wind}</span>"
 
@@ -847,6 +848,9 @@ def render_dashboard_html(payloads, share_image=None, share_alt=None):
   .pace-caption {{ color:var(--muted); font-size:0.78em; text-align:center; margin-top:2px; }}
   @media(min-width:768px) {{ .pace-chart-wrap {{ height:300px; }} }}
 {CONE_CSS}
+  .storm-page-link {{ font-size:0.85em; text-align:right; margin-top:8px; }}
+  .storm-page-link a {{ color:var(--accent); text-decoration:none; }}
+  .storm-page-link a:hover {{ text-decoration:underline; }}
 </style>
 </head>
 <body>

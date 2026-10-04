@@ -9,8 +9,9 @@ removing one needs a new version path (api/v2/), not an edit to v1.
 import json
 from datetime import datetime, timezone
 from email.utils import format_datetime
-from urllib.parse import quote
 from xml.sax.saxutils import escape
+
+from ace_storm_pages import storm_page_url
 
 SITE_URL = 'https://aceofcanes.com'
 API_V1_PATH = 'api/v1/season.json'
@@ -51,6 +52,7 @@ def build_api_v1(payloads, generated_at=None):
             'storms': [{
                 'name': s['name'],
                 'slug': s['slug'],
+                'url': storm_page_url(s),
                 'ace': round(s['ace'], 2),
                 'pct_of_season': round(s['pct_of_season'], 1),
                 'max_wind_kt': s['max_wind'],
@@ -111,7 +113,7 @@ def build_rss(payloads, generated_at=None):
                     f"({p['ace_total']:.1f} ACE total, {p['classification']}){lf}.")
             entries.append((pub, s['ace'], {
                 'title': f"{s['name']} ({p['basin_name']} {p['year']})",
-                'link': f"{SITE_URL}/#storm-row-{quote(s['slug'])}",
+                'link': storm_page_url(s),
                 'guid': f"aceofcanes:{p['basin_key']}:{p['year']}:{s['slug']}",
                 'pub': pub,
                 'desc': desc,
@@ -142,3 +144,21 @@ def build_rss(payloads, generated_at=None):
         f'{items}'
         '  </channel>\n'
         '</rss>\n')
+
+
+def build_sitemap(base_xml, payloads, generated_at=None):
+    """The static sitemap.xml with one entry per storm page added. The base
+    keeps the hand-maintained entries (dashboard, history, records, about)."""
+    lastmod = _utc(generated_at).strftime('%Y-%m-%d')
+    entries = ''.join(
+        '  <url>\n'
+        f"    <loc>{escape(storm_page_url(s))}</loc>\n"
+        f'    <lastmod>{lastmod}</lastmod>\n'
+        f"    <changefreq>{'hourly' if s['is_active'] else 'weekly'}</changefreq>\n"
+        '    <priority>0.5</priority>\n'
+        '  </url>\n'
+        for p in payloads for s in p['storms'])
+    marker = '</urlset>'
+    if marker not in base_xml:
+        raise ValueError('sitemap base has no </urlset>')
+    return base_xml.replace(marker, entries + marker)

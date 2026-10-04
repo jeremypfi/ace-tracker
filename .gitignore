@@ -211,6 +211,8 @@ data/*.xlsx
 data/*.html
 data/cones/
 data/api/
+data/storm/
+data/sitemap.xml
 data/og/
 data/feed.xml
 docs/html/
