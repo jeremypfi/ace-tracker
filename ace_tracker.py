@@ -26,6 +26,7 @@ from datetime import datetime, timezone
 
 from ace_data import (
     BASINS,
+    build_season_payload,
     BACKUP_DATA,
     START_YEAR,
     _tropycal_basin_name,
@@ -41,7 +42,8 @@ from ace_data import (
     generate_discord_text,
     generate_console_report,
 )
-from ace_html import generate_dashboard_html, generate_history_html, generate_records_html, generate_about_html
+from ace_html import render_dashboard_html, generate_history_html, generate_records_html, generate_about_html
+from ace_feeds import api_v1_json, build_rss, API_V1_PATH, FEED_PATH
 
 # logging.basicConfig() lives in ace_data.py, which every import path here
 # (directly or via ace_html) already pulls in — see the comment there.
@@ -172,7 +174,10 @@ def main():
 
     # Generate HTML pages
     if basin_results:
-        dashboard_html = generate_dashboard_html(basin_results)
+        # One payload per basin, shared by the dashboard and the feeds so the
+        # NHC cone/outlook fetches happen once per run.
+        payloads = [build_season_payload(r) for r in basin_results]
+        dashboard_html = render_dashboard_html(payloads)
         dashboard_path = os.path.join(OUTPUT_FOLDER, 'ACE_Dashboard.html')
         try:
             with open(dashboard_path, 'w', encoding='utf-8') as f:
@@ -182,6 +187,18 @@ def main():
         except (OSError, PermissionError) as e:
             logger.error(f"Failed to save dashboard {dashboard_path}: {e}")
             print(f"\n  ✗ Error: Could not save dashboard")
+
+        for rel_path, build in ((API_V1_PATH, api_v1_json), (FEED_PATH, build_rss)):
+            feed_path = os.path.join(OUTPUT_FOLDER, rel_path)
+            try:
+                os.makedirs(os.path.dirname(feed_path), exist_ok=True)
+                with open(feed_path, 'w', encoding='utf-8') as f:
+                    f.write(build(payloads))
+                output_files.append(feed_path)
+                print(f"  ✓ {rel_path} saved to: {feed_path}")
+            except (OSError, PermissionError) as e:
+                logger.error(f"Failed to save {feed_path}: {e}")
+                print(f"  ✗ Error: Could not save {rel_path}")
 
         history_html = generate_history_html(basin_results)
         history_path = os.path.join(OUTPUT_FOLDER, 'history.html')

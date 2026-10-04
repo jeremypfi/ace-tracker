@@ -113,13 +113,19 @@ All tests must pass before committing. Use the `/pre-commit` skill in Claude Cod
 
 ---
 
+## Public data
+
+- **JSON API:** [`https://aceofcanes.com/api/v1/season.json`](https://aceofcanes.com/api/v1/season.json) has both basins' current season: ACE totals, classification, counts, rank, every storm with its landfalls and track points, and yearly ACE since 1991. Wind is in knots, current-season values are preliminary, and the `version` field is `1`. Fields may be added to v1, but a rename or removal will ship as `/api/v2/`.
+- **RSS:** [`https://aceofcanes.com/feed.xml`](https://aceofcanes.com/feed.xml) adds an item for each named storm as it forms.
+
 ## Project Structure
 
 ```
 ace-tracker/
 ├── ace_data.py             # Data fetch, ACE calc, plain-text report generation
 ├── ace_html.py             # Dashboard, history, records, and What Is ACE? page rendering
-├── ace_tracker.py          # CLI entrypoint — wires ace_data.py + ace_html.py together
+├── ace_feeds.py            # JSON API (api/v1/season.json) and RSS feed (feed.xml) builders
+├── ace_tracker.py          # CLI entrypoint — wires ace_data.py + ace_html.py + ace_feeds.py together
 ├── test_ace_tracker.py     # unit + smoke tests
 ├── fixtures/               # Saved NHC feeds + HURDAT2 snippet for offline fetcher tests
 ├── verify_pr.py            # Consolidated PR check: tests + syntax check + a live tracker run

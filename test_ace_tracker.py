@@ -18,6 +18,7 @@ from datetime import datetime, timedelta, timezone
 from unittest import mock
 
 import ace_data
+import ace_feeds
 from ace_data import (
     get_category,
     is_major,
@@ -1847,6 +1848,85 @@ class TestBuildSeasonPayload(unittest.TestCase):
         text = json.dumps(p)
         self.assertNotIn('<div', text)
         self.assertNotIn('<span', text)
+
+
+class TestFeeds(unittest.TestCase):
+    """ace_feeds: the JSON API is a public contract and the RSS must be valid XML."""
+
+    NOW = datetime(2026, 9, 20, 12, 0, tzinfo=timezone.utc)
+
+    def _payloads(self):
+        basin_data = TestHTMLGeneration()._make_basin_data()[0]
+        basin_data['current']['storm_details']['Arthur'].update(
+            {'landfall_estimated': True, 'start_date': '6/15'})
+        with mock.patch('ace_data.fetch_active_storm_cones', return_value={}), \
+             mock.patch('ace_data.fetch_nhc_disturbances', return_value=[]):
+            return [ace_data.build_season_payload(basin_data)]
+
+    def test_api_v1_shape_is_stable(self):
+        api = ace_feeds.build_api_v1(self._payloads(), self.NOW)
+        self.assertEqual(api['version'], 1)
+        self.assertEqual(api['generated_at'], '2026-09-20T12:00:00Z')
+        self.assertEqual(set(api['basins']), {'atlantic'})
+        atl = api['basins']['atlantic']
+        self.assertEqual(set(atl), {
+            'name', 'year', 'preseason', 'is_backup_data', 'data_as_of', 'ace_total', 'normal_ace',
+            'pct_of_normal', 'classification', 'named_storms', 'hurricanes', 'major_hurricanes',
+            'rank', 'seasons_ranked', 'storms', 'yearly_ace'})
+        storm = atl['storms'][0]
+        self.assertEqual(set(storm), {
+            'name', 'slug', 'ace', 'pct_of_season', 'max_wind_kt', 'category', 'is_major',
+            'is_active', 'start_date', 'landfalls', 'landfall_estimated', 'track'})
+        self.assertEqual(storm['landfalls'], [{'location': 'Texas', 'category': 'TS'}])
+        self.assertEqual(set(storm['track'][0]), {'lat', 'lon', 'wind_kt', 'status', 'time'})
+        self.assertEqual(atl['yearly_ace']['2005'], 245.0)
+
+    def test_api_v1_json_round_trips(self):
+        text = ace_feeds.api_v1_json(self._payloads(), self.NOW)
+        self.assertEqual(json.loads(text)['basins']['atlantic']['storms'][0]['name'], 'Arthur')
+
+    def test_rss_is_valid_xml_with_one_item_per_storm(self):
+        import xml.etree.ElementTree as ET
+        root = ET.fromstring(ace_feeds.build_rss(self._payloads(), self.NOW))
+        self.assertEqual(root.tag, 'rss')
+        items = root.findall('./channel/item')
+        self.assertEqual(len(items), 1)
+        item = items[0]
+        self.assertEqual(item.findtext('title'), 'Arthur (Atlantic 2026)')
+        self.assertEqual(item.findtext('guid'), 'aceofcanes:atlantic:2026:arthur')
+        self.assertEqual(item.findtext('link'), 'https://aceofcanes.com/#storm-row-arthur')
+        self.assertEqual(item.findtext('pubDate'), 'Mon, 15 Jun 2026 00:00:00 +0000')
+        self.assertIn('landfall (estimated): Texas (TS)', item.findtext('description'))
+
+    def test_rss_escapes_markup_in_storm_names(self):
+        import xml.etree.ElementTree as ET
+        payloads = self._payloads()
+        payloads[0]['storms'][0]['name'] = 'A&B <x>'
+        payloads[0]['storms'][0]['slug'] = 'a&b-<x>'
+        root = ET.fromstring(ace_feeds.build_rss(payloads, self.NOW))
+        self.assertEqual(root.findtext('./channel/item/title'), 'A&B <x> (Atlantic 2026)')
+        self.assertNotIn('<x>', root.findtext('./channel/item/link'))
+
+    def test_rss_preseason_is_valid_with_no_items(self):
+        import xml.etree.ElementTree as ET
+        payloads = self._payloads()
+        payloads[0]['storms'] = []
+        root = ET.fromstring(ace_feeds.build_rss(payloads, self.NOW))
+        self.assertEqual(root.findall('./channel/item'), [])
+
+    def test_rss_item_limit_and_newest_first(self):
+        import xml.etree.ElementTree as ET
+        payloads = self._payloads()
+        base = payloads[0]['storms'][0]
+        payloads[0]['storms'] = [dict(base, name=f'S{i}', slug=f's{i}', start_date=f'{1 + i // 28}/{1 + i % 28}')
+                                 for i in range(60)]
+        items = ET.fromstring(ace_feeds.build_rss(payloads, self.NOW)).findall('./channel/item')
+        self.assertEqual(len(items), ace_feeds.FEED_ITEM_LIMIT)
+        self.assertEqual(items[0].findtext('title'), 'S59 (Atlantic 2026)')
+
+    def test_dashboard_advertises_feed(self):
+        html = generate_dashboard_html(TestHTMLGeneration()._make_basin_data())
+        self.assertIn('<link rel="alternate" type="application/rss+xml"', html)
 
 
 class TestCanonicalHomeLinks(unittest.TestCase):

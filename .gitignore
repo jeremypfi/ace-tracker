@@ -210,6 +210,8 @@ __marimo__/
 data/*.xlsx
 data/*.html
 data/cones/
+data/api/
+data/feed.xml
 docs/html/
 docs/pdf/
 landfall_cache.json
