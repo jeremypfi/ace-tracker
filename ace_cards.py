@@ -16,6 +16,8 @@ from datetime import datetime, timezone
 import matplotlib
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
+from ace_html import _track_status_color
+
 WIDTH, HEIGHT = 1200, 630
 CARD_ART = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ace.png')
 # matplotlib ships DejaVu, so the card renders the same on a laptop and in CI.
@@ -127,3 +129,118 @@ def share_card_alt(payloads):
     parts = [f"{SHORT_NAME.get(p['basin_key'], p['basin_key']).title()} {p['ace_total']:.1f} ACE ({p['classification']})"
              for p in payloads]
     return 'Ace of Canes season ACE: ' + '; '.join(parts) if parts else 'Ace of Canes season ACE'
+
+
+# ===============================================================================
+# PER-STORM CARD
+# ===============================================================================
+
+def _storm_content(payload, storm, as_of):
+    wind = storm['max_wind']
+    return {
+        'name': storm['name'],
+        'basin_key': payload['basin_key'],
+        'year': payload['year'],
+        'ace': f"{storm['ace']:.1f}",
+        'pct': f"{storm['pct_of_season']:.0f}",
+        'peak': f"{wind} kt · {storm['category']}" if wind > 0 else 'Peak unknown',
+        'active': storm['is_active'],
+        'landfall': ', '.join(loc for loc, _ in storm['landfall']) or 'No landfall',
+        'points': [(t['lat'], t['lon'], t['status'], t['wind']) for t in storm['track_points']],
+        'date': as_of.strftime('%b %-d, %Y'),
+    }
+
+
+def storm_card_name(payload, storm, generated_at=None):
+    """'og/storm-<page_slug>-<hash>.png', stable while the card's content is."""
+    content = _storm_content(payload, storm, generated_at or datetime.now(timezone.utc))
+    digest = hashlib.sha1(repr(content).encode()).hexdigest()[:10]
+    return f"og/storm-{storm['page_slug']}-{digest}.png"
+
+
+def _unwrap_lons(lons):
+    out = [lons[0]]
+    for lon in lons[1:]:
+        while lon - out[-1] > 180:
+            lon -= 360
+        while lon - out[-1] < -180:
+            lon += 360
+        out.append(lon)
+    return out
+
+
+def _draw_track(draw, box, points):
+    """Storm path in `box`, colored by intensity, equal-scale lat/lon."""
+    x0, y0, x1, y1 = box
+    draw.rounded_rectangle(box, radius=22, fill=(11, 24, 40), outline=(30, 58, 95), width=2)
+    if not points:
+        draw.text(((x0 + x1) / 2, (y0 + y1) / 2), 'No track data', font=_font(24), fill=MUTED, anchor='mm')
+        return
+    import math
+    lats = [p[0] for p in points]
+    lons = _unwrap_lons([p[1] for p in points])
+    mid_lat = (min(lats) + max(lats)) / 2
+    xs = [lon * math.cos(math.radians(mid_lat)) for lon in lons]
+    span_x = max(max(xs) - min(xs), 4.0)
+    span_y = max(max(lats) - min(lats), 4.0)
+    pad = 44
+    scale = min((x1 - x0 - 2 * pad) / span_x, (y1 - y0 - 2 * pad) / span_y)
+    cx, cy = (max(xs) + min(xs)) / 2, (max(lats) + min(lats)) / 2
+    to_px = lambda x, lat: ((x0 + x1) / 2 + (x - cx) * scale, (y0 + y1) / 2 - (lat - cy) * scale)
+    pix = [to_px(x, lat) for x, lat in zip(xs, lats)]
+
+    def hex_rgb(h):
+        return tuple(int(h[i:i + 2], 16) for i in (1, 3, 5))
+    for i in range(len(pix) - 1):
+        draw.line([pix[i], pix[i + 1]], fill=hex_rgb(_track_status_color(points[i][2], points[i][3])), width=7)
+    for (px, py), pt in zip(pix, points):
+        r = 5
+        draw.ellipse((px - r, py - r, px + r, py + r), fill=hex_rgb(_track_status_color(pt[2], pt[3])))
+    lx, ly = pix[-1]
+    draw.ellipse((lx - 9, ly - 9, lx + 9, ly + 9), outline=(255, 255, 255), width=3)
+
+
+def render_storm_card(payload, storm, generated_at=None):
+    """PNG bytes for one storm's share card."""
+    as_of = generated_at or datetime.now(timezone.utc)
+    c = _storm_content(payload, storm, as_of)
+    img = _gradient()
+    draw = ImageDraw.Draw(img)
+    _draw_track(draw, (40, 50, 470, 580), c['points'])
+
+    left = 520
+    color = ACCENT_BY_BASIN.get(c['basin_key'], ACCENT)
+    _spaced(draw, (left, 52), 'ACE OF CANES', _font(22, bold=True), ACCENT, 5)
+    name_font = _font(72, bold=True)
+    name = c['name']
+    while draw.textlength(name, font=name_font) > WIDTH - left - 40 and len(name) > 3:
+        name = name[:-2] + '…'
+    draw.text((left, 92), name, font=name_font, fill=TEXT)
+    basin = SHORT_NAME.get(c['basin_key'], c['basin_key']).title()
+    draw.text((left, 182), f"{basin} {c['year']}", font=_font(30), fill=MUTED)
+    if c['active']:
+        draw.ellipse((left, 246, left + 16, 262), fill=(76, 175, 80))
+        _spaced(draw, (left + 28, 241), 'ACTIVE NOW', _font(22, bold=True), (76, 175, 80), 3)
+
+    draw.text((left, 290), c['ace'], font=_font(96, bold=True), fill=color)
+    ace_w = draw.textlength(c['ace'], font=_font(96, bold=True))
+    draw.text((left + ace_w + 16, 336), 'ACE', font=_font(32, bold=True), fill=MUTED)
+    draw.text((left, 410), f"{c['pct']}% of the season so far", font=_font(24), fill=TEXT)
+    draw.text((left, 452), f"Peak {c['peak']}", font=_font(24, bold=True), fill=TEXT)
+    lf = c['landfall']
+    if draw.textlength(lf, font=_font(22)) > WIDTH - left - 40:
+        lf = lf[:40].rstrip(', ') + '…'
+    draw.text((left, 492), lf if lf == 'No landfall' else f'Landfall: {lf}', font=_font(22), fill=MUTED)
+
+    draw.text((left, HEIGHT - 84), 'aceofcanes.com', font=_font(26, bold=True), fill=ACCENT)
+    draw.text((left, HEIGHT - 46), f"Updated {c['date']} · preliminary NHC data", font=_font(18), fill=MUTED)
+
+    out = io.BytesIO()
+    img.save(out, 'PNG', optimize=True)
+    return out.getvalue()
+
+
+def storm_card_alt(payload, storm):
+    wind = f"peak {storm['max_wind']} kt ({storm['category']})" if storm['max_wind'] > 0 else 'peak unknown'
+    return (f"{storm['name']} {payload['year']}: {storm['ace']:.1f} ACE, "
+            f"{storm['pct_of_season']:.0f}% of the {payload['basin_name']} season, {wind}")

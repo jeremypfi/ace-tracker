@@ -7,6 +7,7 @@ computes Accumulated Cyclone Energy, and builds Discord/console report text.
 """
 
 import os
+import re
 import json
 import logging
 import tempfile
@@ -2464,6 +2465,7 @@ def build_season_payload(basin_data):
         storms.append({
             'name': name,
             'slug': name.lower().replace(' ', '-'),
+            'page_slug': re.sub(r'[^a-z0-9]+', '-', f'{name}-{year}'.lower()).strip('-'),
             'ace': ace,
             'pct_of_season': (ace / total * 100) if total > 0 else 0,
             'max_wind': wind,
@@ -2504,3 +2506,15 @@ def build_season_payload(basin_data):
         'disturbances': fetch_nhc_disturbances(basin_key),
         'yearly_totals': yearly_totals,
     }
+
+
+def ensure_unique_page_slugs(payloads):
+    """Storm pages live at /storm/<page_slug>.html, so two storms must never
+    share one. Names are unique per basin-year in practice; if a collision
+    ever happens, the later storm gets its basin appended."""
+    seen = set()
+    for p in payloads:
+        for s in p['storms']:
+            if s['page_slug'] in seen:
+                s['page_slug'] = f"{s['page_slug']}-{p['basin_key']}"
+            seen.add(s['page_slug'])

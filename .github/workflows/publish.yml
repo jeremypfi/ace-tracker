@@ -99,7 +99,9 @@ jobs:
         cp data/ACE_Dashboard.html data/index.html
         cp CNAME data/CNAME
         cp robots.txt data/robots.txt
-        cp sitemap.xml data/sitemap.xml
+        # ace_tracker.py writes data/sitemap.xml (static entries + storm pages); -n keeps
+        # it and only falls back to the static file if the generator did not.
+        cp -n sitemap.xml data/sitemap.xml
         cp ace.png data/ace.png
         cp ace_preview.png data/ace_preview.png
 

@@ -211,3 +211,25 @@ function _toggleSpaghetti(slug){
 }"""
 
 THEME_INIT_JS = """(function(){try{var t=localStorage.getItem('ace-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light');else if(!t&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches)document.documentElement.setAttribute('data-theme','light');}catch(e){}})();"""
+
+# Subresource-integrity hashes for the vendored Leaflet files. The dashboard
+# template carries the same values inline; a test keeps both in step.
+LEAFLET_CSS_SRI = 'sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H'
+LEAFLET_JS_SRI = 'sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH'
+
+STORM_PAGE_CSS = """
+  .container { max-width:900px; margin:0 auto; }
+  .storm-card { background:var(--card); border-radius:12px; padding:16px; margin-bottom:16px; }
+  .storm-sub { color:var(--muted); font-size:0.9em; margin:-4px 0 12px; }
+  .storm-actions { display:flex; gap:8px; flex-wrap:wrap; margin:10px 0 0; }
+  .storm-actions button { background:transparent; border:1px solid var(--accent); color:var(--accent); border-radius:20px; padding:6px 14px; cursor:pointer; font-size:0.85em; }
+  .lf-list { list-style:none; }
+  .lf-list li { padding:6px 0; border-bottom:1px solid var(--border); font-size:0.92em; }
+  .lf-list li:last-child { border-bottom:none; }
+  .sibling-list { list-style:none; display:flex; flex-wrap:wrap; gap:8px; }
+  .sibling-list a { display:inline-block; color:var(--accent); text-decoration:none; border:1px solid var(--border); border-radius:16px; padding:4px 12px; font-size:0.85em; }
+  .sibling-list a[aria-current="page"] { background:var(--accent); color:var(--bg); border-color:var(--accent); font-weight:bold; }
+  .sources { background:var(--sources-bg); border-radius:8px; padding:12px 14px; font-size:0.78em; color:var(--muted); margin-top:16px; }
+  .sources a { color:var(--accent); }
+  .page-note { color:var(--muted); font-size:0.78em; margin:10px 2px 0; }
+"""

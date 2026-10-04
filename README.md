@@ -117,6 +117,7 @@ All tests must pass before committing. Use the `/pre-commit` skill in Claude Cod
 
 - **JSON API:** [`https://aceofcanes.com/api/v1/season.json`](https://aceofcanes.com/api/v1/season.json) has both basins' current season: ACE totals, classification, counts, rank, every storm with its landfalls and track points, and yearly ACE since 1991. Wind is in knots, current-season values are preliminary, and the `version` field is `1`. Fields may be added to v1, but a rename or removal will ship as `/api/v2/`.
 - **RSS:** [`https://aceofcanes.com/feed.xml`](https://aceofcanes.com/feed.xml) adds an item for each named storm as it forms.
+- **Storm pages:** every current-season storm has its own page at `https://aceofcanes.com/storm/<name>-<year>.html` (for example `storm/polo-2026.html`), with the track map, forecast cone and model tracks while active, ACE, landfalls and its own share card. Each storm's `url` is in the JSON.
 
 ## Project Structure
 
@@ -126,6 +127,7 @@ ace-tracker/
 ├── ace_html.py             # Dashboard, history, records, and What Is ACE? page rendering
 ├── ace_feeds.py            # JSON API (api/v1/season.json) and RSS feed (feed.xml) builders
 ├── ace_assets.py           # CSS and JS blocks shared by the dashboard and storm pages
+├── ace_storm_pages.py      # One page per current-season storm (storm/<name>-<year>.html)
 ├── ace_cards.py            # Live season share card (og/season-<hash>.png, drawn with Pillow)
 ├── ace_tracker.py          # CLI entrypoint — wires the modules above together
 ├── test_ace_tracker.py     # unit + smoke tests

@@ -19,6 +19,7 @@ from unittest import mock
 
 import ace_data
 import ace_cards
+from ace_storm_pages import render_storm_page_html
 import ace_feeds
 from ace_data import (
     get_category,
@@ -1876,7 +1877,7 @@ class TestFeeds(unittest.TestCase):
             'rank', 'seasons_ranked', 'storms', 'yearly_ace'})
         storm = atl['storms'][0]
         self.assertEqual(set(storm), {
-            'name', 'slug', 'ace', 'pct_of_season', 'max_wind_kt', 'category', 'is_major',
+            'name', 'slug', 'url', 'ace', 'pct_of_season', 'max_wind_kt', 'category', 'is_major',
             'is_active', 'start_date', 'landfalls', 'landfall_estimated', 'track'})
         self.assertEqual(storm['landfalls'], [{'location': 'Texas', 'category': 'TS'}])
         self.assertEqual(set(storm['track'][0]), {'lat', 'lon', 'wind_kt', 'status', 'time'})
@@ -1895,7 +1896,7 @@ class TestFeeds(unittest.TestCase):
         item = items[0]
         self.assertEqual(item.findtext('title'), 'Arthur (Atlantic 2026)')
         self.assertEqual(item.findtext('guid'), 'aceofcanes:atlantic:2026:arthur')
-        self.assertEqual(item.findtext('link'), 'https://aceofcanes.com/#storm-row-arthur')
+        self.assertEqual(item.findtext('link'), 'https://aceofcanes.com/storm/arthur-2026.html')
         self.assertEqual(item.findtext('pubDate'), 'Mon, 15 Jun 2026 00:00:00 +0000')
         self.assertIn('landfall (estimated): Texas (TS)', item.findtext('description'))
 
@@ -1904,9 +1905,10 @@ class TestFeeds(unittest.TestCase):
         payloads = self._payloads()
         payloads[0]['storms'][0]['name'] = 'A&B <x>'
         payloads[0]['storms'][0]['slug'] = 'a&b-<x>'
+        payloads[0]['storms'][0]['page_slug'] = 'a-b-x-2026'
         root = ET.fromstring(ace_feeds.build_rss(payloads, self.NOW))
         self.assertEqual(root.findtext('./channel/item/title'), 'A&B <x> (Atlantic 2026)')
-        self.assertNotIn('<x>', root.findtext('./channel/item/link'))
+        self.assertEqual(root.findtext('./channel/item/link'), 'https://aceofcanes.com/storm/a-b-x-2026.html')
 
     def test_rss_preseason_is_valid_with_no_items(self):
         import xml.etree.ElementTree as ET
@@ -1919,7 +1921,7 @@ class TestFeeds(unittest.TestCase):
         import xml.etree.ElementTree as ET
         payloads = self._payloads()
         base = payloads[0]['storms'][0]
-        payloads[0]['storms'] = [dict(base, name=f'S{i}', slug=f's{i}', start_date=f'{1 + i // 28}/{1 + i % 28}')
+        payloads[0]['storms'] = [dict(base, name=f'S{i}', slug=f's{i}', page_slug=f's{i}-2026', start_date=f'{1 + i // 28}/{1 + i % 28}')
                                  for i in range(60)]
         items = ET.fromstring(ace_feeds.build_rss(payloads, self.NOW)).findall('./channel/item')
         self.assertEqual(len(items), ace_feeds.FEED_ITEM_LIMIT)
@@ -1997,6 +1999,182 @@ class TestShareCard(unittest.TestCase):
         self.assertEqual(render_dashboard_html(self._payloads()).count('https://aceofcanes.com/ace_preview.png'), 2)
         history = generate_history_html(TestHTMLGeneration()._make_basin_data())
         self.assertEqual(history.count('https://aceofcanes.com/ace_preview.png'), 2)
+
+
+class TestStormPages(unittest.TestCase):
+    """Per-storm pages at /storm/<name>-<year>.html (#51)."""
+
+    NOW = datetime(2026, 9, 20, 12, 0, tzinfo=timezone.utc)
+
+    def _payload(self, extra=None):
+        basin_data = TestHTMLGeneration()._make_basin_data()[0]
+        basin_data['current']['storms']['Bertha'] = 3.0
+        basin_data['current']['storm_details']['Bertha'] = {
+            'ace': 3.0, 'max_wind': 70, 'is_active': True, 'start_date': '7/2',
+            'track_points': [{'lat': 20.0, 'lon': -60.0, 'wind': 70, 'status': 'HU', 'time': '7/2 00Z'},
+                             {'lat': 22.0, 'lon': -63.0, 'wind': 65, 'status': 'HU', 'time': '7/2 06Z'}],
+            'landfall': [('Cuba', 'Cat 1')], 'landfall_estimated': True,
+            'spaghetti': {'GFS': [{'lat': 24, 'lon': -66}]}, 'spaghetti_cycles': {'GFS': '2026-07-02T06:00:00Z'},
+            'cone_issued': '2026-07-02T09:00:00Z',
+        }
+        basin_data['current']['total'] = 3.41
+        with mock.patch('ace_data.fetch_active_storm_cones', return_value={'Bertha': 'cones/al022026.png'}), \
+             mock.patch('ace_data.fetch_nhc_disturbances', return_value=[]):
+            payload = ace_data.build_season_payload(basin_data)
+        ace_data.ensure_unique_page_slugs([payload])
+        return payload
+
+    def test_page_slug_is_name_and_year_and_url_safe(self):
+        p = self._payload()
+        self.assertEqual([s['page_slug'] for s in p['storms']], ['bertha-2026', 'arthur-2026'])
+
+    def test_page_slug_strips_unsafe_characters(self):
+        basin_data = TestHTMLGeneration()._make_basin_data()[0]
+        basin_data['current']['storms'] = {"O'Brien <x>/Two": 1.0}
+        basin_data['current']['storm_details'] = {}
+        with mock.patch('ace_data.fetch_active_storm_cones', return_value={}), \
+             mock.patch('ace_data.fetch_nhc_disturbances', return_value=[]):
+            p = ace_data.build_season_payload(basin_data)
+        self.assertEqual(p['storms'][0]['page_slug'], 'o-brien-x-two-2026')
+
+    def test_colliding_page_slugs_get_a_basin_suffix(self):
+        a, b = self._payload(), self._payload()
+        b['basin_key'] = 'pacific'
+        ace_data.ensure_unique_page_slugs([a, b])
+        slugs = [s['page_slug'] for p in (a, b) for s in p['storms']]
+        self.assertEqual(len(slugs), len(set(slugs)))
+        self.assertEqual(b['storms'][0]['page_slug'], 'bertha-2026-pacific')
+
+    def test_page_has_seo_tags_map_and_relative_assets(self):
+        p = self._payload()
+        bertha = p['storms'][0]
+        html = render_storm_page_html(p, bertha, 'og/storm-bertha-2026-abc.png', 'Alt text')
+        self.assertIn('<title>Bertha 2026: Track, ACE &amp; Intensity (Atlantic) | aceofcanes.com</title>', html)
+        self.assertIn('<link rel="canonical" href="https://aceofcanes.com/storm/bertha-2026.html">', html)
+        self.assertIn('property="og:image" content="https://aceofcanes.com/og/storm-bertha-2026-abc.png"', html)
+        self.assertIn('name="twitter:image" content="https://aceofcanes.com/og/storm-bertha-2026-abc.png"', html)
+        self.assertIn('id="trmap-bertha"', html)
+        self.assertIn('src="../cones/al022026.png"', html)
+        self.assertIn('href="../vendor/leaflet-1.9.4/leaflet.css"', html)
+        self.assertIn('src="../vendor/leaflet-1.9.4/leaflet.js"', html)
+        self.assertIn('href="../history.html"', html)
+        self.assertIn('landfall', html.lower())
+        self.assertIn('Estimated from the preliminary track', html)
+        self.assertIn('_buildMap("bertha")', html)
+
+    def test_page_lists_sibling_storms_and_marks_current(self):
+        p = self._payload()
+        html = render_storm_page_html(p, p['storms'][1])
+        self.assertIn('<a href="arthur-2026.html" aria-current="page">Arthur</a>', html)
+        self.assertIn('<a href="bertha-2026.html">Bertha</a>', html)
+
+    def test_fish_storm_wording_is_kept_verbatim(self):
+        p = self._payload()
+        html = render_storm_page_html(p, dict(p['storms'][1], landfall=[]))
+        self.assertIn('A storm that never made landfall and just pissed off fish', html)
+
+    def test_storm_name_cannot_break_out_of_the_page(self):
+        p = self._payload()
+        evil = dict(p['storms'][0], name='</script><b>x', slug='evil')
+        html = render_storm_page_html(p, evil)
+        self.assertNotIn('</script><b>x', html)
+        self.assertIn('<\\/script>', html)
+
+    def test_leaflet_integrity_hashes_match_the_dashboard(self):
+        from ace_assets import LEAFLET_CSS_SRI, LEAFLET_JS_SRI
+        dash = generate_dashboard_html(TestHTMLGeneration()._make_basin_data())
+        self.assertIn(f'integrity="{LEAFLET_CSS_SRI}"', dash)
+        self.assertIn(f'integrity="{LEAFLET_JS_SRI}"', dash)
+
+    def test_dashboard_links_each_storm_to_its_page(self):
+        html = generate_dashboard_html(TestHTMLGeneration()._make_basin_data())
+        self.assertIn('href="storm/arthur-2026.html">Open Arthur page', html)
+
+    def test_json_and_rss_point_at_the_page(self):
+        p = self._payload()
+        api = ace_feeds.build_api_v1([p], self.NOW)
+        self.assertEqual(api['basins']['atlantic']['storms'][0]['url'], 'https://aceofcanes.com/storm/bertha-2026.html')
+
+    def test_sitemap_adds_storm_pages_to_the_static_entries(self):
+        import xml.etree.ElementTree as ET
+        with open(os.path.join(os.path.dirname(os.path.abspath(ace_data.__file__)), 'sitemap.xml')) as f:
+            base = f.read()
+        xml = ace_feeds.build_sitemap(base, [self._payload()], self.NOW)
+        locs = [e.text for e in ET.fromstring(xml).iter('{http://www.sitemaps.org/schemas/sitemap/0.9}loc')]
+        self.assertIn('https://aceofcanes.com/history.html', locs)
+        self.assertIn('https://aceofcanes.com/storm/bertha-2026.html', locs)
+        self.assertEqual(len(locs), len(set(locs)))
+        self.assertIn('<lastmod>2026-09-20</lastmod>', xml)
+
+    def test_sitemap_rejects_a_base_without_urlset(self):
+        with self.assertRaises(ValueError):
+            ace_feeds.build_sitemap('<nope/>', [self._payload()], self.NOW)
+
+    def test_write_storm_pages_writes_page_and_card_per_storm(self):
+        import tempfile
+        from ace_tracker import write_storm_pages
+        with tempfile.TemporaryDirectory() as tmp:
+            published = write_storm_pages([self._payload()], tmp, self.NOW)
+            self.assertEqual(sorted(os.listdir(os.path.join(tmp, 'storm'))), ['arthur-2026.html', 'bertha-2026.html'])
+            self.assertEqual(len([f for f in os.listdir(os.path.join(tmp, 'og')) if f.startswith('storm-')]), 2)
+            self.assertEqual(len(published[0]['storms']), 2)
+
+    def test_one_bad_storm_does_not_stop_the_others(self):
+        import tempfile
+        from ace_tracker import write_storm_pages
+        real = render_storm_page_html
+
+        def flaky(payload, storm, *a, **k):
+            if storm['name'] == 'Bertha':
+                raise RuntimeError('boom')
+            return real(payload, storm, *a, **k)
+        with tempfile.TemporaryDirectory() as tmp, mock.patch('ace_tracker.render_storm_page_html', flaky):
+            published = write_storm_pages([self._payload()], tmp, self.NOW)
+            self.assertEqual(os.listdir(os.path.join(tmp, 'storm')), ['arthur-2026.html'])
+            self.assertEqual([s['name'] for s in published[0]['storms']], ['Arthur'])
+
+    def test_card_failure_falls_back_to_the_static_preview(self):
+        import tempfile
+        from ace_tracker import write_storm_pages
+        with tempfile.TemporaryDirectory() as tmp, \
+             mock.patch('ace_cards.render_storm_card', side_effect=OSError('no font')):
+            write_storm_pages([self._payload()], tmp, self.NOW)
+            with open(os.path.join(tmp, 'storm', 'arthur-2026.html')) as f:
+                self.assertIn('https://aceofcanes.com/ace_preview.png', f.read())
+
+    def test_preseason_and_placeholder_data_get_no_pages(self):
+        import tempfile
+        from ace_tracker import write_storm_pages
+        p = self._payload()
+        p['is_backup'] = True
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(write_storm_pages([p], tmp, self.NOW), [])
+            self.assertEqual(os.listdir(os.path.join(tmp, 'storm')), [])
+
+    def test_write_sitemap_falls_back_to_the_static_file(self):
+        import tempfile
+        from ace_tracker import write_sitemap
+        with tempfile.TemporaryDirectory() as tmp, \
+             mock.patch('ace_tracker.build_sitemap', side_effect=ValueError('bad')):
+            path = write_sitemap([], tmp, generated_at=self.NOW)
+            with open(path) as f:
+                self.assertIn('https://aceofcanes.com/history.html', f.read())
+
+    def test_storm_card_renders_and_name_tracks_content(self):
+        from PIL import Image
+        p = self._payload()
+        b = p['storms'][0]
+        img = Image.open(io.BytesIO(ace_cards.render_storm_card(p, b, self.NOW)))
+        self.assertEqual(img.size, (1200, 630))
+        name = ace_cards.storm_card_name(p, b, self.NOW)
+        self.assertRegex(name, r'^og/storm-bertha-2026-[0-9a-f]{10}\.png$')
+        b['ace'] += 0.1
+        self.assertNotEqual(ace_cards.storm_card_name(p, b, self.NOW), name)
+
+    def test_storm_card_handles_no_track_and_long_names(self):
+        p = self._payload()
+        b = dict(p['storms'][0], track_points=[], name='A' * 60, max_wind=0)
+        self.assertTrue(ace_cards.render_storm_card(p, b, self.NOW).startswith(b'\x89PNG'))
 
 
 class TestCanonicalHomeLinks(unittest.TestCase):
