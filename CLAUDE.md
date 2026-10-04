@@ -1,8 +1,8 @@
 # CLAUDE.md
 
 ACE Tracker: Accumulated Cyclone Energy for Atlantic and East/Central Pacific seasons. Builds an HTML dashboard from NOAA HURDAT2 (1991-present) via Tropycal.
-Modules: `ace_data.py` (fetch, ACE math, domain constants), `ace_html.py` (page rendering), `ace_tracker.py` (CLI entrypoint).
-`ace_data.build_season_payload()` is the single source of per-basin season data (plain data, no HTML, does the render-time NHC fetches). Pages, feeds and API output should consume it rather than re-deriving numbers from `process_basin()` results.
+Modules: `ace_data.py` (fetch, ACE math, domain constants), `ace_html.py` (page rendering), `ace_feeds.py` (JSON API + RSS), `ace_tracker.py` (CLI entrypoint).
+`ace_data.build_season_payload()` is the single source of per-basin season data (plain data, no HTML, does the render-time NHC fetches). Pages, `ace_feeds.py` and any new output should consume it rather than re-deriving numbers from `process_basin()` results.
 
 ## Domain rules
 
@@ -28,7 +28,8 @@ pip3 install -r requirements.txt
 
 - **Only @jeremypfi can approve and merge PRs** (CODEOWNERS + branch protection)
 - Before committing: run `python3 verify_pr.py`, then check `git diff` for keys, personal paths and `.env` files. The `/pre-commit` skill does the same.
-- Never commit `data/*.html` (gitignored)
+- Never commit `data/*.html`, `data/api/` or `data/feed.xml` (gitignored)
+- `api/v1/season.json` is a public contract: add fields freely, but a rename or removal needs `api/v2/`
 
 ## Known Issue
 

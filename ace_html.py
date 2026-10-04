@@ -690,6 +690,7 @@ def render_dashboard_html(payloads):
 <meta name="description" content="Track the {season_year} Atlantic and Eastern Pacific hurricane season ACE (Accumulated Cyclone Energy) in real time. Updated every 3 hours during hurricane season.">
 <meta name="theme-color" content="#4fc3f7">
 <link rel="canonical" href="https://aceofcanes.com/">
+<link rel="alternate" type="application/rss+xml" title="Ace of Canes storm feed" href="feed.xml">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="ACE Tracker">
 <meta property="og:url" content="https://aceofcanes.com/">

@@ -21,7 +21,7 @@ import subprocess
 import sys
 import unittest
 
-CORE_MODULES = ["ace_data.py", "ace_html.py", "ace_tracker.py"]
+CORE_MODULES = ["ace_data.py", "ace_html.py", "ace_feeds.py", "ace_tracker.py"]
 
 
 def check_unit_tests():
