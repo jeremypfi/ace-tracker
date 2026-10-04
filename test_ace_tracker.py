@@ -18,6 +18,7 @@ from datetime import datetime, timedelta, timezone
 from unittest import mock
 
 import ace_data
+import ace_cards
 import ace_feeds
 from ace_data import (
     get_category,
@@ -1927,6 +1928,75 @@ class TestFeeds(unittest.TestCase):
     def test_dashboard_advertises_feed(self):
         html = generate_dashboard_html(TestHTMLGeneration()._make_basin_data())
         self.assertIn('<link rel="alternate" type="application/rss+xml"', html)
+
+
+class TestShareCard(unittest.TestCase):
+    """Live season share card: a bad image must never break the publish."""
+
+    NOW = datetime(2026, 9, 20, 12, 0, tzinfo=timezone.utc)
+
+    def _payloads(self):
+        basin_data = TestHTMLGeneration()._make_basin_data()[0]
+        with mock.patch('ace_data.fetch_active_storm_cones', return_value={}), \
+             mock.patch('ace_data.fetch_nhc_disturbances', return_value=[]):
+            return [ace_data.build_season_payload(basin_data)]
+
+    def test_renders_1200x630_png(self):
+        from PIL import Image
+        png = ace_cards.render_share_card(self._payloads(), self.NOW)
+        img = Image.open(io.BytesIO(png))
+        self.assertEqual((img.format, img.size), ('PNG', (1200, 630)))
+
+    def test_preseason_and_empty_inputs_still_render(self):
+        payloads = self._payloads()
+        payloads[0].update({'preseason': True, 'storms': [], 'named_storms': 0, 'rank': None,
+                            'total_seasons': None, 'ace_total': 0.0})
+        self.assertTrue(ace_cards.render_share_card(payloads, self.NOW).startswith(b'\x89PNG'))
+        self.assertTrue(ace_cards.render_share_card([], self.NOW).startswith(b'\x89PNG'))
+
+    def test_filename_changes_only_when_displayed_numbers_change(self):
+        payloads = self._payloads()
+        name = ace_cards.share_card_name(payloads, self.NOW)
+        self.assertRegex(name, r'^og/season-[0-9a-f]{10}\.png$')
+        later_same_day = self.NOW.replace(hour=18)
+        self.assertEqual(ace_cards.share_card_name(payloads, later_same_day), name)
+        payloads[0]['ace_total'] += 0.1
+        self.assertNotEqual(ace_cards.share_card_name(payloads, self.NOW), name)
+        self.assertNotEqual(ace_cards.share_card_name(self._payloads(), self.NOW + timedelta(days=1)), name)
+
+    def test_alt_text_states_the_numbers(self):
+        alt = ace_cards.share_card_alt(self._payloads())
+        self.assertIn('Atlantic 0.4 ACE', alt)
+
+    def test_write_share_card_saves_file_and_returns_site_path(self):
+        import tempfile
+        from ace_tracker import write_share_card
+        with tempfile.TemporaryDirectory() as tmp:
+            rel, alt = write_share_card(self._payloads(), tmp, self.NOW)
+            self.assertTrue(os.path.getsize(os.path.join(tmp, rel)) > 1000)
+            self.assertIn('ACE', alt)
+
+    def test_write_share_card_failure_returns_none_instead_of_raising(self):
+        import tempfile
+        from ace_tracker import write_share_card
+        with tempfile.TemporaryDirectory() as tmp, \
+             mock.patch('ace_cards.render_share_card', side_effect=OSError('no font')):
+            self.assertEqual(write_share_card(self._payloads(), tmp, self.NOW), (None, None))
+
+    def test_dashboard_uses_the_card_in_og_and_twitter_tags(self):
+        from ace_html import render_dashboard_html
+        html = render_dashboard_html(self._payloads(), 'og/season-abc.png', 'Alt <text>')
+        self.assertEqual(html.count('https://aceofcanes.com/og/season-abc.png'), 2)
+        self.assertIn('property="og:image" content="https://aceofcanes.com/og/season-abc.png"', html)
+        self.assertIn('name="twitter:image" content="https://aceofcanes.com/og/season-abc.png"', html)
+        self.assertIn('og:image:alt" content="Alt &lt;text&gt;"', html)
+        self.assertNotIn('ace_preview.png', html)
+
+    def test_pages_fall_back_to_the_static_preview(self):
+        from ace_html import render_dashboard_html
+        self.assertEqual(render_dashboard_html(self._payloads()).count('https://aceofcanes.com/ace_preview.png'), 2)
+        history = generate_history_html(TestHTMLGeneration()._make_basin_data())
+        self.assertEqual(history.count('https://aceofcanes.com/ace_preview.png'), 2)
 
 
 class TestCanonicalHomeLinks(unittest.TestCase):

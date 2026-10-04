@@ -44,6 +44,7 @@ from ace_data import (
 )
 from ace_html import render_dashboard_html, generate_history_html, generate_records_html, generate_about_html
 from ace_feeds import api_v1_json, build_rss, API_V1_PATH, FEED_PATH
+import ace_cards
 
 # logging.basicConfig() lives in ace_data.py, which every import path here
 # (directly or via ace_html) already pulls in — see the comment there.
@@ -139,6 +140,24 @@ def process_basin(basin_key):
 
 
 
+def write_share_card(payloads, output_folder, generated_at=None):
+    """Draw the live season share card into output_folder/og/. Returns
+    (site-relative path, alt text), or (None, None) on any failure: a broken
+    image must never fail the publish, so the page falls back to the static card."""
+    try:
+        rel_path = ace_cards.share_card_name(payloads, generated_at)
+        full_path = os.path.join(output_folder, rel_path)
+        os.makedirs(os.path.dirname(full_path), exist_ok=True)
+        with open(full_path, 'wb') as f:
+            f.write(ace_cards.render_share_card(payloads, generated_at))
+        return rel_path, ace_cards.share_card_alt(payloads)
+    except Exception as e:
+        logger.error(f"Could not generate share card: {e}")
+        print("  ✗ Error: Could not generate share card (using static preview)")
+        return None, None
+
+
+
 # ===============================================================================
 # MAIN
 # ===============================================================================
@@ -177,7 +196,10 @@ def main():
         # One payload per basin, shared by the dashboard and the feeds so the
         # NHC cone/outlook fetches happen once per run.
         payloads = [build_season_payload(r) for r in basin_results]
-        dashboard_html = render_dashboard_html(payloads)
+        share_image, share_alt = write_share_card(payloads, OUTPUT_FOLDER)
+        if share_image:
+            print(f"  ✓ Share card saved to: {os.path.join(OUTPUT_FOLDER, share_image)}")
+        dashboard_html = render_dashboard_html(payloads, share_image, share_alt)
         dashboard_path = os.path.join(OUTPUT_FOLDER, 'ACE_Dashboard.html')
         try:
             with open(dashboard_path, 'w', encoding='utf-8') as f:
