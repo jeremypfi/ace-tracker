@@ -5,20 +5,18 @@ same panel/map pieces the dashboard uses (ace_html, ace_assets).
 """
 
 import json
-from datetime import datetime, timezone
 from html import escape as html_escape
 
 from ace_assets import (
     BASE_CSS, NAV_CSS, HEADINGS_CSS, STORM_PANEL_CSS, CONE_CSS, STORM_PAGE_CSS,
     WIND_JS, LIB_MISSING_JS, TRACK_MAP_JS, THEME_INIT_JS, LEAFLET_CSS_SRI, LEAFLET_JS_SRI,
 )
-from ace_data import START_YEAR
+from ace_data import START_YEAR, SITE_URL
 from ace_html import (
     SHARE_IMAGE_ALT, _share_image_meta, _storm_panel_inner_html, _storm_track_entry,
     _parse_utc, _utc_label,
 )
 
-SITE_URL = 'https://aceofcanes.com'
 FISH_TIP = 'A storm that never made landfall and just pissed off fish'
 
 

@@ -743,6 +743,30 @@ class TestStormReportLinks(unittest.TestCase):
     def _rows(self):
         return parse_tcr_index(self.INDEX)
 
+    def test_records_share_button_carries_post_text_and_basin_link(self):
+        rec = [{'status': 'set', 'title': 'Lowest "ACE" for the date', 'detail': '10.8 ACE through Oct 4. Previous low: 12.0 in 1999.'}]
+        html = _records_in_play_html(rec, 'atlantic', 'Atlantic', 2026)
+        self.assertIn('class="rip-share-btn"', html)
+        self.assertIn('data-share-url="https://aceofcanes.com/#atlantic"', html)
+        self.assertIn('data-share-text="Lowest &quot;ACE&quot; for the date: 10.8 ACE through Oct 4. '
+                      'Previous low: 12.0 in 1999. (Atlantic 2026)"', html)
+        self.assertIn('aria-label="Share: Lowest &quot;ACE&quot; for the date"', html)
+        self.assertIn('onclick="shareRecord(event)"', html)
+
+    def test_records_without_a_basin_have_no_share_button(self):
+        html = _records_in_play_html([{'status': 'set', 'title': 'T', 'detail': 'd'}])
+        self.assertNotIn('rip-share-btn', html)
+
+    def test_dashboard_wires_record_sharing_and_keeps_storm_link_copy(self):
+        basin_data = TestHTMLGeneration()._make_basin_data()
+        basin_data[0]['records_in_play'] = [{'status': 'in_play', 'title': 'T', 'detail': 'd'}]
+        html = generate_dashboard_html(basin_data)
+        self.assertIn('function shareRecord(e)', html)
+        self.assertIn('function _copyText(text,done)', html)
+        self.assertIn('function copyStormLink(e,slug)', html)
+        self.assertIn('data-share-url="https://aceofcanes.com/#atlantic"', html)
+        self.assertIn('(Atlantic 2026)', html)
+
     def test_parse_keeps_only_nhc_urls(self):
         rows = self._rows()
         self.assertEqual(len(rows), 6)

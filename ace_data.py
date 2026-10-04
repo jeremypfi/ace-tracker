@@ -66,6 +66,7 @@ BASINS = {
 
 
 START_YEAR = 1991
+SITE_URL = 'https://aceofcanes.com'
 
 # ACE Calculation Constants
 
