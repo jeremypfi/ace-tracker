@@ -1,68 +1,29 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code when working with code in this repository.
+ACE Tracker: Accumulated Cyclone Energy for Atlantic and East/Central Pacific seasons. Builds an HTML dashboard from NOAA HURDAT2 (1991-present) via Tropycal.
+Modules: `ace_data.py` (fetch, ACE math, domain constants), `ace_html.py` (page rendering), `ace_tracker.py` (CLI entrypoint).
 
-## Project Overview
+## Domain rules
 
-ACE Tracker tracks **Accumulated Cyclone Energy (ACE)** for Atlantic and East & Central Pacific hurricane seasons, generating an HTML dashboard and history page from NOAA HURDAT2 data (1991–present) via the Tropycal library.
-
-## ACE Domain Knowledge
-
-- **Formula**: ACE = Σ(V²max) × 10⁻⁴ — wind speeds always in **knots**, never mph
-- Only counted at synoptic times: `0000`, `0600`, `1200`, `1800` UTC
-- Only counts when storm status is `TS` (Tropical Storm), `HU` (Hurricane), or `SS` (Subtropical Storm)
-- Minimum wind for named storm: 34 knots
-
-```python
-SYNOPTIC_TIMES = ['0000', '0600', '1200', '1800']
-ACE_STATUSES = ['TS', 'HU', 'SS']
-MIN_NAMED_STORM_WIND = 34  # knots
-START_YEAR = 1991
-```
-
-## NOAA Season Classifications
-
-Same thresholds for both Atlantic and Eastern Pacific:
-
-| Classification | ACE |
-|---|---|
-| Below Normal | < 73 |
-| Near Normal | 73–126 |
-| Above Normal | 126–159 |
-| Extremely Active | 159+ |
+- ACE = sum(Vmax^2) x 10^-4. Wind speeds always in **knots**, never mph.
+- Count only synoptic times (0000, 0600, 1200, 1800 UTC) when status is `TS`, `HU` or `SS`.
+- Constants and NOAA season thresholds live in `ace_data.py`. Change them there only, and update the tests.
 
 ## Development Commands
 
 ```bash
+python3 verify_pr.py          # unit tests + syntax check + live tracker run; must pass before any commit
+python3 verify_pr.py --fast   # unit tests + syntax check only
 python3 ace_tracker.py        # generates HTML files in data/
-python3 test_ace_tracker.py   # full unit suite — ALL tests must pass before committing
-python3 verify_pr.py          # unit tests + syntax check + live tracker run in one pass/fail summary
-python3 verify_pr.py --fast   # unit tests + syntax check only, skips the live tracker run
 pip3 install -r requirements.txt
 ```
-
-## Architecture
-
-`ace_data.py`: fetches via Tropycal → calculates ACE at synoptic times → generates plain-text reports (Discord/console). Owns `BASINS`, `START_YEAR`, and other domain constants.
-
-`ace_html.py`: renders the dashboard, history, records, and What Is ACE? pages in `data/`. Imports domain constants and data functions from `ace_data.py`.
-
-`ace_tracker.py`: CLI entrypoint — `process_basin()` and `main()`, wiring `ace_data.py` and `ace_html.py` together. Run via `python3 ace_tracker.py`.
-
-`test_ace_tracker.py`: unit tests (no fixed count on purpose — a hard-coded number goes stale) — categorization, ACE formula, NOAA classification, storm finalization, yearly totals and named-storm counts, formation-date records, records in play, similar-season matching, ACE pace chart data, landfall cleanup and landfall ACE share, NHC report matching, and HTML output for every page. Imports directly from `ace_data.py`/`ace_html.py`.
 
 ## Repository Rules
 
 - **Only @jeremypfi can approve and merge PRs** (CODEOWNERS + branch protection)
-- All tests must pass before committing — run `/pre-commit` skill
-- Never commit `data/*.html` — gitignored
-- **Before opening any PR:** fetch origin and merge main into the branch first:
-  ```bash
-  git fetch origin
-  git merge origin/main --no-edit
-  git push
-  ```
+- Before committing: run `python3 verify_pr.py`, then check `git diff` for keys, personal paths and `.env` files. The `/pre-commit` skill does the same.
+- Never commit `data/*.html` (gitignored)
 
 ## Known Issue
 
-Tropycal `_version.py` uses `pkg_resources`, removed in setuptools 82+. Pinned `setuptools<85` in `requirements.txt`. Revisit when tropycal ships a fix.
+Tropycal's `_version.py` imports `pkg_resources`, which setuptools has deprecated and plans to remove. `requirements.txt` pins `setuptools<85`. `pkg_resources` still imports at setuptools 84.0.0 (checked 2026-10-03). Revisit when tropycal ships a fix.

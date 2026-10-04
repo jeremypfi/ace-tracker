@@ -36,9 +36,9 @@ Brief summary (50 chars or less)
 Detailed explanation if needed:
 - What changed and why
 - Breaking changes or migration notes
-
-Co-Authored-By: Claude <noreply@anthropic.com>
 ```
+
+The attribution trailer is added per session; don't hardcode one here.
 
 Good: "Fix duration calculation for subtropical storms"
 Bad: "Fixed bug", "Updates"
