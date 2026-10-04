@@ -52,6 +52,13 @@ def _track_status_color(status, wind):
 
 
 
+# HURDAT2 status codes spoken in the intensity bar's screen-reader label
+_STAGE_NAMES = {
+    'TD': 'tropical depression', 'TS': 'tropical storm', 'SD': 'subtropical depression',
+    'SS': 'subtropical storm', 'EX': 'post-tropical', 'LO': 'low', 'DB': 'disturbance', 'WV': 'tropical wave',
+}
+
+
 def _intensity_bar_html(track_points):
     """Horizontal color bar showing intensity progression across all track points."""
     if not track_points:
@@ -62,7 +69,14 @@ def _intensity_bar_html(track_points):
         f'title="{p["status"]} {p["wind"]}kt {p["time"]}"></div>'
         for p in track_points
     )
-    return f'<div class="intensity-bar">{segs}</div>'
+    # Screen readers get the stage sequence as text, since the segments are color-only.
+    stages = []
+    for p in track_points:
+        stage = get_category(p['wind']) if p['status'] == 'HU' else _STAGE_NAMES.get(p['status'], p['status'])
+        if not stages or stages[-1] != stage:
+            stages.append(stage)
+    label = html_escape('Intensity over time: ' + ' → '.join(stages))
+    return f'<div class="intensity-bar" role="img" aria-label="{label}">{segs}</div>'
 
 
 
@@ -905,7 +919,7 @@ def generate_dashboard_html(basin_data):
   <p>ACE (Accumulated Cyclone Energy) is calculated at 6-hourly synoptic times (0000/0600/1200/1800 UTC) for systems with status TS, HU, or SS and wind ≥34 kt — extratropical (EX) phases are excluded per NHC methodology. Formula: ACE = Σ(V²<sub>max</sub>) × 10⁻⁴. Categories use the Saffir-Simpson scale in knots.</p>
   <p><b>Basin note:</b> The East &amp; Central Pacific tab combines both the Eastern Pacific (NHC, east of 140°W) and Central Pacific (CPHC, 140°W–180°) basins, consistent with the NOAA HURDAT2 Northeast &amp; North Central Pacific dataset. NHC tracks these separately on their <a href="https://www.nhc.noaa.gov/data/tcr/" target="_blank" rel="noopener noreferrer">TCR pages</a> (epac / cpac).</p>
   <p class="disclaimer">⚠️ This site is maintained by a hurricane data enthusiast — not a meteorologist, forecaster, or weather professional of any kind. I just love the data. All information is sourced directly from official NOAA/NHC databases. For official forecasts, watches, warnings, and life-safety information, always refer to the <a href="https://www.nhc.noaa.gov/" target="_blank" rel="noopener noreferrer">National Hurricane Center</a>.</p>
-  <p class="build-time">Page built {now.strftime('%B %d, %Y at %H:%M UTC')}. The data-as-of line above each basin's numbers shows how current the storm data is.</p>
+  <p class="build-time">Page built {now.strftime('%B %d, %Y at %H:%M UTC')}. Updates every 3 hours. The data-as-of line above each basin's numbers shows how current the storm data is.</p>
   <p class="kofi-link"><a href="https://ko-fi.com/aceofcanes" target="_blank" rel="noopener noreferrer">☕ Support this project on Ko-fi</a></p>
 </div>
 <script>

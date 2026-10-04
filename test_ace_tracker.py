@@ -54,7 +54,7 @@ from ace_data import (
 from ace_html import (
     generate_dashboard_html, generate_history_html, generate_records_html, generate_about_html,
     _decade_label, _nhc_tcr_links_html, _records_in_play_html, _year_storm_list_html,
-    _data_as_of_html,
+    _data_as_of_html, _intensity_bar_html,
 )
 
 
@@ -1584,6 +1584,21 @@ class TestDataFreshness(unittest.TestCase):
         self.assertNotIn('<div class="updated">', html)
         footer = html[html.index('<div class="sources">'):]
         self.assertIn('Page built ', footer)
+        self.assertIn('Updates every 3 hours.', footer)
+
+
+class TestIntensityBarLabel(unittest.TestCase):
+    """The color-only intensity bar carries its stage sequence as text."""
+
+    def test_label_collapses_repeated_stages(self):
+        pts = [{'status': s, 'wind': w, 'time': 't'} for s, w in
+               [('TD', 30), ('TS', 40), ('TS', 50), ('HU', 70), ('HU', 100), ('HU', 70), ('TS', 45)]]
+        html = _intensity_bar_html(pts)
+        self.assertIn('role="img"', html)
+        self.assertIn('aria-label="Intensity over time: tropical depression → tropical storm → Cat 1 → Cat 3 → Cat 1 → tropical storm"', html)
+
+    def test_empty_track_has_no_bar(self):
+        self.assertEqual(_intensity_bar_html([]), '')
 
 
 class TestHonestyLabels(unittest.TestCase):
