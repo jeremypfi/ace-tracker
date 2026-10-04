@@ -125,6 +125,7 @@ ace-tracker/
 ├── ace_data.py             # Data fetch, ACE calc, plain-text report generation
 ├── ace_html.py             # Dashboard, history, records, and What Is ACE? page rendering
 ├── ace_feeds.py            # JSON API (api/v1/season.json) and RSS feed (feed.xml) builders
+├── ace_assets.py           # CSS and JS blocks shared by the dashboard and storm pages
 ├── ace_cards.py            # Live season share card (og/season-<hash>.png, drawn with Pillow)
 ├── ace_tracker.py          # CLI entrypoint — wires the modules above together
 ├── test_ace_tracker.py     # unit + smoke tests

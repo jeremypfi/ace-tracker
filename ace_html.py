@@ -30,6 +30,11 @@ from ace_data import (
     MIN_NAMED_STORM_WIND,
 )
 
+from ace_assets import (
+    BASE_CSS, NAV_CSS, HEADINGS_CSS, STORM_PANEL_CSS, CONE_CSS,
+    WIND_JS, LIB_MISSING_JS, TRACK_MAP_JS, THEME_INIT_JS,
+)
+
 logger = logging.getLogger(__name__)
 
 # ===============================================================================
@@ -443,6 +448,96 @@ def generate_dashboard_html(basin_data):
     return render_dashboard_html([build_season_payload(bd) for bd in basin_data if bd])
 
 
+def _storm_track_entry(st):
+    """Per-storm dict the map JS reads from ACE_TRACKS."""
+    return {
+        'name': st['name'],
+        'active': st['is_active'],
+        'start': st['start_date'],
+        'ace': round(st['ace'], 1),
+        'max_wind': st['max_wind'],
+        'category': st['category'],
+        'points': st['track_points'],
+        'spaghetti': st['spaghetti'],
+        'spaghetti_cycles': {m: _cycle_label(c) for m, c in st['spaghetti_cycles'].items()
+                             if _cycle_label(c)},
+    }
+
+
+def _storm_panel_inner_html(st, asset_prefix=''):
+    """Expanded panel for one storm: meta boxes, intensity bar, map, cone.
+    `asset_prefix` is the path from the page to the site root ('' or '../').
+    """
+    name = st['name']
+    ace = st['ace']
+    pct = st['pct_of_season']
+    wind = st['max_wind']
+    cat = st['category']
+    is_active = st['is_active']
+    track_points = st['track_points']
+    spaghetti = st['spaghetti']
+    start_date = st['start_date']
+    slug = st['slug']
+
+    active_badge = '<div class="active-badge"><span class="active-pulse"></span> Active Storm</div>' if is_active else ''
+    nhc_link = ('<div class="nhc-link"><a href="https://www.nhc.noaa.gov/" target="_blank" rel="noopener">'
+                'View NHC Active Storms →</a></div>') if is_active else ''
+
+    cone_img = ''
+    if st['cone_image']:
+        cone_dt = _parse_utc(st['cone_issued'])
+        cone_alt = f'NHC forecast cone for {html_escape(name)}'
+        cone_when = ''
+        if cone_dt:
+            cone_alt += f', advisory issued {_utc_label(cone_dt)}'
+            cone_when = f' &middot; advisory issued {_timestamp_html(cone_dt)}'
+        cone_img = (
+            f'<div class="cone-graphic">'
+            f'<img src="{html_escape(asset_prefix + st["cone_image"])}" alt="{cone_alt}" loading="lazy">'
+            f'<div class="cone-credit">Forecast cone via <a href="https://www.nhc.noaa.gov/" target="_blank" rel="noopener">NHC</a>{cone_when}</div>'
+            f'</div>'
+        )
+
+    ibar = _intensity_bar_html(track_points)
+    legend = (
+        '<div class="track-legend">'
+        '<div class="legend-item"><div class="legend-dot" style="background:#9e9e9e"></div>TD</div>'
+        '<div class="legend-item"><div class="legend-dot" style="background:#81d4fa"></div>TS/SS</div>'
+        '<div class="legend-item"><div class="legend-dot" style="background:#ffe082"></div>Cat 1</div>'
+        '<div class="legend-item"><div class="legend-dot" style="background:#ffb74d"></div>Cat 2</div>'
+        '<div class="legend-item"><div class="legend-dot" style="background:#ff8a65"></div>Cat 3</div>'
+        '<div class="legend-item"><div class="legend-dot" style="background:#ef5350"></div>Cat 4/5</div>'
+        '</div>'
+    ) if track_points else ''
+
+    meta = (
+        f'<div class="storm-meta">'
+        f'<div class="meta-box"><div class="meta-label">Started</div><div class="meta-value">{start_date}</div></div>'
+        f'<div class="meta-box"><div class="meta-label">Peak Intensity</div><div class="meta-value"><span class="wind-val-unit" data-kt="{wind}">{wind} kt</span></div><div class="meta-sub">{cat}</div></div>'
+        f'<div class="meta-box"><div class="meta-label">ACE</div><div class="meta-value">{ace:.1f}</div><div class="meta-sub">{pct:.0f}% of season</div></div>'
+        f'</div>'
+    )
+
+    spaghetti_toggle = (
+        f'<label class="spaghetti-toggle">'
+        f'<input type="checkbox" id="sptoggle-{slug}" checked onchange="_toggleSpaghetti(\'{slug}\')">'
+        f' Show model forecast tracks</label>'
+        f'<div class="track-legend spaghetti-legend" id="splegend-{slug}"></div>'
+        f'<div class="sp-note">Latest run of each model (UTC), shown as published.</div>'
+    ) if spaghetti else ''
+
+    map_div = (
+        f'<div class="track-map-wrap">'
+        f'<div class="track-map" id="trmap-{slug}"></div>'
+        f'<div class="track-map-skeleton" id="trskel-{slug}"><div class="skeleton-spinner"></div></div>'
+        f'</div>'
+        f'{spaghetti_toggle}'
+    ) if track_points else (
+        '<p style="color:var(--muted);font-size:0.82em;text-align:center;padding:8px 0">No track data available</p>')
+
+    return f'{active_badge}{meta}{ibar}{legend}{map_div}{cone_img}{nhc_link}'
+
+
 def render_dashboard_html(payloads, share_image=None, share_alt=None):
     """Render the dashboard from build_season_payload() results (no I/O here).
     `share_image` is the site-relative path of a generated share card; the
@@ -461,23 +556,9 @@ def render_dashboard_html(payloads, share_image=None, share_alt=None):
             cat = st['category']
             is_major = st['is_major']
             is_active = st['is_active']
-            track_points = st['track_points']
-            spaghetti = st['spaghetti']
-            start_date = st['start_date']
             slug = st['slug']
 
-            track_data[slug] = {
-                'name': name,
-                'active': is_active,
-                'start': start_date,
-                'ace': round(ace, 1),
-                'max_wind': wind,
-                'category': cat,
-                'points': track_points,
-                'spaghetti': spaghetti,
-                'spaghetti_cycles': {m: _cycle_label(c) for m, c in st['spaghetti_cycles'].items()
-                                     if _cycle_label(c)},
-            }
+            track_data[slug] = _storm_track_entry(st)
 
             landfall = st['landfall']
             if landfall:
@@ -496,63 +577,7 @@ def render_dashboard_html(payloads, share_image=None, share_alt=None):
                 row_classes += ' active-storm-row'
 
             active_dot = '<span class="active-pulse"></span> ' if is_active else ''
-            active_badge = '<div class="active-badge"><span class="active-pulse"></span> Active Storm</div>' if is_active else ''
-            nhc_link = ('<div class="nhc-link"><a href="https://www.nhc.noaa.gov/" target="_blank" rel="noopener">'
-                        'View NHC Active Storms →</a></div>') if is_active else ''
-
-            cone_img = ''
-            if st['cone_image']:
-                cone_dt = _parse_utc(st['cone_issued'])
-                cone_alt = f'NHC forecast cone for {html_escape(name)}'
-                cone_when = ''
-                if cone_dt:
-                    cone_alt += f', advisory issued {_utc_label(cone_dt)}'
-                    cone_when = f' &middot; advisory issued {_timestamp_html(cone_dt)}'
-                cone_img = (
-                    f'<div class="cone-graphic">'
-                    f'<img src="{html_escape(st["cone_image"])}" alt="{cone_alt}" loading="lazy">'
-                    f'<div class="cone-credit">Forecast cone via <a href="https://www.nhc.noaa.gov/" target="_blank" rel="noopener">NHC</a>{cone_when}</div>'
-                    f'</div>'
-                )
-
-            ibar = _intensity_bar_html(track_points)
-            legend = (
-                '<div class="track-legend">'
-                '<div class="legend-item"><div class="legend-dot" style="background:#9e9e9e"></div>TD</div>'
-                '<div class="legend-item"><div class="legend-dot" style="background:#81d4fa"></div>TS/SS</div>'
-                '<div class="legend-item"><div class="legend-dot" style="background:#ffe082"></div>Cat 1</div>'
-                '<div class="legend-item"><div class="legend-dot" style="background:#ffb74d"></div>Cat 2</div>'
-                '<div class="legend-item"><div class="legend-dot" style="background:#ff8a65"></div>Cat 3</div>'
-                '<div class="legend-item"><div class="legend-dot" style="background:#ef5350"></div>Cat 4/5</div>'
-                '</div>'
-            ) if track_points else ''
-
-            meta = (
-                f'<div class="storm-meta">'
-                f'<div class="meta-box"><div class="meta-label">Started</div><div class="meta-value">{start_date}</div></div>'
-                f'<div class="meta-box"><div class="meta-label">Peak Intensity</div><div class="meta-value"><span class="wind-val-unit" data-kt="{wind}">{wind} kt</span></div><div class="meta-sub">{cat}</div></div>'
-                f'<div class="meta-box"><div class="meta-label">ACE</div><div class="meta-value">{ace:.1f}</div><div class="meta-sub">{pct:.0f}% of season</div></div>'
-                f'</div>'
-            )
-
-            spaghetti_toggle = (
-                f'<label class="spaghetti-toggle">'
-                f'<input type="checkbox" id="sptoggle-{slug}" checked onchange="_toggleSpaghetti(\'{slug}\')">'
-                f' Show model forecast tracks</label>'
-                f'<div class="track-legend spaghetti-legend" id="splegend-{slug}"></div>'
-                f'<div class="sp-note">Latest run of each model (UTC), shown as published.</div>'
-            ) if spaghetti else ''
-
-            map_div = (
-                f'<div class="track-map-wrap">'
-                f'<div class="track-map" id="trmap-{slug}"></div>'
-                f'<div class="track-map-skeleton" id="trskel-{slug}"><div class="skeleton-spinner"></div></div>'
-                f'</div>'
-                f'{spaghetti_toggle}'
-            ) if track_points else (
-                '<p style="color:var(--muted);font-size:0.82em;text-align:center;padding:8px 0">No track data available</p>')
-
-            panel_inner = f'{active_badge}{meta}{ibar}{legend}{map_div}{cone_img}{nhc_link}'
+            panel_inner = _storm_panel_inner_html(st)
 
             wind_cell = '—' if wind <= 0 else f"<span class='wind-val' data-kt='{wind}'>{wind}</span>"
 
@@ -708,39 +733,16 @@ def render_dashboard_html(payloads, share_image=None, share_alt=None):
 <link rel="stylesheet" href="vendor/leaflet-1.9.4/leaflet.css" integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous" media="print" onload="this.media='all'">
 <noscript><link rel="stylesheet" href="vendor/leaflet-1.9.4/leaflet.css"></noscript>
 <title>{page_title}</title>
-<script>(function(){{try{{var t=localStorage.getItem('ace-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light');else if(!t&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches)document.documentElement.setAttribute('data-theme','light');}}catch(e){{}}}})();</script>
+<script>{THEME_INIT_JS}</script>
 <style>
-  :root {{
-    --bg:#0a1628; --card:#132238; --box:#1a2d4a; --accent:#4fc3f7; --accent2:#29b6f6;
-    --accent-h3:#81d4fa; --text:#e0e6ed; --text-strong:#ffffff; --muted:#8aa0ab;
-    --muted-dark:#78909c; --border:#1e3a5f; --danger:#ef5350; --danger-bg:#2a1a1a;
-    --danger-text:#ef8a80; --total-row:#1a2d4a; --sources-bg:#0d1b2a; --gauge-bg:#1e3a5f;
-    --pace-last:#ffb74d;
-  }}
-  [data-theme="light"] {{
-    --bg:#f0f4f8; --card:#ffffff; --box:#e8f0fe; --accent:#0277bd; --accent2:#0288d1;
-    --accent-h3:#01579b; --text:#1a2d4a; --text-strong:#0a1628; --muted:#4f6773;
-    --muted-dark:#455a64; --border:#b0bec5; --danger:#d32f2f; --danger-bg:#ffeaea;
-    --danger-text:#c62828; --total-row:#e8f0fe; --sources-bg:#e2ecf7; --gauge-bg:#c9daf8;
-    --pace-last:#e65100;
-  }}
-  * {{ margin:0; padding:0; box-sizing:border-box; }}
-  :focus-visible {{ outline:2px solid var(--accent); outline-offset:2px; }}
-  body {{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:var(--bg); color:var(--text); padding:12px; transition:background 0.2s,color 0.2s; }}
-  .header {{ display:grid; grid-template-columns:1fr auto 1fr; align-items:center; margin:8px 0; padding:0 4px; }}
-  h1 {{ grid-column:2; color:var(--accent); font-size:1.4em; text-align:center; display:flex; align-items:center; justify-content:center; gap:8px; }}
-  .logo {{ height:1.5em; width:auto; vertical-align:middle; }}
-  .header-actions {{ grid-column:3; justify-self:end; display:flex; gap:6px; align-items:center; }}
-  .theme-btn, .unit-btn {{ background:transparent; border:1px solid var(--accent); color:var(--accent); border-radius:20px; padding:4px 10px; cursor:pointer; font-size:0.9em; }}
+{BASE_CSS}
   .data-asof {{ text-align:center; color:var(--muted); font-size:0.8em; margin:0 0 10px; }}
   .data-asof time {{ color:var(--text); }}
   .build-time {{ color:var(--muted); font-size:0.85em; }}
   .prelim {{ font-size:0.72em; font-weight:600; text-transform:uppercase; letter-spacing:0.04em; color:var(--muted); border:1px solid var(--border); border-radius:4px; padding:0 4px; margin-left:4px; white-space:nowrap; }}
   .lf-est {{ font-size:0.85em; color:var(--muted); text-decoration:underline dotted; cursor:help; }}
   .table-note {{ font-size:0.75em; color:var(--muted); margin:6px 2px 0; }}
-  .nav-link {{ text-align:center; margin-bottom:12px; display:flex; justify-content:center; gap:8px; flex-wrap:wrap; }}
-  .nav-link a {{ color:var(--accent); text-decoration:none; font-size:0.85em; border:1px solid var(--accent); border-radius:20px; padding:4px 14px; }}
-  .nav-link a:hover {{ background:var(--accent); color:var(--bg); }}
+{NAV_CSS}
   .ace-explain {{ background:var(--box); border-radius:8px; padding:10px 14px; margin-bottom:14px; font-size:0.85em; }}
   .ace-explain summary {{ color:var(--accent); cursor:pointer; list-style:none; display:flex; align-items:center; gap:6px; min-height:44px; }}
   .ace-explain summary::-webkit-details-marker {{ display:none; }}
@@ -753,8 +755,7 @@ def render_dashboard_html(payloads, share_image=None, share_alt=None):
   .toggle button.active {{ background:var(--accent); color:var(--bg); font-weight:bold; }}
   .basin-card {{ background:var(--card); border-radius:12px; padding:16px; margin-bottom:16px; display:none; }}
   .basin-card.active {{ display:block; }}
-  h2 {{ color:var(--accent); font-size:1.2em; margin-bottom:12px; border-bottom:1px solid var(--border); padding-bottom:8px; }}
-  h3 {{ color:var(--accent-h3); font-size:1em; margin:16px 0 8px; }}
+{HEADINGS_CSS}
   .nhc-alert {{ background:rgba(255,152,0,0.07); border:1px solid rgba(255,152,0,0.35); border-left:4px solid #ff9800; border-radius:8px; padding:10px 14px 8px; margin-bottom:14px; font-size:0.88em; }}
   [data-theme='light'] .nhc-alert {{ background:rgba(255,152,0,0.06); }}
   .nhc-alert-hdr {{ font-weight:700; color:#ff9800; margin-bottom:8px; font-size:0.95em; }}
@@ -840,45 +841,12 @@ def render_dashboard_html(payloads, share_image=None, share_alt=None):
   .active-pulse {{ display:inline-block; width:7px; height:7px; border-radius:50%; background:#4caf50; box-shadow:0 0 0 0 rgba(76,175,80,0.7); animation:trpulse 1.5s infinite; flex-shrink:0; }}
   @keyframes trpulse {{ 0%{{box-shadow:0 0 0 0 rgba(76,175,80,0.7);}} 70%{{box-shadow:0 0 0 6px rgba(76,175,80,0);}} 100%{{box-shadow:0 0 0 0 rgba(76,175,80,0);}} }}
   tr.active-storm-row {{ border-left:3px solid #4caf50; }}
-  .track-row td {{ padding:0; border-bottom:2px solid var(--border); }}
-  .track-panel {{ overflow:hidden; max-height:0; visibility:hidden; transition:max-height 0.35s ease, visibility 0s linear 0.35s; background:var(--card); }}
-  .track-panel.open {{ max-height:1500px; visibility:visible; transition:max-height 0.35s ease, visibility 0s; }}
-  .track-inner {{ padding:12px 14px 14px; }}
-  .track-map {{ height:320px; border-radius:8px; border:1px solid var(--border); margin-bottom:10px; }}
-  .track-map-wrap {{ position:relative; margin-bottom:10px; }}
-  .track-map-wrap .track-map {{ margin-bottom:0; }}
-  .track-map-skeleton {{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:var(--box); border-radius:8px; border:1px solid var(--border); }}
-  .skeleton-spinner {{ width:28px; height:28px; border-radius:50%; border:3px solid var(--border); border-top-color:var(--accent); animation:skeleton-spin 0.8s linear infinite; }}
-  @keyframes skeleton-spin {{ to {{ transform:rotate(360deg); }} }}
-  .storm-meta {{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:10px; }}
-  .meta-box {{ background:var(--box); border-radius:6px; padding:8px 10px; }}
-  .meta-label {{ color:var(--muted); font-size:0.72em; text-transform:uppercase; }}
-  .meta-value {{ color:var(--text-strong); font-size:0.95em; font-weight:bold; }}
-  .meta-sub {{ color:var(--muted); font-size:0.72em; }}
-  .active-badge {{ display:inline-flex; align-items:center; gap:5px; background:#0d2a14; border:1px solid #4caf50; border-radius:12px; padding:3px 8px; font-size:0.75em; color:#4caf50; margin-bottom:8px; }}
-  .intensity-bar {{ display:flex; height:8px; border-radius:4px; overflow:hidden; margin-bottom:10px; }}
-  .intensity-seg {{ flex-shrink:0; }}
-  .track-legend {{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }}
-  .legend-item {{ display:flex; align-items:center; gap:4px; font-size:0.72em; color:var(--muted); }}
-  .legend-dot {{ width:9px; height:9px; border-radius:50%; flex-shrink:0; }}
-  .spaghetti-toggle {{ display:flex; align-items:center; gap:6px; font-size:0.78em; color:var(--muted); margin-top:8px; cursor:pointer; }}
-  .spaghetti-legend {{ margin-top:6px; }}
-  .lib-missing {{ color:var(--muted); font-size:0.85em; text-align:center; padding:24px 8px; }}
-  .sp-cycle {{ color:var(--muted); font-size:0.9em; }}
-  .sp-note {{ font-size:0.72em; color:var(--muted); margin-top:4px; }}
-  .spaghetti-legend .legend-dot {{ width:14px; height:3px; border-radius:2px; }}
-  .nhc-link {{ font-size:0.78em; color:var(--muted); text-align:right; margin-top:6px; }}
-  .nhc-link a {{ color:var(--accent); text-decoration:none; }}
-  .nhc-link a:hover {{ text-decoration:underline; }}
+{STORM_PANEL_CSS}
   .pace-chart-wrap {{ position:relative; height:240px; margin:12px 0 4px; }}
   .pace-stats-mini {{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin:10px 0 4px; }}
   .pace-caption {{ color:var(--muted); font-size:0.78em; text-align:center; margin-top:2px; }}
   @media(min-width:768px) {{ .pace-chart-wrap {{ height:300px; }} }}
-  .cone-graphic {{ margin-bottom:10px; }}
-  .cone-graphic img {{ display:block; width:100%; height:auto; border-radius:8px; border:1px solid var(--border); }}
-  .cone-credit {{ font-size:0.72em; color:var(--muted); text-align:center; margin-top:4px; }}
-  .cone-credit a {{ color:var(--accent); text-decoration:none; }}
-  .cone-credit a:hover {{ text-decoration:underline; }}
+{CONE_CSS}
 </style>
 </head>
 <body>
@@ -944,45 +912,7 @@ function toggleTheme() {{
   document.getElementById('themeBtn').textContent=light?'☀':'☾';document.getElementById('themeBtn').setAttribute('aria-label',document.documentElement.getAttribute('data-theme')==='light'?'Switch to dark mode':'Switch to light mode');
   _restylePaceCharts();
 }}
-var WIND_UNITS=['kt','mph','kmh'];
-var WIND_UNIT_LABELS={{kt:'kt',mph:'mph',kmh:'km/h'}};
-function _windUnit() {{
-  try{{var u=localStorage.getItem('ace-wind-unit');if(WIND_UNITS.indexOf(u)>=0)return u;}}catch(e){{}}
-  return 'kt';
-}}
-function _convertWind(kt) {{
-  var unit=_windUnit();
-  if(unit==='mph')return Math.round(kt*1.15078);
-  if(unit==='kmh')return Math.round(kt*1.852);
-  return kt;
-}}
-function _fmtWind(kt) {{
-  return _convertWind(kt)+' '+WIND_UNIT_LABELS[_windUnit()];
-}}
-function applyWindUnit() {{
-  var unit=_windUnit();
-  var btn=document.getElementById('unitBtn');
-  if(btn){{btn.textContent=WIND_UNIT_LABELS[unit];btn.setAttribute('aria-label','Wind speed unit: '+WIND_UNIT_LABELS[unit]);}}
-  document.querySelectorAll('.wind-val').forEach(function(el){{
-    el.textContent=String(_convertWind(parseFloat(el.getAttribute('data-kt'))));
-  }});
-  document.querySelectorAll('.wind-val-unit').forEach(function(el){{
-    el.textContent=_fmtWind(parseFloat(el.getAttribute('data-kt')));
-  }});
-  document.querySelectorAll('.wind-th-label').forEach(function(el){{
-    el.textContent=el.getAttribute('data-'+unit+'-label')||el.textContent;
-  }});
-  document.querySelectorAll('.intensity-seg').forEach(function(el){{
-    var kt=parseFloat(el.getAttribute('data-wind-kt'));
-    if(isNaN(kt))return;
-    el.title=el.getAttribute('data-status')+' '+_fmtWind(kt)+' '+el.getAttribute('data-time');
-  }});
-}}
-function toggleWindUnit() {{
-  var next=WIND_UNITS[(WIND_UNITS.indexOf(_windUnit())+1)%WIND_UNITS.length];
-  try{{localStorage.setItem('ace-wind-unit',next);}}catch(e){{}}
-  applyWindUnit();
-}}
+{WIND_JS}
 function copyStormLink(e,slug) {{
   var url=location.origin+location.pathname+'#storm-row-'+slug;
   var btn=e.currentTarget;
@@ -1065,10 +995,7 @@ function _hexToRgba(hex,a){{
   var r=parseInt(h.substring(0,2),16),g=parseInt(h.substring(2,4),16),b=parseInt(h.substring(4,6),16);
   return 'rgba('+r+','+g+','+b+','+a+')';
 }}
-function _libMissing(box,msg){{
-  if(!box||box.querySelector('.lib-missing'))return;
-  var p=document.createElement('p');p.className='lib-missing';p.textContent=msg;box.appendChild(p);
-}}
+{LIB_MISSING_JS}
 function _renderPaceChart(basinKey){{
   if(_paceCharts[basinKey])return;
   var d=ACE_PACE[basinKey];
@@ -1136,98 +1063,7 @@ function _restylePaceCharts(){{
     chart.update();
   }});
 }}
-var _trMaps={{}};
-var _trSpagLayers={{}};
-var _trMapObjs={{}};
-var _SC={{TD:'#9e9e9e',TS:'#81d4fa',SS:'#81d4fa'}};
-var _SPAG_COLORS={{AVNO:'#29b6f6',EMX:'#ab47bc',UKX:'#66bb6a',CMC:'#8d6e63',HWRF:'#ec407a',HMON:'#7e57c2',NVGM:'#26c6da',OFCL:'#ffffff'}};
-var _SPAG_LABELS={{AVNO:'GFS',EMX:'ECMWF',UKX:'UKMET',CMC:'CMC',HWRF:'HWRF',HMON:'HMON',NVGM:'Navy',OFCL:'NHC Official'}};
-function _tc(st,w){{
-  if(st==='HU'){{if(w>=137)return'#b71c1c';if(w>=113)return'#ef5350';if(w>=96)return'#ff8a65';if(w>=83)return'#ffb74d';return'#ffe082';}}
-  return _SC[st]||'#9e9e9e';
-}}
-function toggleTrack(slug){{
-  var panel=document.getElementById('trpanel-'+slug);
-  var btn=document.getElementById('trbtn-'+slug);
-  if(!panel)return;
-  var open=panel.classList.contains('open');
-  if(open){{panel.classList.remove('open');if(btn){{btn.classList.remove('open');btn.setAttribute('aria-expanded','false');}}return;}}
-  panel.classList.add('open');
-  if(btn){{btn.classList.add('open');btn.setAttribute('aria-expanded','true');}}
-  if(!_trMaps[slug]){{_trMaps[slug]=true;setTimeout(function(){{_buildMap(slug);}},25);}}
-}}
-function _hideTrackSkeleton(slug){{
-  var sk=document.getElementById('trskel-'+slug);
-  if(sk)sk.style.display='none';
-}}
-function _unwrapLon(prevLon,lon){{
-  while(lon-prevLon>180)lon-=360;
-  while(lon-prevLon<-180)lon+=360;
-  return lon;
-}}
-function _unwrapSeries(lls){{
-  var out=[lls[0].slice()];
-  for(var i=1;i<lls.length;i++){{
-    out.push([lls[i][0],_unwrapLon(out[i-1][1],lls[i][1])]);
-  }}
-  return out;
-}}
-function _buildMap(slug){{
-  var d=ACE_TRACKS[slug];
-  var el=document.getElementById('trmap-'+slug);
-  if(!d||!d.points||!d.points.length||!el||el._leaflet_id){{_hideTrackSkeleton(slug);return;}}
-  if(typeof L==='undefined'){{_hideTrackSkeleton(slug);_libMissing(el,'Map unavailable right now. Storm details are shown above.');return;}}
-  var map=L.map(el,{{zoomControl:true,attributionControl:true}});
-  var tiles=L.tileLayer('https://{{s}}.basemaps.cartocdn.com/dark_all/{{z}}/{{x}}/{{y}}{{r}}.png?key=cb1_2ju7_1_dab4d1e9c4e0819a594bda11',{{
-    attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>',
-    subdomains:'abcd',maxZoom:10
-  }}).addTo(map);
-  tiles.on('load',function(){{_hideTrackSkeleton(slug);}});
-  setTimeout(function(){{_hideTrackSkeleton(slug);}},4000);
-  var pts=d.points,lls=_unwrapSeries(pts.map(function(p){{return[p.lat,p.lon];}}));
-  for(var i=0;i<pts.length-1;i++){{
-    L.polyline([lls[i],lls[i+1]],{{color:_tc(pts[i].status,pts[i].wind),weight:5,opacity:1}}).addTo(map);
-  }}
-  pts.forEach(function(p,i){{
-    var c=_tc(p.status,p.wind),last=(i===pts.length-1);
-    var mk=L.circleMarker([p.lat,p.lon],{{radius:last?7:4,fillColor:c,color:last?'#fff':c,weight:last?2:1,fillOpacity:1,opacity:1}}).addTo(map);
-    mk.bindTooltip('<b>'+d.name+'</b><br>'+p.time+'<br>'+p.status+' \xb7 '+_fmtWind(p.wind),{{direction:'top',offset:[0,-6]}});
-    if(last&&d.active)mk.bindPopup('<b>Current Position</b><br>'+p.time+'<br>'+p.status+' \xb7 '+_fmtWind(p.wind),{{maxWidth:160}}).openPopup();
-  }});
-  var boundsPts=lls.slice();
-  var spagGroup=L.layerGroup();
-  var legendHtml='';
-  if(d.spaghetti){{
-    Object.keys(d.spaghetti).forEach(function(model){{
-      var mpts=d.spaghetti[model];
-      if(!mpts||!mpts.length)return;
-      // Anchor to the storm's last known position so this model's series
-      // unwraps in the same longitude frame as the BTK track and any other
-      // model — otherwise each series could independently drift to opposite
-      // sides of the antimeridian and the combined bounds would be wrong.
-      var mlls=_unwrapSeries([lls[lls.length-1]].concat(mpts.map(function(p){{return[p.lat,p.lon];}}))).slice(1);
-      var color=_SPAG_COLORS[model]||'#ffffff',label=_SPAG_LABELS[model]||model;
-      var cyc=(d.spaghetti_cycles||{{}})[model];
-      L.polyline(mlls,{{color:color,weight:model==='OFCL'?3:2,opacity:0.85,dashArray:model==='OFCL'?null:'4,4'}})
-        .bindTooltip(label+(cyc?' \xb7 '+cyc:''),{{sticky:true}}).addTo(spagGroup);
-      L.circleMarker(mlls[mlls.length-1],{{radius:3,color:color,fillColor:color,fillOpacity:1,weight:1}}).addTo(spagGroup);
-      boundsPts=boundsPts.concat(mlls);
-      legendHtml+='<div class="legend-item"><div class="legend-dot" style="background:'+color+'"></div>'+label+(cyc?' <span class="sp-cycle">'+cyc+'</span>':'')+'</div>';
-    }});
-  }}
-  spagGroup.addTo(map);
-  _trSpagLayers[slug]=spagGroup;
-  _trMapObjs[slug]=map;
-  var legendEl=document.getElementById('splegend-'+slug);
-  if(legendEl)legendEl.innerHTML=legendHtml;
-  if(boundsPts.length)map.fitBounds(L.latLngBounds(boundsPts),{{padding:[50,50],maxZoom:6}});
-}}
-function _toggleSpaghetti(slug){{
-  var cb=document.getElementById('sptoggle-'+slug);
-  var group=_trSpagLayers[slug],map=_trMapObjs[slug];
-  if(!cb||!group||!map)return;
-  if(cb.checked)group.addTo(map);else map.removeLayer(group);
-}}
+{TRACK_MAP_JS}
 </script>
 <script src="vendor/leaflet-1.9.4/leaflet.js" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script>
 <script src="vendor/chart.js-4.5.1/chart.umd.min.js" integrity="sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ" crossorigin="anonymous"></script>
