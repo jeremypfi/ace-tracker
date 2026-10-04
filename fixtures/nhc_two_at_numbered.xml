@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Hand-built in the format of NHC's TWOAT feed: a numbered outlook with
+     an Active Systems paragraph, one HIGH and one LOW disturbance. -->
+<rss version="2.0">
+  <channel>
+    <title>Atlantic Tropical Weather Outlook</title>
+    <item>
+      <title>Atlantic Tropical Weather Outlook</title>
+      <description>
+        <![CDATA[000<br />ABNT20 KNHC 101145<br />TWOAT <br /><br />Tropical Weather Outlook<br />NWS National Hurricane Center Miami FL<br />800 AM EDT Thu Sep 10 2026<br /><br />For the North Atlantic...Caribbean Sea and the Gulf of America:<br /><br />Active Systems:<br />The National Hurricane Center is issuing advisories on Hurricane <br />Fay, located over the central Atlantic. <br /><br />1. Central Tropical Atlantic (AL95):<br />Showers and thunderstorms associated with a tropical wave have <br />become better organized. A tropical depression is likely to form <br />within the next day or two.<br />* Formation chance through 48 hours...medium...60 percent.<br />* Formation chance through 7 days...high...80 percent.<br /><br />2. Eastern Tropical Atlantic:<br />A tropical wave is expected to move off the west coast of Africa <br />this weekend. Some slow development is possible thereafter.<br />* Formation chance through 48 hours...low...near 0 percent.<br />* Formation chance through 7 days...low...20 percent.<br /><br />$$<br />Forecaster Blake]]>
+      </description>
+      <pubDate>Thu, 10 Sep 2026 11:45:00 +0000</pubDate>
+    </item>
+  </channel>
+</rss>

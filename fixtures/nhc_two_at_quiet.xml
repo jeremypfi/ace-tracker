@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:dc="https://purl.org/dc/elements/1.1/">
+  <channel>
+    <pubDate>Sun, 04 Oct 2026 00:25:41 +0000</pubDate>
+    <lastBuildDate>Sun, 04 Oct 2026 00:25:41 +0000</lastBuildDate>
+    <title>Atlantic Tropical Weather Outlook</title>
+    <description>National Hurricane Center - Atlantic Tropical Weather Outlook</description>
+    <link>https://www.nhc.noaa.gov/</link>
+    <copyright>none</copyright>
+    <managingEditor>nhcwebmaster@noaa.gov (nhcwebmaster)</managingEditor>
+    <language>en-us</language>
+    <webMaster>nhcwebmaster@noaa.gov (nhcwebmaster)</webMaster>
+    <image>
+      <url>https://www.nhc.noaa.gov/gifs/xml_logo_nhc.gif</url>
+      <link>https://www.nhc.noaa.gov/</link>
+      <description>NOAA logo</description>
+      <title>Atlantic Tropical Weather Outlook</title>
+      <width>95</width>
+      <height>45</height>
+    </image>
+    <item>
+      <title>Atlantic Tropical Weather Outlook</title>
+      <description>
+        <![CDATA[924 <br />ABNT20 KNHC 032346<br />TWOAT <br /><br />Tropical Weather Outlook<br />NWS National Hurricane Center Miami FL<br />800 PM EDT Sat Oct 3 2026<br /><br />For the North Atlantic...Caribbean Sea and the Gulf of America:<br /><br />Southwestern Gulf of America:<br />A broad area of low pressure could form in a few days over the <br />southwestern Gulf of America.  Any development of this system <br />is expected to be slow to occur as it drifts over the southwestern <br />Gulf waters.  <br />* Formation chance through 48 hours...low...near 0 percent.<br />* Formation chance through 7 days...low...20 percent.<br /><br />$$<br />Forecaster Blake]]>
+      </description>
+      <pubDate>Sat, 03 Oct 2026 23:46:07 +0000</pubDate>
+      <link>https://www.nhc.noaa.gov/text/MIATWOAT.shtml</link>
+      <guid>202610032346</guid>
+      <author>nhcwebmaster@noaa.gov (nhcwebmaster)</author>
+    </item>
+  </channel>
+</rss>

@@ -121,6 +121,7 @@ ace-tracker/
 ├── ace_html.py             # Dashboard, history, records, and What Is ACE? page rendering
 ├── ace_tracker.py          # CLI entrypoint — wires ace_data.py + ace_html.py together
 ├── test_ace_tracker.py     # unit + smoke tests
+├── fixtures/               # Saved NHC feeds + HURDAT2 snippet for offline fetcher tests
 ├── verify_pr.py            # Consolidated PR check: tests + syntax check + a live tracker run
 ├── requirements.txt        # Python dependencies
 ├── ace.png                 # Site logo (favicon + OG image)

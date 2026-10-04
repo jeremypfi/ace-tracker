@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:dc="https://purl.org/dc/elements/1.1/">
+  <channel>
+    <pubDate>Sun, 04 Oct 2026 00:25:41 +0000</pubDate>
+    <lastBuildDate>Sun, 04 Oct 2026 00:25:41 +0000</lastBuildDate>
+    <title>Eastern Pacific Tropical Weather Outlook</title>
+    <description>National Hurricane Center - Eastern Pacific Tropical Weather Outlook</description>
+    <link>https://www.nhc.noaa.gov/</link>
+    <copyright>none</copyright>
+    <managingEditor>nhcwebmaster@noaa.gov (nhcwebmaster)</managingEditor>
+    <language>en-us</language>
+    <webMaster>nhcwebmaster@noaa.gov (nhcwebmaster)</webMaster>
+    <image>
+      <url>https://www.nhc.noaa.gov/gifs/xml_logo_nhc.gif</url>
+      <link>https://www.nhc.noaa.gov/</link>
+      <description>NOAA logo</description>
+      <title>Eastern Pacific Tropical Weather Outlook</title>
+      <width>95</width>
+      <height>45</height>
+    </image>
+    <item>
+      <title>Eastern Pacific Tropical Weather Outlook</title>
+      <description>
+        <![CDATA[000<br />ABPZ20 KNHC 032329<br />TWOEP <br /><br />Tropical Weather Outlook<br />NWS National Hurricane Center Miami FL<br />500 PM PDT Sat Oct 3 2026<br /><br />For the eastern and central North Pacific east of 180 longitude:<br /><br />Active Systems:<br />The National Hurricane Center is issuing advisories on Hurricane <br />Nolo, located several hundred miles west-northwest of the main <br />Hawaiian Islands, and on Hurricane Rachel, located a few hundred <br />miles southwest of the southern tip of the Baja California <br />Peninsula. <br /><br />South of Southern Mexico:<br />An area of low pressure is forecast to form late this weekend or <br />early next week south of the southern coast of Mexico. Thereafter, <br />environmental conditions appear favorable for gradual development, <br />and a tropical depression is expected to form during the middle to <br />latter portion of next week while the system moves slowly <br />west-northwestward to northwestward.<br />* Formation chance through 48 hours...low...near 0 percent.<br />* Formation chance through 7 days...high...90 percent.<br /><br />$$<br />Forecaster Pierce/Blake]]>
+      </description>
+      <pubDate>Sat, 03 Oct 2026 23:29:09 +0000</pubDate>
+      <link>https://www.nhc.noaa.gov/text/MIATWOEP.shtml</link>
+      <guid>202610032329</guid>
+      <author>nhcwebmaster@noaa.gov (nhcwebmaster)</author>
+    </item>
+  </channel>
+</rss>

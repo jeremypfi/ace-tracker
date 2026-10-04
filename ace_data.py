@@ -2222,6 +2222,12 @@ def fetch_nhc_disturbances(basin_key):
                 text = text[pos:]
                 break
 
+        # "Active Systems:" lists storms already under advisories, not a
+        # disturbance. In an unnumbered outlook it would otherwise become the
+        # disturbance's area and description.
+        text = re.sub(r'Active Systems:.*?(?:\n\s*\n|$)', '', text,
+                      flags=re.IGNORECASE | re.DOTALL)
+
         # Split into per-disturbance blocks.
         # Numbered outlooks (multiple disturbances) use "1. Area:" markers.
         # Single-disturbance outlooks have no numbering.
@@ -2267,15 +2273,15 @@ def fetch_nhc_disturbances(basin_key):
             for ln in content_lines:
                 if re.search(r'formation chance', ln, re.IGNORECASE):
                     break
+                stripped = re.sub(r'^\d+\.\s*', '', ln).strip()
                 # "Location Name: rest of text" — split on first colon
-                colon_match = re.match(r'^([\w ,\-]{4,60}):\s*(.*)$', ln)
+                colon_match = re.match(r'^([\w ,\-()]{4,60}):\s*(.*)$', stripped)
                 if colon_match and not area_line:
                     area_line = colon_match.group(1).strip()
                     rest = colon_match.group(2).strip()
                     if rest:
                         desc_lines.append(rest)
                 else:
-                    stripped = re.sub(r'^\d+\.\s*', '', ln).strip()
                     if stripped and not area_line and len(stripped) > 4:
                         area_line = stripped[:100]
                     elif stripped:
