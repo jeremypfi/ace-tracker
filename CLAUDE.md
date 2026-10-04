@@ -18,6 +18,11 @@ python3 ace_tracker.py        # generates HTML files in data/
 pip3 install -r requirements.txt
 ```
 
+## Testing
+
+- Use `unittest` in `test_ace_tracker.py` for logic, calculations and generated HTML strings.
+- Use Playwright only for behavior that needs a real browser and JS: tooltip positioning, tab switching, the no-JS fallback.
+
 ## Repository Rules
 
 - **Only @jeremypfi can approve and merge PRs** (CODEOWNERS + branch protection)
