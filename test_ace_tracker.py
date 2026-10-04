@@ -1742,8 +1742,8 @@ class TestGuidanceTimestamps(unittest.TestCase):
             'spaghetti_cycles': {'OFCL': '2026-09-27T00:00:00Z'},
             'cone_issued': '2026-09-27T03:00:00Z',
         })
-        with mock.patch('ace_html.fetch_active_storm_cones', return_value={'Arthur': 'cones/al012026.png'}), \
-             mock.patch('ace_html.fetch_nhc_disturbances', return_value=[]):
+        with mock.patch('ace_data.fetch_active_storm_cones', return_value={'Arthur': 'cones/al012026.png'}), \
+             mock.patch('ace_data.fetch_nhc_disturbances', return_value=[]):
             html = generate_dashboard_html(basin_data)
         self.assertIn('"spaghetti_cycles": {"OFCL": "00Z Sep 27"}', html)
         self.assertIn('Latest run of each model (UTC)', html)
@@ -1754,11 +1754,99 @@ class TestGuidanceTimestamps(unittest.TestCase):
         from unittest import mock
         basin_data = TestHTMLGeneration()._make_basin_data()
         basin_data[0]['current']['storm_details']['Arthur']['is_active'] = True
-        with mock.patch('ace_html.fetch_active_storm_cones', return_value={'Arthur': 'cones/al012026.png'}), \
-             mock.patch('ace_html.fetch_nhc_disturbances', return_value=[]):
+        with mock.patch('ace_data.fetch_active_storm_cones', return_value={'Arthur': 'cones/al012026.png'}), \
+             mock.patch('ace_data.fetch_nhc_disturbances', return_value=[]):
             html = generate_dashboard_html(basin_data)
         self.assertIn('alt="NHC forecast cone for Arthur"', html)
         self.assertNotIn('advisory issued', html)
+
+
+class TestBuildSeasonPayload(unittest.TestCase):
+    """build_season_payload() is the single source for pages, feeds and the API:
+    plain data, no HTML, and the only place the render-time fetches happen."""
+
+    def _payload(self, mutate=None, cones=None, disturbances=()):
+        basin_data = TestHTMLGeneration()._make_basin_data()[0]
+        basin_data['current']['storms']['Bertha'] = 3.0
+        basin_data['current']['storm_details']['Bertha'] = {
+            'ace': 3.0, 'max_wind': 70, 'is_active': True, 'start_date': '7/2',
+            'spaghetti': {'GFS': [{'lat': 1, 'lon': 2}]},
+            'spaghetti_cycles': {'GFS': '2026-07-02T06:00:00Z', 'GONE': 'x'},
+        }
+        basin_data['current']['total'] = 3.41
+        if mutate:
+            mutate(basin_data)
+        with mock.patch('ace_data.fetch_active_storm_cones', return_value=cones or {}) as fc, \
+             mock.patch('ace_data.fetch_nhc_disturbances', return_value=list(disturbances)):
+            payload = ace_data.build_season_payload(basin_data)
+        return payload, fc
+
+    def test_storms_sorted_by_ace_with_derived_fields(self):
+        p, _ = self._payload()
+        self.assertEqual([s['name'] for s in p['storms']], ['Bertha', 'Arthur'])
+        bertha = p['storms'][0]
+        self.assertEqual(bertha['slug'], 'bertha')
+        self.assertEqual(bertha['category'], get_category(70))
+        self.assertFalse(bertha['is_major'])
+        self.assertAlmostEqual(bertha['pct_of_season'], 3.0 / 3.41 * 100)
+        self.assertEqual((p['named_storms'], p['hurricanes'], p['major_hurricanes']), (2, 1, 0))
+
+    def test_storm_without_details_gets_safe_defaults(self):
+        def drop(bd):
+            del bd['current']['storm_details']['Arthur']
+        p, _ = self._payload(drop)
+        arthur = next(s for s in p['storms'] if s['name'] == 'Arthur')
+        self.assertEqual((arthur['max_wind'], arthur['category'], arthur['start_date']), (0, '—', '—'))
+        self.assertEqual(arthur['track_points'], [])
+
+    def test_cone_fetch_runs_before_storms_are_read(self):
+        """The fetch corrects is_active in place; the payload must see the fix."""
+        basin_data = TestHTMLGeneration()._make_basin_data()[0]
+        basin_data['current']['storm_details']['Arthur'].update(
+            {'is_active': True, 'spaghetti': {'GFS': [{'lat': 1, 'lon': 2}]}})
+
+        def fake_fetch(basin_key, details):
+            details['Arthur']['is_active'] = False
+            return {'Arthur': 'cones/al012026.png'}
+        with mock.patch('ace_data.fetch_active_storm_cones', side_effect=fake_fetch), \
+             mock.patch('ace_data.fetch_nhc_disturbances', return_value=[]):
+            p = ace_data.build_season_payload(basin_data)
+        arthur = p['storms'][0]
+        self.assertFalse(arthur['is_active'])
+        self.assertEqual(arthur['spaghetti'], {})
+        self.assertIsNone(arthur['cone_image'])
+
+    def test_active_storm_keeps_cone_and_only_model_runs_with_tracks(self):
+        p, _ = self._payload(cones={'Bertha': 'cones/x.png'})
+        bertha = p['storms'][0]
+        self.assertEqual(bertha['cone_image'], 'cones/x.png')
+        self.assertEqual(bertha['spaghetti_cycles'], {'GFS': '2026-07-02T06:00:00Z'})
+
+    def test_season_summary_fields(self):
+        p, _ = self._payload(disturbances=[{'area': 'a'}])
+        self.assertEqual((p['basin_key'], p['basin_name'], p['year']), ('atlantic', 'Atlantic', 2026))
+        self.assertEqual(p['ace_total'], 3.41)
+        self.assertEqual(p['classification'], ace_data.get_noaa_classification(3.41, 'atlantic'))
+        self.assertEqual(p['rank'], 4)
+        self.assertEqual(p['total_seasons'], 4)
+        self.assertEqual(p['disturbances'], [{'area': 'a'}])
+        self.assertFalse(p['preseason'])
+        self.assertFalse(p['is_backup'])
+
+    def test_preseason_has_no_storms_or_rank(self):
+        def empty(bd):
+            bd['current'].update({'storms': {}, 'storm_details': {}, 'total': 0.0,
+                                  'year': ace_data._utc_now().year})
+        p, _ = self._payload(empty)
+        self.assertTrue(p['preseason'])
+        self.assertEqual(p['storms'], [])
+        self.assertIsNone(p['rank'])
+
+    def test_payload_is_json_serializable_with_no_html(self):
+        p, _ = self._payload(cones={'Bertha': 'cones/x.png'})
+        text = json.dumps(p)
+        self.assertNotIn('<div', text)
+        self.assertNotIn('<span', text)
 
 
 class TestCanonicalHomeLinks(unittest.TestCase):

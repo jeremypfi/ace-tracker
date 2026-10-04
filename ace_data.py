@@ -2420,3 +2420,87 @@ def fetch_active_storm_cones(basin_key, storm_details):
     return images
 
 
+
+
+
+# ===============================================================================
+# SEASON PAYLOAD
+# ===============================================================================
+
+def build_season_payload(basin_data):
+    """Everything a page, feed or API needs to describe one basin's current
+    season, as plain data with no HTML in it.
+
+    `basin_data` is one process_basin() result. This is the only place that
+    does the render-time network fetches (cones, NHC outlook), so renderers
+    stay pure and a second consumer can reuse the payload without refetching.
+    The cone fetch must run before the storm list is read: it corrects
+    `is_active` and sets `cone_issued` on storm_details in place.
+    """
+    basin_key = basin_data['basin_key']
+    basin = BASINS[basin_key]
+    current = basin_data['current']
+    yearly_totals = basin_data['yearly_totals']
+    year = current['year']
+    total = current['total']
+    details = current.get('storm_details', {})
+
+    cone_images = fetch_active_storm_cones(basin_key, details)
+
+    preseason = not current['storms'] and year == _utc_now().year
+    rank = total_seasons = None
+    if not preseason:
+        rank, total_seasons = rank_current_season(yearly_totals, year, total)
+
+    storms = []
+    for name, ace in sorted(current['storms'].items(), key=lambda x: x[1], reverse=True):
+        d = details.get(name, {})
+        wind = d.get('max_wind', 0)
+        is_active = d.get('is_active', False)
+        # spaghetti was fetched under the pre-cross-check is_active heuristic,
+        # so drop it if is_active was since corrected to False: a dissipated
+        # storm's stale forecast isn't worth showing.
+        spaghetti = d.get('spaghetti', {}) if is_active else {}
+        storms.append({
+            'name': name,
+            'slug': name.lower().replace(' ', '-'),
+            'ace': ace,
+            'pct_of_season': (ace / total * 100) if total > 0 else 0,
+            'max_wind': wind,
+            'category': get_category(wind) if wind > 0 else '—',
+            'is_major': wind >= 96,
+            'is_active': is_active,
+            'start_date': d.get('start_date', '—'),
+            'landfall': d.get('landfall', []),
+            'landfall_estimated': bool(d.get('landfall_estimated')),
+            'track_points': d.get('track_points', []),
+            'spaghetti': spaghetti,
+            'spaghetti_cycles': {m: c for m, c in (d.get('spaghetti_cycles') or {}).items() if m in spaghetti},
+            'cone_image': cone_images.get(name) if is_active else None,
+            'cone_issued': d.get('cone_issued'),
+        })
+
+    return {
+        'basin_key': basin_key,
+        'basin_name': basin['name'],
+        'year': year,
+        'preseason': preseason,
+        'is_backup': bool(current.get('is_backup')),
+        'data_as_of': current.get('data_as_of'),
+        'ace_total': total,
+        'normal_ace': basin['normal_ace'],
+        'pct_of_normal': (total / basin['normal_ace'] * 100) if basin['normal_ace'] > 0 else 0,
+        'classification': get_noaa_classification(total, basin_key),
+        'named_storms': len(details),
+        'hurricanes': sum(1 for d in details.values() if d.get('max_wind', 0) >= 64),
+        'major_hurricanes': sum(1 for d in details.values() if d.get('max_wind', 0) >= 96),
+        'rank': rank,
+        'total_seasons': total_seasons,
+        'storms': storms,
+        'insights': basin_data['insights'],
+        'records_in_play': basin_data.get('records_in_play'),
+        'ace_pace': basin_data.get('ace_pace'),
+        'projection': get_season_projection(total, basin_key),
+        'disturbances': fetch_nhc_disturbances(basin_key),
+        'yearly_totals': yearly_totals,
+    }
