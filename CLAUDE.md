@@ -2,6 +2,7 @@
 
 ACE Tracker: Accumulated Cyclone Energy for Atlantic and East/Central Pacific seasons. Builds an HTML dashboard from NOAA HURDAT2 (1991-present) via Tropycal.
 Modules: `ace_data.py` (fetch, ACE math, domain constants), `ace_html.py` (page rendering), `ace_tracker.py` (CLI entrypoint).
+`ace_data.build_season_payload()` is the single source of per-basin season data (plain data, no HTML, does the render-time NHC fetches). Pages, feeds and API output should consume it rather than re-deriving numbers from `process_basin()` results.
 
 ## Domain rules
 

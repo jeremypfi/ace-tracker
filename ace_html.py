@@ -17,10 +17,7 @@ from ace_data import (
     START_YEAR,
     get_category,
     get_noaa_classification,
-    get_season_projection,
-    rank_current_season,
-    fetch_nhc_disturbances,
-    fetch_active_storm_cones,
+    build_season_payload,
     find_highest_ace_storm,
     find_longest_lived_storm,
     find_strongest_landfall,
@@ -411,9 +408,8 @@ def _records_in_play_html(records):
 
 
 
-def _season_projection_html(current_ace, basin_key):
+def _season_projection_html(projection):
     """Render the 'what would it take?' daily-ACE-rate projection widget."""
-    projection = get_season_projection(current_ace, basin_key)
     if not projection:
         return ''
 
@@ -442,30 +438,29 @@ def _season_projection_html(current_ace, basin_key):
 
 def generate_dashboard_html(basin_data):
     """Generate a mobile-friendly HTML dashboard for both basins."""
+    return render_dashboard_html([build_season_payload(bd) for bd in basin_data if bd])
+
+
+def render_dashboard_html(payloads):
+    """Render the dashboard from build_season_payload() results (no I/O here)."""
     now = datetime.now(timezone.utc)
 
-    def storm_rows_html(current, cone_images):
-        storms = current['storms']
-        details = current.get('storm_details', {})
-        total = current['total']
-        sorted_storms = sorted(storms.items(), key=lambda x: x[1], reverse=True)
+    def storm_rows_html(storms):
         rows = []
         track_data = {}
         any_estimated = False
-        for name, ace in sorted_storms:
-            d = details.get(name, {})
-            pct = (ace / total * 100) if total > 0 else 0
-            wind = d.get('max_wind', 0)
-            cat = get_category(wind) if wind > 0 else '—'
-            is_major = wind >= 96
-            is_active = d.get('is_active', False)
-            track_points = d.get('track_points', [])
-            # spaghetti was fetched under the pre-cross-check is_active heuristic
-            # (ace_data.py), so suppress it here if is_active was since corrected
-            # to False — a dissipated storm's stale forecast isn't worth showing.
-            spaghetti = d.get('spaghetti', {}) if is_active else {}
-            start_date = d.get('start_date', '—')
-            slug = name.lower().replace(' ', '-')
+        for st in storms:
+            name = st['name']
+            ace = st['ace']
+            pct = st['pct_of_season']
+            wind = st['max_wind']
+            cat = st['category']
+            is_major = st['is_major']
+            is_active = st['is_active']
+            track_points = st['track_points']
+            spaghetti = st['spaghetti']
+            start_date = st['start_date']
+            slug = st['slug']
 
             track_data[slug] = {
                 'name': name,
@@ -476,14 +471,14 @@ def generate_dashboard_html(basin_data):
                 'category': cat,
                 'points': track_points,
                 'spaghetti': spaghetti,
-                'spaghetti_cycles': {m: _cycle_label(c) for m, c in (d.get('spaghetti_cycles') or {}).items()
-                                     if m in spaghetti and _cycle_label(c)},
+                'spaghetti_cycles': {m: _cycle_label(c) for m, c in st['spaghetti_cycles'].items()
+                                     if _cycle_label(c)},
             }
 
-            landfall = d.get('landfall', [])
+            landfall = st['landfall']
             if landfall:
                 lf_cell = ' · '.join(f'{html_escape(loc)} ({html_escape(cat)})' for loc, cat in landfall)
-                if d.get('landfall_estimated'):
+                if st['landfall_estimated']:
                     any_estimated = True
                     lf_cell += (' <abbr class="lf-est" title="Estimated from the preliminary track; '
                                 'NHC confirms landfalls in its post-season report">est.</abbr>')
@@ -502,8 +497,8 @@ def generate_dashboard_html(basin_data):
                         'View NHC Active Storms →</a></div>') if is_active else ''
 
             cone_img = ''
-            if is_active and cone_images.get(name):
-                cone_dt = _parse_utc(d.get('cone_issued'))
+            if st['cone_image']:
+                cone_dt = _parse_utc(st['cone_issued'])
                 cone_alt = f'NHC forecast cone for {html_escape(name)}'
                 cone_when = ''
                 if cone_dt:
@@ -511,7 +506,7 @@ def generate_dashboard_html(basin_data):
                     cone_when = f' &middot; advisory issued {_timestamp_html(cone_dt)}'
                 cone_img = (
                     f'<div class="cone-graphic">'
-                    f'<img src="{html_escape(cone_images[name])}" alt="{cone_alt}" loading="lazy">'
+                    f'<img src="{html_escape(st["cone_image"])}" alt="{cone_alt}" loading="lazy">'
                     f'<div class="cone-credit">Forecast cone via <a href="https://www.nhc.noaa.gov/" target="_blank" rel="noopener">NHC</a>{cone_when}</div>'
                     f'</div>'
                 )
@@ -584,32 +579,22 @@ def generate_dashboard_html(basin_data):
     sections = []
     all_track_data = {}
     all_pace_data = {}
-    for bd in basin_data:
-        if not bd:
-            continue
-        basin = BASINS[bd['basin_key']]
-        current = bd['current']
-        yearly_totals = bd['yearly_totals']
-        insights = bd['insights']
-        current_ace = current['total']
-        current_year = current['year']
-        normal = basin['normal_ace']
-        pct_normal = (current_ace / normal * 100) if normal > 0 else 0
-        classification = get_noaa_classification(current_ace, bd['basin_key'])
-
-        details = current.get('storm_details', {})
-        cone_images = fetch_active_storm_cones(bd['basin_key'], details)
-        named = len(details)
-        hurricanes = sum(1 for d in details.values() if d.get('max_wind', 0) >= 64)
-        majors = sum(1 for d in details.values() if d.get('max_wind', 0) >= 96)
-
-        preseason = not current['storms'] and current_year == datetime.now(timezone.utc).year
+    for bd in payloads:
+        basin_key = bd['basin_key']
+        current_ace = bd['ace_total']
+        current_year = bd['year']
+        normal = bd['normal_ace']
+        pct_normal = bd['pct_of_normal']
+        classification = bd['classification']
+        named = bd['named_storms']
+        hurricanes = bd['hurricanes']
+        majors = bd['major_hurricanes']
+        preseason = bd['preseason']
 
         if preseason:
-            lower_section = _preseason_html(bd['basin_key'], yearly_totals, current_year)
+            lower_section = _preseason_html(basin_key, bd['yearly_totals'], current_year)
         else:
-            rank, total_seasons = rank_current_season(yearly_totals, current_year, current_ace)
-            storm_html, track_data, landfall_note = storm_rows_html(current, cone_images)
+            storm_html, track_data, landfall_note = storm_rows_html(bd['storms'])
             all_track_data.update(track_data)
             lower_section = f'''
       <h3>Storm Breakdown</h3>
@@ -623,7 +608,7 @@ def generate_dashboard_html(basin_data):
             <th class="sort-th"><button type="button" class="sort-btn" onclick="sortDash(this,4,'n')"><span class="wind-th-label" data-kt-label="Wind (kt)" data-mph-label="Wind (mph)" data-kmh-label="Wind (km/h)">Wind (kt)</span> <span class="sa" aria-hidden="true"></span></button></th>
             <th>Landfall</th>
           </tr></thead>
-          <tbody id="storm-{bd['basin_key']}">
+          <tbody id="storm-{basin_key}">
             {storm_html}
           </tbody>
           <tfoot>
@@ -634,9 +619,9 @@ def generate_dashboard_html(basin_data):
       {landfall_note}
 
       <h3>Season Insights</h3>
-      <ul class="insights">{insight_items_html(insights)}</ul>
-      {_records_in_play_html(bd.get('records_in_play'))}
-      {_season_projection_html(current_ace, bd['basin_key'])}'''
+      <ul class="insights">{insight_items_html(bd['insights'])}</ul>
+      {_records_in_play_html(bd['records_in_play'])}
+      {_season_projection_html(bd['projection'])}'''
 
         gauge_pct = min(pct_normal, 200)
 
@@ -654,7 +639,7 @@ def generate_dashboard_html(basin_data):
         <div class="stat-box major-box"><div class="stat-label">Major Hurricanes</div><div class="stat-value">0</div></div>
       </div>'''
         else:
-            rank, total_seasons = rank_current_season(yearly_totals, current_year, current_ace)
+            rank, total_seasons = bd['rank'], bd['total_seasons']
             stats_grid = f'''
       <div class="stats-grid">
         <div class="stat-box ace-total">
@@ -670,22 +655,22 @@ def generate_dashboard_html(basin_data):
         <div class="stat-box"><div class="stat-label">Rank (since {START_YEAR})</div><div class="stat-value">#{rank}<span class="stat-sub"> of {total_seasons}</span></div></div>
       </div>'''
 
-        disturbances   = fetch_nhc_disturbances(bd['basin_key'])
+        disturbances   = bd['disturbances']
         nhc_alert      = _nhc_alert_html(disturbances)
-        stale_banner   = _stale_data_banner_html() if current.get('is_backup') else ''
+        stale_banner   = _stale_data_banner_html() if bd['is_backup'] else ''
 
-        ace_pace = bd.get('ace_pace')
-        pace_section = _ace_pace_html(ace_pace, bd['basin_key'])
+        ace_pace = bd['ace_pace']
+        pace_section = _ace_pace_html(ace_pace, basin_key)
         if ace_pace:
-            all_pace_data[bd['basin_key']] = ace_pace
+            all_pace_data[basin_key] = ace_pace
 
         sections.append(f'''
-    <div class="basin-card{' active' if not sections else ''}" id="{bd['basin_key']}">
-      <h2>{html_escape(basin['name'])} — {current_year} Season</h2>
-      {_season_progress_html(bd['basin_key'], current_year)}
+    <div class="basin-card{' active' if not sections else ''}" id="{basin_key}">
+      <h2>{html_escape(bd['basin_name'])} — {current_year} Season</h2>
+      {_season_progress_html(basin_key, current_year)}
       {stale_banner}
       {nhc_alert}
-      {_data_as_of_html(current.get('data_as_of'), disturbances[0]['issued'] if disturbances else '')}
+      {_data_as_of_html(bd['data_as_of'], disturbances[0]['issued'] if disturbances else '')}
       {stats_grid}
       {pace_section}
       {lower_section}
@@ -695,7 +680,7 @@ def generate_dashboard_html(basin_data):
     _track_json = json.dumps(all_track_data).replace('</', '<\\/')
     _pace_json = json.dumps(all_pace_data).replace('</', '<\\/')
 
-    season_year = _season_year(basin_data)
+    season_year = max((bd['year'] for bd in payloads), default=datetime.now(timezone.utc).year)
     page_title = f'{season_year} Hurricane Season ACE Tracker: Atlantic &amp; East Pacific | aceofcanes.com'
     html = f'''<!DOCTYPE html>
 <html lang="en">
