@@ -351,6 +351,32 @@ def _stale_data_banner_html():
 
 
 
+def _developing_alert_html(systems):
+    """Banner for depressions and potential tropical cyclones under NHC
+    advisories: they have left the outlook but could still become named storms."""
+    if not systems:
+        return ''
+    rows = []
+    for s in systems:
+        wind = f' — {s["intensity_kt"]} kt' if s.get('intensity_kt') is not None else ''
+        rows.append(
+            f'<div class="nhc-dist">'
+            f'<div class="nhc-dist-area">{html_escape(s["label"])}{wind}</div>'
+            f'<div class="nhc-dist-desc">Under NHC advisories and could strengthen into a named storm.</div>'
+            f'<a class="nhc-alert-link" href="{html_escape(s["advisory_url"])}" target="_blank" rel="noopener">'
+            f'View NHC public advisory ↗</a>'
+            f'</div>'
+        )
+    count = len(systems)
+    noun = 'system' if count == 1 else 'systems'
+    return (
+        f'<div class="nhc-alert">'
+        f'<div class="nhc-alert-hdr">⚠ {count} active {noun} could form into a named storm</div>'
+        + ''.join(rows) +
+        f'</div>'
+    )
+
+
 def _nhc_alert_html(disturbances):
     """Render the NHC tropical disturbance alert banner."""
     if not disturbances:
@@ -701,7 +727,8 @@ def render_dashboard_html(payloads, share_image=None, share_alt=None):
       </div>'''
 
         disturbances   = bd['disturbances']
-        nhc_alert      = _nhc_alert_html(disturbances)
+        nhc_alert      = (_developing_alert_html(bd.get('developing_systems'))
+                          + _nhc_alert_html(disturbances))
         stale_banner   = _stale_data_banner_html() if bd['is_backup'] else ''
 
         ace_pace = bd['ace_pace']
