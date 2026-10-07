@@ -363,8 +363,10 @@ def _developing_alert_html(systems):
             f'<div class="nhc-dist">'
             f'<div class="nhc-dist-area">{html_escape(s["label"])}{wind}</div>'
             f'<div class="nhc-dist-desc">Under NHC advisories and could strengthen into a named storm.</div>'
+            f'<a class="nhc-alert-link" href="{html_escape(s["track_url"])}" target="_blank" rel="noopener">'
+            f'View forecast track ↗</a> &nbsp;·&nbsp; '
             f'<a class="nhc-alert-link" href="{html_escape(s["advisory_url"])}" target="_blank" rel="noopener">'
-            f'View NHC public advisory ↗</a>'
+            f'Public advisory ↗</a>'
             f'</div>'
         )
     count = len(systems)
