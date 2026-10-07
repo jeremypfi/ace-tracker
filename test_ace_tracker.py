@@ -2663,6 +2663,8 @@ class TestDevelopingSystems(unittest.TestCase):
     STORMS = {'activeStorms': [
         {'id': 'al092026', 'binNumber': 'AT4', 'name': 'Nine', 'classification': 'TD',
          'intensity': '30', 'lastUpdate': '2026-10-07T15:00:00.000Z',
+         'forecastGraphics': {'fileUpdateTime': '2026-10-07T02:54:29.776Z',
+                              'url': 'https://www.nhc.noaa.gov/graphics_at4.shtml'},
          'publicAdvisory': {'url': 'https://www.nhc.noaa.gov/text/MIATCPAT4.shtml'}},
         {'id': 'al102026', 'binNumber': 'AT5', 'name': 'Ten', 'classification': 'PTC',
          'intensity': '35', 'lastUpdate': '2026-10-07T15:00:00.000Z'},
@@ -2684,6 +2686,11 @@ class TestDevelopingSystems(unittest.TestCase):
         self.assertEqual(result[0]['intensity_kt'], 30)
         self.assertEqual(result[0]['advisory_url'], 'https://www.nhc.noaa.gov/text/MIATCPAT4.shtml')
         self.assertEqual(result[1]['advisory_url'], 'https://www.nhc.noaa.gov/')
+        self.assertEqual(result[0]['track_url'], 'https://www.nhc.noaa.gov/refresh/'
+                                                 'graphics_at4+shtml/070254.shtml?cone#contents')
+        # No graphics time yet: the storm's stable cone page
+        self.assertEqual(result[1]['track_url'],
+                         'https://www.nhc.noaa.gov/graphics_at5.shtml?cone#contents')
         self.assertEqual([s['label'] for s in self._fetch('pacific')], ['Tropical Depression Twenty'])
 
     def test_named_storms_only_returns_empty(self):
@@ -2706,6 +2713,7 @@ class TestDevelopingSystems(unittest.TestCase):
         self.assertIn('2 active systems could form into a named storm', html)
         self.assertIn('Tropical Depression Nine — 30 kt', html)
         self.assertIn('MIATCPAT4.shtml', html)
+        self.assertIn('href="https://www.nhc.noaa.gov/refresh/graphics_at4+shtml/070254.shtml?cone#contents"', html)
         self.assertEqual(_developing_alert_html([]), "")
 
     def test_payload_carries_developing_systems(self):

@@ -2317,6 +2317,26 @@ DEVELOPING_CLASSIFICATIONS = {
 }
 
 
+def _nhc_track_url(storm):
+    """NHC forecast cone page for a CurrentStorms.json entry, e.g.
+    https://www.nhc.noaa.gov/refresh/graphics_at4+shtml/070254.shtml?cone#contents
+    The refresh path is keyed by the graphics update time (day, hour, minute
+    UTC); without one, fall back to the storm's stable graphics page."""
+    graphics = storm.get('forecastGraphics') or {}
+    bin_number = (storm.get('binNumber') or '').lower()
+    try:
+        ts = datetime.fromisoformat(graphics['fileUpdateTime'].replace('Z', '+00:00'))
+        if bin_number:
+            return (f'https://www.nhc.noaa.gov/refresh/graphics_{bin_number}+shtml/'
+                    f'{ts:%d%H%M}.shtml?cone#contents')
+    except (KeyError, AttributeError, ValueError):
+        pass
+    base = graphics.get('url') or (
+        f'https://www.nhc.noaa.gov/graphics_{bin_number}.shtml' if bin_number
+        else 'https://www.nhc.noaa.gov/')
+    return f'{base}?cone#contents' if 'graphics_' in base else base
+
+
 def fetch_nhc_developing_systems(basin_key):
     """Active NHC systems in this basin that could still become a named storm.
 
@@ -2324,7 +2344,8 @@ def fetch_nhc_developing_systems(basin_key):
     NHC drops it from the Tropical Weather Outlook and starts advisories, so
     fetch_nhc_disturbances() no longer sees it. This reads CurrentStorms.json
     to keep alerting until it is named. Returns a list of dicts:
-      {name, label, classification, intensity_kt, advisory_url, updated}
+      {name, label, classification, intensity_kt, track_url, advisory_url, updated}
+    track_url is NHC's forecast cone page for the latest advisory.
     Returns [] on any failure or when there are none.
     """
     import urllib.request
@@ -2357,6 +2378,7 @@ def fetch_nhc_developing_systems(basin_key):
             intensity = None
         systems.append({
             'name': name,
+            'track_url': _nhc_track_url(storm),
             'label': f'{kind} {name}'.strip(),
             'classification': classification,
             'intensity_kt': intensity,
