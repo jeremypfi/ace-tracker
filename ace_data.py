@@ -2308,6 +2308,87 @@ def fetch_nhc_disturbances(basin_key):
         return []
 
 
+# NHC CurrentStorms.json classifications for systems under advisories that are
+# not (yet) a named storm, so could still become one.
+DEVELOPING_CLASSIFICATIONS = {
+    'TD':  'Tropical Depression',
+    'STD': 'Subtropical Depression',
+    'PTC': 'Potential Tropical Cyclone',
+}
+
+
+def _nhc_track_url(storm):
+    """NHC forecast cone page for a CurrentStorms.json entry, e.g.
+    https://www.nhc.noaa.gov/refresh/graphics_at4+shtml/070254.shtml?cone#contents
+    The refresh path is keyed by the graphics update time (day, hour, minute
+    UTC); without one, fall back to the storm's stable graphics page."""
+    graphics = storm.get('forecastGraphics') or {}
+    bin_number = (storm.get('binNumber') or '').lower()
+    try:
+        ts = datetime.fromisoformat(graphics['fileUpdateTime'].replace('Z', '+00:00'))
+        if bin_number:
+            return (f'https://www.nhc.noaa.gov/refresh/graphics_{bin_number}+shtml/'
+                    f'{ts:%d%H%M}.shtml?cone#contents')
+    except (KeyError, AttributeError, ValueError):
+        pass
+    base = graphics.get('url') or (
+        f'https://www.nhc.noaa.gov/graphics_{bin_number}.shtml' if bin_number
+        else 'https://www.nhc.noaa.gov/')
+    return f'{base}?cone#contents' if 'graphics_' in base else base
+
+
+def fetch_nhc_developing_systems(basin_key):
+    """Active NHC systems in this basin that could still become a named storm.
+
+    Once a disturbance becomes a depression (or a potential tropical cyclone)
+    NHC drops it from the Tropical Weather Outlook and starts advisories, so
+    fetch_nhc_disturbances() no longer sees it. This reads CurrentStorms.json
+    to keep alerting until it is named. Returns a list of dicts:
+      {name, label, classification, intensity_kt, track_url, advisory_url, updated}
+    track_url is NHC's forecast cone page for the latest advisory.
+    Returns [] on any failure or when there are none.
+    """
+    import urllib.request
+
+    prefixes = NHC_BIN_PREFIXES.get(basin_key)
+    if not prefixes:
+        return []
+    try:
+        req = urllib.request.Request(
+            'https://www.nhc.noaa.gov/CurrentStorms.json',
+            headers={'User-Agent': 'ACETracker/1.0'})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode('utf-8'))
+    except Exception as e:
+        logger.warning(f"Could not fetch CurrentStorms.json for {basin_key}: {e}")
+        return []
+
+    systems = []
+    for storm in data.get('activeStorms', []):
+        if not (storm.get('binNumber') or '').startswith(prefixes):
+            continue
+        classification = (storm.get('classification') or '').upper()
+        kind = DEVELOPING_CLASSIFICATIONS.get(classification)
+        if not kind:
+            continue
+        name = (storm.get('name') or '').strip()
+        try:
+            intensity = int(storm.get('intensity'))
+        except (TypeError, ValueError):
+            intensity = None
+        systems.append({
+            'name': name,
+            'track_url': _nhc_track_url(storm),
+            'label': f'{kind} {name}'.strip(),
+            'classification': classification,
+            'intensity_kt': intensity,
+            'advisory_url': (storm.get('publicAdvisory') or {}).get('url')
+                            or 'https://www.nhc.noaa.gov/',
+            'updated': storm.get('lastUpdate') or '',
+        })
+    return systems
+
+
 
 # ===============================================================================
 # FORECAST CONE FETCHING (NHC)
@@ -2505,6 +2586,7 @@ def build_season_payload(basin_data):
         'ace_pace': basin_data.get('ace_pace'),
         'projection': get_season_projection(total, basin_key),
         'disturbances': fetch_nhc_disturbances(basin_key),
+        'developing_systems': fetch_nhc_developing_systems(basin_key),
         'yearly_totals': yearly_totals,
     }
 
