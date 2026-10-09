@@ -13,10 +13,10 @@ Modules: `ace_data.py` (fetch, ACE math, domain constants), `ace_html.py` (page 
 ## Development Commands
 
 ```bash
-python3 verify_pr.py          # unit tests + syntax check + live tracker run; must pass before any commit
-python3 verify_pr.py --fast   # unit tests + syntax check only
-python3 ace_tracker.py        # generates HTML files in data/
-pip3 install -r requirements.txt
+uv run python verify_pr.py          # unit tests + syntax check + live tracker run; must pass before any commit
+uv run python verify_pr.py --fast   # unit tests + syntax check only
+uv run python ace_tracker.py        # generates HTML files in data/
+uv venv --python 3.12 && uv pip install -r requirements.txt   # one-time setup; 3.13+ unsupported
 ```
 
 ## Testing
@@ -27,7 +27,7 @@ pip3 install -r requirements.txt
 ## Repository Rules
 
 - **Only @jeremypfi can approve and merge PRs** (CODEOWNERS + branch protection)
-- Before committing: run `python3 verify_pr.py`, then check `git diff` for keys, personal paths and `.env` files. The `/pre-commit` skill does the same.
+- Before committing: run `uv run python verify_pr.py`, then check `git diff` for keys, personal paths and `.env` files. The `/pre-commit` skill does the same.
 - Never commit `data/*.html`, `data/api/` or `data/feed.xml` (gitignored)
 - `api/v1/season.json` is a public contract: add fields freely, but a rename or removal needs `api/v2/`
 
