@@ -1770,7 +1770,8 @@ class TestGuidanceTimestamps(unittest.TestCase):
             'cone_issued': '2026-09-27T03:00:00Z',
         })
         with mock.patch('ace_data.fetch_active_storm_cones', return_value={'Arthur': 'cones/al012026.png'}), \
-             mock.patch('ace_data.fetch_nhc_disturbances', return_value=[]):
+             mock.patch('ace_data.fetch_nhc_disturbances', return_value=[]), \
+             mock.patch('ace_data.fetch_nhc_developing_systems', return_value=[]):
             html = generate_dashboard_html(basin_data)
         self.assertIn('"spaghetti_cycles": {"OFCL": "00Z Sep 27"}', html)
         self.assertIn('Latest run of each model (UTC)', html)
@@ -1782,7 +1783,8 @@ class TestGuidanceTimestamps(unittest.TestCase):
         basin_data = TestHTMLGeneration()._make_basin_data()
         basin_data[0]['current']['storm_details']['Arthur']['is_active'] = True
         with mock.patch('ace_data.fetch_active_storm_cones', return_value={'Arthur': 'cones/al012026.png'}), \
-             mock.patch('ace_data.fetch_nhc_disturbances', return_value=[]):
+             mock.patch('ace_data.fetch_nhc_disturbances', return_value=[]), \
+             mock.patch('ace_data.fetch_nhc_developing_systems', return_value=[]):
             html = generate_dashboard_html(basin_data)
         self.assertIn('alt="NHC forecast cone for Arthur"', html)
         self.assertNotIn('advisory issued', html)
@@ -1804,7 +1806,8 @@ class TestBuildSeasonPayload(unittest.TestCase):
         if mutate:
             mutate(basin_data)
         with mock.patch('ace_data.fetch_active_storm_cones', return_value=cones or {}) as fc, \
-             mock.patch('ace_data.fetch_nhc_disturbances', return_value=list(disturbances)):
+             mock.patch('ace_data.fetch_nhc_disturbances', return_value=list(disturbances)), \
+             mock.patch('ace_data.fetch_nhc_developing_systems', return_value=[]):
             payload = ace_data.build_season_payload(basin_data)
         return payload, fc
 
@@ -1836,7 +1839,8 @@ class TestBuildSeasonPayload(unittest.TestCase):
             details['Arthur']['is_active'] = False
             return {'Arthur': 'cones/al012026.png'}
         with mock.patch('ace_data.fetch_active_storm_cones', side_effect=fake_fetch), \
-             mock.patch('ace_data.fetch_nhc_disturbances', return_value=[]):
+             mock.patch('ace_data.fetch_nhc_disturbances', return_value=[]), \
+             mock.patch('ace_data.fetch_nhc_developing_systems', return_value=[]):
             p = ace_data.build_season_payload(basin_data)
         arthur = p['storms'][0]
         self.assertFalse(arthur['is_active'])
@@ -1886,7 +1890,8 @@ class TestFeeds(unittest.TestCase):
         basin_data['current']['storm_details']['Arthur'].update(
             {'landfall_estimated': True, 'start_date': '6/15'})
         with mock.patch('ace_data.fetch_active_storm_cones', return_value={}), \
-             mock.patch('ace_data.fetch_nhc_disturbances', return_value=[]):
+             mock.patch('ace_data.fetch_nhc_disturbances', return_value=[]), \
+             mock.patch('ace_data.fetch_nhc_developing_systems', return_value=[]):
             return [ace_data.build_season_payload(basin_data)]
 
     def test_api_v1_shape_is_stable(self):
@@ -1964,7 +1969,8 @@ class TestShareCard(unittest.TestCase):
     def _payloads(self):
         basin_data = TestHTMLGeneration()._make_basin_data()[0]
         with mock.patch('ace_data.fetch_active_storm_cones', return_value={}), \
-             mock.patch('ace_data.fetch_nhc_disturbances', return_value=[]):
+             mock.patch('ace_data.fetch_nhc_disturbances', return_value=[]), \
+             mock.patch('ace_data.fetch_nhc_developing_systems', return_value=[]):
             return [ace_data.build_season_payload(basin_data)]
 
     def test_renders_1200x630_png(self):
@@ -2043,7 +2049,8 @@ class TestStormPages(unittest.TestCase):
         }
         basin_data['current']['total'] = 3.41
         with mock.patch('ace_data.fetch_active_storm_cones', return_value={'Bertha': 'cones/al022026.png'}), \
-             mock.patch('ace_data.fetch_nhc_disturbances', return_value=[]):
+             mock.patch('ace_data.fetch_nhc_disturbances', return_value=[]), \
+             mock.patch('ace_data.fetch_nhc_developing_systems', return_value=[]):
             payload = ace_data.build_season_payload(basin_data)
         ace_data.ensure_unique_page_slugs([payload])
         return payload
@@ -2057,7 +2064,8 @@ class TestStormPages(unittest.TestCase):
         basin_data['current']['storms'] = {"O'Brien <x>/Two": 1.0}
         basin_data['current']['storm_details'] = {}
         with mock.patch('ace_data.fetch_active_storm_cones', return_value={}), \
-             mock.patch('ace_data.fetch_nhc_disturbances', return_value=[]):
+             mock.patch('ace_data.fetch_nhc_disturbances', return_value=[]), \
+             mock.patch('ace_data.fetch_nhc_developing_systems', return_value=[]):
             p = ace_data.build_season_payload(basin_data)
         self.assertEqual(p['storms'][0]['page_slug'], 'o-brien-x-two-2026')
 
@@ -2646,6 +2654,76 @@ class TestNhcOutlookFixtures(unittest.TestCase):
         with mock.patch('urllib.request.urlopen') as op:
             self.assertEqual(ace_data.fetch_nhc_disturbances('west_pacific'), [])
         op.assert_not_called()
+
+
+class TestDevelopingSystems(unittest.TestCase):
+    """Depressions and PTCs leave the outlook once NHC starts advisories, so
+    they are alerted from CurrentStorms.json until named."""
+
+    STORMS = {'activeStorms': [
+        {'id': 'al092026', 'binNumber': 'AT4', 'name': 'Nine', 'classification': 'TD',
+         'intensity': '30', 'lastUpdate': '2026-10-07T15:00:00.000Z',
+         'forecastGraphics': {'fileUpdateTime': '2026-10-07T02:54:29.776Z',
+                              'url': 'https://www.nhc.noaa.gov/graphics_at4.shtml'},
+         'publicAdvisory': {'url': 'https://www.nhc.noaa.gov/text/MIATCPAT4.shtml'}},
+        {'id': 'al102026', 'binNumber': 'AT5', 'name': 'Ten', 'classification': 'PTC',
+         'intensity': '35', 'lastUpdate': '2026-10-07T15:00:00.000Z'},
+        {'id': 'al082026', 'binNumber': 'AT3', 'name': 'Hanna', 'classification': 'TS',
+         'intensity': '45', 'lastUpdate': '2026-10-07T15:00:00.000Z'},
+        {'id': 'ep182026', 'binNumber': 'EP3', 'name': 'Twenty', 'classification': 'TD',
+         'intensity': '25', 'lastUpdate': '2026-10-07T15:00:00.000Z'},
+    ]}
+
+    def _fetch(self, basin, body=None):
+        body = json.dumps(self.STORMS).encode() if body is None else body
+        with mock.patch('urllib.request.urlopen', return_value=_Resp(body)):
+            return ace_data.fetch_nhc_developing_systems(basin)
+
+    def test_keeps_only_this_basins_unnamed_systems(self):
+        result = self._fetch('atlantic')
+        self.assertEqual([s['label'] for s in result],
+                         ['Tropical Depression Nine', 'Potential Tropical Cyclone Ten'])
+        self.assertEqual(result[0]['intensity_kt'], 30)
+        self.assertEqual(result[0]['advisory_url'], 'https://www.nhc.noaa.gov/text/MIATCPAT4.shtml')
+        self.assertEqual(result[1]['advisory_url'], 'https://www.nhc.noaa.gov/')
+        self.assertEqual(result[0]['track_url'], 'https://www.nhc.noaa.gov/refresh/'
+                                                 'graphics_at4+shtml/070254.shtml?cone#contents')
+        # No graphics time yet: the storm's stable cone page
+        self.assertEqual(result[1]['track_url'],
+                         'https://www.nhc.noaa.gov/graphics_at5.shtml?cone#contents')
+        self.assertEqual([s['label'] for s in self._fetch('pacific')], ['Tropical Depression Twenty'])
+
+    def test_named_storms_only_returns_empty(self):
+        self.assertEqual(self._fetch('pacific', _fixture_bytes('nhc_current_storms.json')), [])
+
+    def test_network_failure_returns_empty(self):
+        with mock.patch('urllib.request.urlopen', side_effect=OSError('offline')), \
+             self.assertLogs('ace_data', level='WARNING'):
+            self.assertEqual(ace_data.fetch_nhc_developing_systems('atlantic'), [])
+
+    def test_unknown_basin_makes_no_request(self):
+        with mock.patch('urllib.request.urlopen') as op:
+            self.assertEqual(ace_data.fetch_nhc_developing_systems('west_pacific'), [])
+        op.assert_not_called()
+
+    def test_banner_stays_up_after_disturbance_becomes_depression(self):
+        systems = self._fetch('atlantic')
+        from ace_html import _developing_alert_html
+        html = _developing_alert_html(systems)
+        self.assertIn('2 active systems could form into a named storm', html)
+        self.assertIn('Tropical Depression Nine — 30 kt', html)
+        self.assertIn('MIATCPAT4.shtml', html)
+        self.assertIn('href="https://www.nhc.noaa.gov/refresh/graphics_at4+shtml/070254.shtml?cone#contents"', html)
+        self.assertEqual(_developing_alert_html([]), "")
+
+    def test_payload_carries_developing_systems(self):
+        basin_data = TestHTMLGeneration()._make_basin_data()[0]
+        systems = self._fetch('atlantic')
+        with mock.patch('ace_data.fetch_active_storm_cones', return_value={}), \
+             mock.patch('ace_data.fetch_nhc_disturbances', return_value=[]), \
+             mock.patch('ace_data.fetch_nhc_developing_systems', return_value=systems):
+            payload = ace_data.build_season_payload(basin_data)
+        self.assertEqual(payload['developing_systems'], systems)
 
 
 class TestForecastConeFixtures(unittest.TestCase):

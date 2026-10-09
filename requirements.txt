@@ -1,5 +1,5 @@
 tropycal>=1.5.2
 shapely>=2.1.2
 cartopy>=0.26.0
-pillow>=10
+pillow>=12.3.0
 setuptools<85
