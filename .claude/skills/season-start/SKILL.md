@@ -12,7 +12,7 @@ disable-model-invocation: false
 ## 1. Verify Tropycal Has Current Year Data
 
 ```bash
-python3 -c "
+uv run python -c "
 import tropycal.tracks as tracks
 basin = tracks.TrackDataset(basin='north_atlantic', source='hurdat')
 print(f'Latest year: {max(basin.df.year)}')
@@ -25,7 +25,7 @@ Should show current year and any named storms so far.
 ## 2. Run Full Tracker
 
 ```bash
-python3 ace_tracker.py
+uv run python ace_tracker.py
 ```
 
 Verify:
@@ -56,7 +56,7 @@ When the first named storm forms, run the tracker and verify:
 ## 5. Run Tests
 
 ```bash
-python3 test_ace_tracker.py
+uv run python test_ace_tracker.py
 ```
 
 All tests must still pass.

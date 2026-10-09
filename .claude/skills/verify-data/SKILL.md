@@ -20,7 +20,7 @@ Pick 6 total: 3 Atlantic, 3 Pacific. Mix of categories (TS, Cat 1–2, Cat 3–5
 ## 2. Pull Official Data via Tropycal
 
 ```python
-python3 -c "
+uv run python -c "
 import tropycal.tracks as tracks
 basin = tracks.TrackDataset(basin='north_atlantic', source='hurdat')
 storm = basin.get_storm(('ida', 2021))
