@@ -2309,12 +2309,28 @@ def fetch_nhc_disturbances(basin_key):
 
 
 # NHC CurrentStorms.json classifications for systems under advisories that are
-# not (yet) a named storm, so could still become one.
+# not (yet) a named storm, so could still become one. NHC's 'PC' is a Potential
+# Tropical Cyclone; 'PTC' is Post-Tropical Cyclone, a storm winding down, so it
+# must not be listed here.
 DEVELOPING_CLASSIFICATIONS = {
     'TD':  'Tropical Depression',
     'STD': 'Subtropical Depression',
-    'PTC': 'Potential Tropical Cyclone',
+    'PC':  'Potential Tropical Cyclone',
 }
+
+_NUMBER_WORDS = {
+    'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
+    'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen',
+    'eighteen', 'nineteen', 'twenty', 'thirty', 'forty', 'fifty',
+}
+
+
+def _is_unnamed(name):
+    """True for NHC's placeholder names for systems not yet named ('Nine',
+    'Twenty-One'). A depression carrying a real name has already been a named
+    storm and is weakening, not developing."""
+    words = name.lower().replace('-', ' ').split()
+    return bool(words) and all(w in _NUMBER_WORDS for w in words)
 
 
 def _nhc_track_url(storm):
@@ -2372,6 +2388,8 @@ def fetch_nhc_developing_systems(basin_key):
         if not kind:
             continue
         name = (storm.get('name') or '').strip()
+        if not _is_unnamed(name):
+            continue
         try:
             intensity = int(storm.get('intensity'))
         except (TypeError, ValueError):
