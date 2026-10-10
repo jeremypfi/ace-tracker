@@ -861,9 +861,6 @@ def render_dashboard_html(payloads, share_image=None, share_alt=None):
   .sources li::before {{ content:"•"; position:absolute; left:0; color:var(--accent); }}
   .sources code {{ font-size:0.9em; background:var(--box); padding:1px 4px; border-radius:3px; }}
   .disclaimer {{ margin-top:12px; padding:10px 12px; border-radius:6px; border-left:3px solid var(--muted); font-size:0.75em; color:var(--muted); line-height:1.5; }}
-  .kofi-link {{ text-align:center; margin-top:14px; font-size:0.78em; }}
-  .kofi-link a {{ color:var(--muted); text-decoration:none; }}
-  .kofi-link a:hover {{ color:var(--accent); }}
   .season-prog {{ margin:-4px 0 14px; }}
   .season-prog-label {{ color:var(--muted); font-size:0.8em; margin-bottom:5px; text-align:center; }}
   .season-prog-track {{ height:6px; background:var(--gauge-bg); border-radius:3px; }}
@@ -928,7 +925,6 @@ def render_dashboard_html(payloads, share_image=None, share_alt=None):
   <p><b>Basin note:</b> The East &amp; Central Pacific tab combines both the Eastern Pacific (NHC, east of 140°W) and Central Pacific (CPHC, 140°W–180°) basins, consistent with the NOAA HURDAT2 Northeast &amp; North Central Pacific dataset. NHC tracks these separately on their <a href="https://www.nhc.noaa.gov/data/tcr/" target="_blank" rel="noopener noreferrer">TCR pages</a> (epac / cpac).</p>
   <p class="disclaimer">⚠️ This site is maintained by a hurricane data enthusiast — not a meteorologist, forecaster, or weather professional of any kind. I just love the data. All information is sourced directly from official NOAA/NHC databases. For official forecasts, watches, warnings, and life-safety information, always refer to the <a href="https://www.nhc.noaa.gov/" target="_blank" rel="noopener noreferrer">National Hurricane Center</a>.</p>
   <p class="build-time">Page built {now.strftime('%B %d, %Y at %H:%M UTC')}. Updates every 3 hours. The data-as-of line above each basin's numbers shows how current the storm data is.</p>
-  <p class="kofi-link"><a href="https://ko-fi.com/aceofcanes" target="_blank" rel="noopener noreferrer">☕ Support this project on Ko-fi</a></p>
 </div>
 <script>
 function _relTimes(){{
@@ -1489,9 +1485,6 @@ def generate_history_html(basin_data):
   .sources li::before {{ content:"•"; position:absolute; left:0; color:var(--accent); }}
   .sources code {{ font-size:0.9em; background:var(--box); padding:1px 4px; border-radius:3px; }}
   .disclaimer {{ margin-top:12px; padding:10px 12px; border-radius:6px; border-left:3px solid var(--muted); font-size:0.75em; color:var(--muted); line-height:1.5; }}
-  .kofi-link {{ text-align:center; margin-top:14px; font-size:0.78em; }}
-  .kofi-link a {{ color:var(--muted); text-decoration:none; }}
-  .kofi-link a:hover {{ color:var(--accent); }}
   @media(min-width:768px) {{ body {{ max-width:960px; margin:0 auto; padding:24px; }} }}
   @media(min-width:1100px) {{ body {{ max-width:1280px; }} }}
   .yr-expand-btn {{ background:none; border:none; color:var(--text-strong); cursor:pointer; font-size:inherit; padding:0; display:inline-flex; align-items:center; gap:4px; white-space:nowrap; width:100%; text-align:left; }}
@@ -1563,7 +1556,6 @@ def generate_history_html(basin_data):
   <p>ACE (Accumulated Cyclone Energy) is calculated at 6-hourly synoptic times (0000/0600/1200/1800 UTC) for systems with status TS, HU, or SS and wind ≥34 kt — extratropical (EX) phases are excluded per NHC methodology. Formula: ACE = Σ(V²<sub>max</sub>) × 10⁻⁴. Categories use the Saffir-Simpson scale in knots.</p>
   <p><b>Basin note:</b> The East &amp; Central Pacific tab combines both the Eastern Pacific (NHC, east of 140°W) and Central Pacific (CPHC, 140°W–180°) basins, consistent with the NOAA HURDAT2 Northeast &amp; North Central Pacific dataset. NHC tracks these separately on their <a href="https://www.nhc.noaa.gov/data/tcr/" target="_blank" rel="noopener noreferrer">TCR pages</a> (epac / cpac).</p>
   <p class="disclaimer">⚠️ This site is maintained by a hurricane data enthusiast — not a meteorologist, forecaster, or weather professional of any kind. I just love the data. All information is sourced directly from official NOAA/NHC databases. For official forecasts, watches, warnings, and life-safety information, always refer to the <a href="https://www.nhc.noaa.gov/" target="_blank" rel="noopener noreferrer">National Hurricane Center</a>.</p>
-  <p class="kofi-link"><a href="https://ko-fi.com/aceofcanes" target="_blank" rel="noopener noreferrer">☕ Support this project on Ko-fi</a></p>
 </div>
 <script>
 function show(id,btn) {{
@@ -1837,9 +1829,6 @@ def generate_records_html(basin_data):
   .sources li {{ color:var(--muted); font-size:0.78em; margin:4px 0; padding-left:12px; position:relative; }}
   .sources li::before {{ content:"•"; position:absolute; left:0; color:var(--accent); }}
   .disclaimer {{ margin-top:12px; padding:10px 12px; border-radius:6px; border-left:3px solid var(--muted); font-size:0.75em; color:var(--muted); line-height:1.5; }}
-  .kofi-link {{ text-align:center; margin-top:14px; font-size:0.78em; }}
-  .kofi-link a {{ color:var(--muted); text-decoration:none; }}
-  .kofi-link a:hover {{ color:var(--accent); }}
   @media(min-width:768px) {{ body {{ max-width:960px; margin:0 auto; padding:24px; }} }}
   @media(min-width:1100px) {{ body {{ max-width:1280px; }} }}
 </style>
@@ -1863,7 +1852,6 @@ def generate_records_html(basin_data):
   </ul>
   <p>ACE (Accumulated Cyclone Energy) is calculated at 6-hourly synoptic times (0000/0600/1200/1800 UTC) for systems with status TS, HU, or SS and wind ≥34 kt. Formula: ACE = Σ(V²<sub>max</sub>) × 10⁻⁴. Landfall category reflects the storm's intensity at the moment of landfall, not its peak intensity.</p>
   <p class="disclaimer">⚠️ This site is maintained by a hurricane data enthusiast — not a meteorologist, forecaster, or weather professional of any kind. All information is sourced directly from official NOAA/NHC databases. For official forecasts, watches, warnings, and life-safety information, always refer to the <a href="https://www.nhc.noaa.gov/" target="_blank" rel="noopener noreferrer">National Hurricane Center</a>.</p>
-  <p class="kofi-link"><a href="https://ko-fi.com/aceofcanes" target="_blank" rel="noopener noreferrer">☕ Support this project on Ko-fi</a></p>
 </div>
 <script>
 function show(id,btn) {{
