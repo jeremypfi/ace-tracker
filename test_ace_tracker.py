@@ -2666,8 +2666,16 @@ class TestDevelopingSystems(unittest.TestCase):
          'forecastGraphics': {'fileUpdateTime': '2026-10-07T02:54:29.776Z',
                               'url': 'https://www.nhc.noaa.gov/graphics_at4.shtml'},
          'publicAdvisory': {'url': 'https://www.nhc.noaa.gov/text/MIATCPAT4.shtml'}},
-        {'id': 'al102026', 'binNumber': 'AT5', 'name': 'Ten', 'classification': 'PTC',
+        {'id': 'al102026', 'binNumber': 'AT5', 'name': 'Ten', 'classification': 'PC',
          'intensity': '35', 'lastUpdate': '2026-10-07T15:00:00.000Z'},
+        # Named storms winding down: post-tropical after landfall, and one
+        # weakened back to a depression. Neither can form into a named storm.
+        {'id': 'al072026', 'binNumber': 'AT2', 'name': 'Isaias', 'classification': 'PTC',
+         'intensity': '30', 'lastUpdate': '2026-10-07T15:00:00.000Z'},
+        {'id': 'al062026', 'binNumber': 'AT1', 'name': 'Gonzalo', 'classification': 'TD',
+         'intensity': '25', 'lastUpdate': '2026-10-07T15:00:00.000Z'},
+        {'id': 'ep212026', 'binNumber': 'EP4', 'name': 'Twenty-One', 'classification': 'TD',
+         'intensity': '25', 'lastUpdate': '2026-10-07T15:00:00.000Z'},
         {'id': 'al082026', 'binNumber': 'AT3', 'name': 'Hanna', 'classification': 'TS',
          'intensity': '45', 'lastUpdate': '2026-10-07T15:00:00.000Z'},
         {'id': 'ep182026', 'binNumber': 'EP3', 'name': 'Twenty', 'classification': 'TD',
@@ -2691,7 +2699,8 @@ class TestDevelopingSystems(unittest.TestCase):
         # No graphics time yet: the storm's stable cone page
         self.assertEqual(result[1]['track_url'],
                          'https://www.nhc.noaa.gov/graphics_at5.shtml?cone#contents')
-        self.assertEqual([s['label'] for s in self._fetch('pacific')], ['Tropical Depression Twenty'])
+        self.assertEqual([s['label'] for s in self._fetch('pacific')],
+                         ['Tropical Depression Twenty-One', 'Tropical Depression Twenty'])
 
     def test_named_storms_only_returns_empty(self):
         self.assertEqual(self._fetch('pacific', _fixture_bytes('nhc_current_storms.json')), [])
