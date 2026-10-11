@@ -41,9 +41,9 @@ def _content(payloads, as_of):
         'ace': f"{p['ace_total']:.1f}",
         'classification': 'No storms yet' if p['preseason'] else p['classification'],
         'detail': ('Season underway' if p['preseason'] else
-                   f"{p['named_storms']} named {'storm' if p['named_storms'] == 1 else 'storms'}"
-                   f" · #{p['rank']} of {p['total_seasons']} since 1991"),
-        'date': as_of.strftime('%b %-d, %Y'),
+                   f"{p['named_storms']} {'storm' if p['named_storms'] == 1 else 'storms'}"
+                   f" · #{p['rank']} of {p['total_seasons']} seasons"),
+        'date': as_of.strftime('%b %-d'),
     } for p in payloads]
 
 
@@ -73,11 +73,7 @@ def _spaced(draw, xy, text, font, fill, spacing):
 
 
 def _paste_card(img):
-    art = Image.open(CARD_ART).convert('RGB')
-    # ace.png has opaque black corners, so cut our own rounded ones.
-    mask = Image.new('L', art.size, 0)
-    ImageDraw.Draw(mask).rounded_rectangle((0, 0, art.width - 1, art.height - 1), radius=44, fill=255)
-    art.putalpha(mask)
+    art = Image.open(CARD_ART).convert('RGBA')
     art.thumbnail((350, 446), Image.LANCZOS)
     pad = 40
     layer = Image.new('RGBA', (art.width + 2 * pad, art.height + 2 * pad), (0, 0, 0, 0))
@@ -87,6 +83,13 @@ def _paste_card(img):
     layer.alpha_composite(art, (pad, pad))
     layer = layer.rotate(5, resample=Image.BICUBIC, expand=True)
     img.paste(layer, (30, (HEIGHT - layer.height) // 2), layer)
+
+
+def _footer(draw, left, date):
+    # One line, large enough to read when a chat app shrinks the card to ~400 px.
+    draw.text((left, HEIGHT - 70), 'aceofcanes.com', font=_font(30, bold=True), fill=ACCENT)
+    url_w = draw.textlength('aceofcanes.com', font=_font(30, bold=True))
+    draw.text((left + url_w + 16, HEIGHT - 66), f'· {date} · preliminary', font=_font(25), fill=MUTED)
 
 
 def render_share_card(payloads, generated_at=None):
@@ -109,16 +112,14 @@ def render_share_card(payloads, generated_at=None):
         color = ACCENT_BY_BASIN.get(row['basin_key'], ACCENT)
         draw.rounded_rectangle((left, y + 6, left + 8, y + row_h - 34), radius=4, fill=color)
         _spaced(draw, (left + 28, y), SHORT_NAME.get(row['basin_key'], row['basin_key'].upper()),
-                _font(20, bold=True), MUTED, 3)
-        draw.text((left + 26, y + 26), row['ace'], font=_font(78, bold=True), fill=color)
+                _font(24, bold=True), MUTED, 3)
+        draw.text((left + 26, y + 28), row['ace'], font=_font(78, bold=True), fill=color)
         ace_w = draw.textlength(row['ace'], font=_font(78, bold=True))
         draw.text((left + 26 + ace_w + 14, y + 44), 'ACE', font=_font(28, bold=True), fill=MUTED)
-        draw.text((left + 26 + ace_w + 14, y + 82), row['classification'], font=_font(26, bold=True), fill=TEXT)
-        draw.text((left + 28, y + 112), row['detail'], font=_font(20), fill=MUTED)
+        draw.text((left + 26 + ace_w + 14, y + 80), row['classification'], font=_font(30, bold=True), fill=TEXT)
+        draw.text((left + 28, y + 112), row['detail'], font=_font(27), fill=MUTED)
 
-    draw.text((left, HEIGHT - 84), 'aceofcanes.com', font=_font(26, bold=True), fill=ACCENT)
-    draw.text((left, HEIGHT - 46), f"Updated {as_of.strftime('%b %-d, %Y')} · preliminary NHC data",
-              font=_font(18), fill=MUTED)
+    _footer(draw, left, as_of.strftime('%b %-d'))
 
     out = io.BytesIO()
     img.save(out, 'PNG', optimize=True)
@@ -147,7 +148,7 @@ def _storm_content(payload, storm, as_of):
         'active': storm['is_active'],
         'landfall': ', '.join(loc for loc, _ in storm['landfall']) or 'No landfall',
         'points': [(t['lat'], t['lon'], t['status'], t['wind']) for t in storm['track_points']],
-        'date': as_of.strftime('%b %-d, %Y'),
+        'date': as_of.strftime('%b %-d'),
     }
 
 
@@ -225,15 +226,15 @@ def render_storm_card(payload, storm, generated_at=None):
     draw.text((left, 290), c['ace'], font=_font(96, bold=True), fill=color)
     ace_w = draw.textlength(c['ace'], font=_font(96, bold=True))
     draw.text((left + ace_w + 16, 336), 'ACE', font=_font(32, bold=True), fill=MUTED)
-    draw.text((left, 410), f"{c['pct']}% of the season so far", font=_font(24), fill=TEXT)
-    draw.text((left, 452), f"Peak {c['peak']}", font=_font(24, bold=True), fill=TEXT)
-    lf = c['landfall']
-    if draw.textlength(lf, font=_font(22)) > WIDTH - left - 40:
-        lf = lf[:40].rstrip(', ') + '…'
-    draw.text((left, 492), lf if lf == 'No landfall' else f'Landfall: {lf}', font=_font(22), fill=MUTED)
+    draw.text((left, 404), f"{c['pct']}% of the season", font=_font(30), fill=TEXT)
+    draw.text((left, 446), f"Peak {c['peak']}", font=_font(30, bold=True), fill=TEXT)
+    lf_font = _font(28)
+    lf = c['landfall'] if c['landfall'] == 'No landfall' else f"Landfall: {c['landfall']}"
+    while draw.textlength(lf, font=lf_font) > WIDTH - left - 40 and len(lf) > 12:
+        lf = lf[:-2].rstrip(', ') + '…'
+    draw.text((left, 490), lf, font=lf_font, fill=MUTED)
 
-    draw.text((left, HEIGHT - 84), 'aceofcanes.com', font=_font(26, bold=True), fill=ACCENT)
-    draw.text((left, HEIGHT - 46), f"Updated {c['date']} · preliminary NHC data", font=_font(18), fill=MUTED)
+    _footer(draw, left, c['date'])
 
     out = io.BytesIO()
     img.save(out, 'PNG', optimize=True)

@@ -13,7 +13,7 @@ from ace_assets import (
 )
 from ace_data import START_YEAR, SITE_URL
 from ace_html import (
-    SHARE_IMAGE_ALT, _share_image_meta, _storm_panel_inner_html, _storm_track_entry,
+    SHARE_IMAGE_ALT, SHARE_BASIN, _share_image_meta, _storm_panel_inner_html, _storm_track_entry,
     _parse_utc, _utc_label,
 )
 
@@ -61,6 +61,8 @@ def render_storm_page_html(payload, storm, share_image=None, share_alt=None):
     year = payload['year']
     url = storm_page_url(storm)
     page_title = html_escape(f"{storm['name']} {year}: Track, ACE & Intensity ({basin}) | aceofcanes.com")
+    share_title = html_escape(f"{storm['name']} {year}: {storm['ace']:.1f} ACE, {storm['category']} "
+                              f"({SHARE_BASIN.get(payload['basin_key'], basin)})")
     description = html_escape(
         f"{storm['name']} ({basin} {year}) {_wind_phrase(storm)} and has produced {storm['ace']:.1f} ACE, "
         f"{storm['pct_of_season']:.0f}% of the season so far. Track map, intensity timeline and landfalls, "
@@ -86,10 +88,10 @@ def render_storm_page_html(payload, storm, share_image=None, share_alt=None):
 <meta property="og:type" content="article">
 <meta property="og:site_name" content="ACE Tracker">
 <meta property="og:url" content="{html_escape(url)}">
-<meta property="og:title" content="{page_title}">
+<meta property="og:title" content="{share_title}">
 <meta property="og:description" content="{description}">
 {_share_image_meta(alt, image)}
-<meta name="twitter:title" content="{page_title}">
+<meta name="twitter:title" content="{share_title}">
 <meta name="twitter:description" content="{description}">
 <meta name="twitter:image" content="{html_escape(f"{SITE_URL}/{image}")}">
 <link rel="icon" type="image/png" href="../ace.png">

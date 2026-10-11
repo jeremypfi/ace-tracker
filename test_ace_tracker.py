@@ -2001,6 +2001,21 @@ class TestShareCard(unittest.TestCase):
         alt = ace_cards.share_card_alt(self._payloads())
         self.assertIn('Atlantic 0.4 ACE', alt)
 
+    def test_share_title_is_short_and_number_first(self):
+        # Chat apps cut og:title around 40-60 chars; the SEO <title> stays long (#161).
+        import re
+        from ace_html import render_dashboard_html
+        html = render_dashboard_html(self._payloads())
+        og = re.search(r'property="og:title" content="([^"]+)"', html).group(1)
+        self.assertTrue(og.startswith('2026 season: Atlantic 0.4 ACE'), og)
+        self.assertLessEqual(len(og), 60)
+        self.assertIn(f'name="twitter:title" content="{og}"', html)
+        self.assertIn('<title>2026 Hurricane Season ACE Tracker', html)
+
+    def test_card_detail_line_is_short(self):
+        row = ace_cards._content(self._payloads(), self.NOW)[0]
+        self.assertRegex(row['detail'], r'^\d+ storms? · #\d+ of \d+ seasons$')
+
     def test_write_share_card_saves_file_and_returns_site_path(self):
         import tempfile
         from ace_tracker import write_share_card
@@ -2227,6 +2242,26 @@ class TestStormPages(unittest.TestCase):
         p = self._payload()
         b = dict(p['storms'][0], track_points=[], name='A' * 60, max_wind=0)
         self.assertTrue(ace_cards.render_storm_card(p, b, self.NOW).startswith(b'\x89PNG'))
+        long_landfall = dict(p['storms'][0], landfall=[('Somewhere Very Long ' * 6, 'TS')] * 3)
+        self.assertTrue(ace_cards.render_storm_card(p, long_landfall, self.NOW).startswith(b'\x89PNG'))
+
+    def test_storm_share_title_is_short_and_number_first(self):
+        p = self._payload()
+        b = dict(p['storms'][0], landfall=[])
+        html = render_storm_page_html(p, b)
+        expected = f"Bertha 2026: {b['ace']:.1f} ACE, {b['category']} (Atlantic)"
+        self.assertIn(f'property="og:title" content="{expected}"', html)
+        self.assertIn(f'name="twitter:title" content="{expected}"', html)
+        self.assertIn('<title>Bertha 2026: Track, ACE &amp; Intensity', html)
+
+    def test_logo_corners_are_transparent(self):
+        # ace.png used to ship opaque black corners (#160).
+        from PIL import Image
+        logo = Image.open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ace.png')).convert('RGBA')
+        w, h = logo.size
+        for xy in ((0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1), (3, 3)):
+            self.assertEqual(logo.getpixel(xy)[3], 0, xy)
+        self.assertEqual(logo.getpixel((w // 2, h // 2))[3], 255)
 
 
 class TestCanonicalHomeLinks(unittest.TestCase):
