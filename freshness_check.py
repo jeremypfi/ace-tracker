@@ -15,6 +15,9 @@ from datetime import datetime, timezone
 SEASON_JSON = 'https://aceofcanes.com/api/v1/season.json'
 CURRENT_STORMS = 'https://www.nhc.noaa.gov/CurrentStorms.json'
 BIN_TO_BASIN = {'AT': 'atlantic', 'EP': 'pacific', 'CP': 'pacific'}
+# Post-tropical storms linger in CurrentStorms.json after the final advisory,
+# and their best track stops; same rule as ace_data.NHC_NOT_ACTIVE_CLASSIFICATIONS.
+NOT_ACTIVE = {'PTC'}
 # Publish runs hourly in season (May 15-Nov 30) and every 3 h otherwise;
 # GitHub can delay scheduled runs, so allow a few missed runs before alerting.
 MAX_PUBLISH_AGE_H = {True: 5, False: 10}
@@ -74,7 +77,8 @@ def main():
     conclusions = [c for c in (sys.argv[2] if len(sys.argv) > 2 else '').split(',') if c]
     now = datetime.now(timezone.utc)
     nhc = _get_json(CURRENT_STORMS)
-    active = [s['binNumber'] for s in nhc.get('activeStorms', [])] if nhc else None
+    active = ([s['binNumber'] for s in nhc.get('activeStorms', []) if s.get('classification') not in NOT_ACTIVE]
+              if nhc else None)
     found = problems(_get_json(SEASON_JSON), now, active, conclusions)
 
     if not found:

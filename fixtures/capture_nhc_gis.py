@@ -3,7 +3,8 @@
 Run while storms are active: uv run python fixtures/capture_nhc_gis.py
 Writes fixtures/nhc_gis/<UTC date>/ with CurrentStorms.json plus one
 GeoJSON file per storm bin and layer. Empty layers are kept on purpose:
-potential tropical cyclones often have none, and the map must handle that.
+NHC drops a storm's layers after its final advisory while still listing it
+as post-tropical ('PTC'), and the map must handle that.
 """
 import json
 import os

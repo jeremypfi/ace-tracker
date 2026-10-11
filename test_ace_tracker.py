@@ -2833,6 +2833,20 @@ class TestForecastConeFixtures(unittest.TestCase):
         self.assertEqual(urls[1], 'https://www.nhc.noaa.gov/storm_graphics/AT06/refresh/'
                                   'AL062026_5day_cone+png/020851_5day_cone.png')
 
+    def test_post_tropical_storms_are_not_active(self):
+        # Oct 11 2026: NHC still listed Isaias (AT4) and Rachel (EP3) as 'PTC'
+        # after their final advisories; Simon (EP5) was a hurricane.
+        with open(os.path.join(FIXTURES, 'nhc_gis', '2026-10-11', 'CurrentStorms.json'), 'rb') as f:
+            storms_json = f.read()
+        pacific = {'Rachel': {'is_active': True}, 'Simon': {'is_active': True}}
+        images, _, _ = self._run('pacific', pacific, storms_json)
+        self.assertFalse(pacific['Rachel']['is_active'])
+        self.assertTrue(pacific['Simon']['is_active'])
+        self.assertEqual(list(images), ['Simon'])
+        atlantic = {'Isaias': {'is_active': True}}
+        self.assertEqual(self._run('atlantic', atlantic, storms_json)[0], {})
+        self.assertFalse(atlantic['Isaias']['is_active'])
+
     def test_other_basins_storms_do_not_count(self):
         details = {'Rachel': {'is_active': True}}
         images, urls, _ = self._run('atlantic', details)
@@ -2940,7 +2954,8 @@ class TestNhcGisFixtures(unittest.TestCase):
                 self.assertEqual(data['type'], 'FeatureCollection')
 
     def test_capture_covers_full_and_empty_storms(self):
-        # Simon (EP5, major hurricane) has a cone; Isaias (AT4, PTC) has nothing.
+        # Simon (EP5, major hurricane) has a cone; Isaias (AT4, post-tropical after its
+        # final advisory) has nothing.
         self.assertEqual(len(self._load('EP5_forecast_cone.geojson')['features']), 1)
         self.assertEqual(len(self._load('EP5_forecast_points.geojson')['features']), 8)
         self.assertEqual(self._load('AT4_forecast_cone.geojson')['features'], [])
@@ -3049,6 +3064,18 @@ class TestFreshnessCheck(unittest.TestCase):
         self.assertEqual(problems(old, self.NOW, ['EP5'], []), [])
         self.assertTrue(any('Atlantic' in p for p in problems(old, self.NOW, ['AT4'], [])))
         self.assertEqual(problems(old, self.NOW, None, []), [])  # NHC unreachable: skip
+
+    def test_post_tropical_storms_do_not_count_as_active(self):
+        import freshness_check
+        nhc = {'activeStorms': [{'binNumber': 'AT4', 'classification': 'PTC'},
+                                {'binNumber': 'EP5', 'classification': 'HU'}]}
+        old = self._season(atl='2026-10-10T12:00:00Z')
+        with mock.patch.object(freshness_check, '_get_json', side_effect=[nhc, old]), \
+             mock.patch.object(freshness_check, 'datetime') as dt, \
+             mock.patch('sys.argv', ['x', os.devnull, 'success,success']):
+            dt.now.return_value = self.NOW
+            dt.strptime = datetime.strptime
+            freshness_check.main()  # exits 2 if stale Atlantic data counted
 
     def test_two_failed_publishes(self):
         from freshness_check import problems
