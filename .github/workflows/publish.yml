@@ -109,6 +109,12 @@ jobs:
         cp ace.png data/ace.png
         cp ace_preview.png data/ace_preview.png
 
+    # Structural checks on the built folder (pages, cards, JSON, feeds, vendor
+    # files). A failure stops this deploy, so the previous good site stays up
+    # and GitHub emails the failed run. See smoke_test.py.
+    - name: Smoke test built site
+      run: python smoke_test.py data
+
     - name: Upload Pages artifact
       uses: actions/upload-pages-artifact@v5
       with:

@@ -132,6 +132,8 @@ ace-tracker/
 ├── test_ace_tracker.py     # unit + smoke tests
 ├── fixtures/               # Saved NHC feeds + HURDAT2 snippet for offline fetcher tests
 ├── verify_pr.py            # Consolidated PR check: tests + syntax check + a live tracker run
+├── smoke_test.py           # Pre-deploy structural checks on the built data/ folder
+├── freshness_check.py      # Live-site staleness check behind the site-alert issue
 ├── requirements.txt        # Python dependencies
 ├── ace.png                 # Site logo (favicon + OG image)
 ├── ace_preview.png         # 1200x630 social share card (copied into data/ at publish time)
@@ -146,7 +148,8 @@ ace-tracker/
 ├── .github/
 │   ├── workflows/
 │   │   ├── tests.yml       # CI: runs tests on push/PR (Python 3.11, 3.12)
-│   │   └── publish.yml     # Scheduled: generates and deploys dashboard hourly in season
+│   │   ├── publish.yml     # Scheduled: generates, smoke-tests and deploys the dashboard hourly in season
+│   │   └── freshness.yml   # Every 2 h: opens/closes a site-alert issue if the live site goes stale
 │   ├── dependabot.yml      # Automated dependency updates
 │   └── CODEOWNERS          # @jeremypfi must approve all PRs
 ├── SECURITY.md
