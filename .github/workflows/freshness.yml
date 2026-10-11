@@ -1,0 +1,65 @@
+name: Site Freshness Check
+
+# Opens (or updates) a "site-alert" issue when the live site stops updating:
+# stale publish, stuck storm data during an active storm, or two failed
+# publishes in a row. Closes the issue again once a check passes. See #157.
+on:
+  schedule:
+    - cron: '47 */2 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: freshness
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  issues: write
+  actions: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Set up Python
+      uses: actions/setup-python@v7
+      with:
+        python-version: '3.11'
+
+    - name: Check live site
+      id: check
+      run: |
+        RUNS=$(gh run list --workflow publish.yml --status completed --limit 2 --json conclusion -q '[.[].conclusion] | join(",")')
+        set +e
+        python freshness_check.py report.md "$RUNS"
+        CODE=$?
+        set -e
+        if [ "$CODE" -eq 2 ]; then echo "stale=true" >> "$GITHUB_OUTPUT"
+        elif [ "$CODE" -eq 0 ]; then echo "stale=false" >> "$GITHUB_OUTPUT"
+        else exit "$CODE"; fi
+
+    - name: Open or update alert issue
+      if: steps.check.outputs.stale == 'true'
+      run: |
+        gh label create site-alert --color d73a4a --description "Automated: live site stopped updating" --force
+        NUM=$(gh issue list --label site-alert --state open --json number -q '.[0].number')
+        if [ -n "$NUM" ]; then
+          gh issue edit "$NUM" --body-file report.md
+        else
+          gh issue create --title "aceofcanes.com is not updating" --label site-alert --body-file report.md
+        fi
+
+    - name: Close alert issue when healthy
+      if: steps.check.outputs.stale == 'false'
+      run: |
+        gh label create site-alert --color d73a4a --description "Automated: live site stopped updating" --force
+        NUM=$(gh issue list --label site-alert --state open --json number -q '.[0].number')
+        if [ -n "$NUM" ]; then
+          gh issue close "$NUM" --comment "Freshness check passed at $(date -u '+%Y-%m-%d %H:%M') UTC. Closing."
+        fi
