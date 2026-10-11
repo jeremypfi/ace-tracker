@@ -2,7 +2,7 @@
 
 **Atlantic & Eastern Pacific Hurricane ACE Tracker**
 
-Tracks Accumulated Cyclone Energy (ACE) for Atlantic and Eastern Pacific hurricane seasons with storm-by-storm data from 1991 onward. Publishes a web dashboard rebuilt every 3 hours from NOAA/NHC data. It's a hobby data site, not a forecast: for watches, warnings, and forecasts, go to the [National Hurricane Center](https://www.nhc.noaa.gov/).
+Tracks Accumulated Cyclone Energy (ACE) for Atlantic and Eastern Pacific hurricane seasons with storm-by-storm data from 1991 onward. Publishes a web dashboard rebuilt hourly during hurricane season from NOAA/NHC data. It's a hobby data site, not a forecast: for watches, warnings, and forecasts, go to the [National Hurricane Center](https://www.nhc.noaa.gov/).
 
 [![Tests](https://github.com/jeremypfi/ace-tracker/actions/workflows/tests.yml/badge.svg)](https://github.com/jeremypfi/ace-tracker/actions/workflows/tests.yml)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
@@ -19,13 +19,13 @@ Tracks Accumulated Cyclone Energy (ACE) for Atlantic and Eastern Pacific hurrica
 | Records Since 1991 | https://aceofcanes.com/records.html |
 | What Is ACE? (explainer + calculator) | https://aceofcanes.com/what-is-ace.html |
 
-Rebuilt every 3 hours, year-round. Hurricane seasons: Eastern Pacific May 15 – Nov 30, Atlantic Jun 1 – Nov 30. Each basin shows when its storm data is from ("Best-track data as of …"), which can lag the page build by a few hours; the build time is in the footer.
+Rebuilt hourly May–November and every 3 hours December–April. Hurricane seasons: Eastern Pacific May 15 – Nov 30, Atlantic Jun 1 – Nov 30. Each basin shows when its storm data is from ("Best-track data as of …"), which can lag the page build by a few hours; the build time is in the footer.
 
 ---
 
 ## Features
 
-- **Live season tracking** — current season ACE rebuilt every 3 hours from NHC's real-time best track, with a **data-as-of stamp** (and relative "x hours ago") next to each basin's numbers
+- **Live season tracking** — current season ACE rebuilt hourly from NHC's real-time best track, with a **data-as-of stamp** (and relative "x hours ago") next to each basin's numbers
 - **Honest labels** — in-season ACE is marked **preliminary** (it's revised in NOAA's spring HURDAT2 release), and landfalls estimated from a live track are marked **est.**
 - **Dual basin** — Atlantic and Eastern Pacific, toggle between them on each page
 - **Dark/light mode** — defaults to system preference for first-time visitors, persisted across sessions after that
@@ -146,7 +146,7 @@ ace-tracker/
 ├── .github/
 │   ├── workflows/
 │   │   ├── tests.yml       # CI: runs tests on push/PR (Python 3.11, 3.12)
-│   │   └── publish.yml     # Scheduled: generates and deploys dashboard every 3 hours
+│   │   └── publish.yml     # Scheduled: generates and deploys dashboard hourly in season
 │   ├── dependabot.yml      # Automated dependency updates
 │   └── CODEOWNERS          # @jeremypfi must approve all PRs
 ├── SECURITY.md

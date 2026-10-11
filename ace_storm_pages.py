@@ -64,7 +64,7 @@ def render_storm_page_html(payload, storm, share_image=None, share_alt=None):
     description = html_escape(
         f"{storm['name']} ({basin} {year}) {_wind_phrase(storm)} and has produced {storm['ace']:.1f} ACE, "
         f"{storm['pct_of_season']:.0f}% of the season so far. Track map, intensity timeline and landfalls, "
-        "updated every 3 hours from NOAA data.")
+        "updated hourly from NOAA data.")
     image = share_image or 'ace_preview.png'
     alt = share_alt or SHARE_IMAGE_ALT
     status = 'Active now' if storm['is_active'] else 'No longer active'

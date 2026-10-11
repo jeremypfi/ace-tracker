@@ -1239,7 +1239,7 @@ class TestHistoryDecadeFilterAndReports(unittest.TestCase):
 
 class TestPageTitlesAndShareMeta(unittest.TestCase):
     """Page titles carry the season year; share metadata matches the
-    1200x630 preview card and the 3-hour publish schedule."""
+    1200x630 preview card and the hourly in-season publish schedule."""
 
     def _pages(self):
         basin_data = TestHTMLGeneration()._make_basin_data()
@@ -1262,6 +1262,7 @@ class TestPageTitlesAndShareMeta(unittest.TestCase):
         for name, html in self._pages().items():
             with self.subTest(page=name):
                 self.assertNotIn('every 6 hours', html)
+                self.assertNotIn('every 3 hours', html)
                 self.assertIn('<meta property="og:image:width" content="1200">', html)
                 self.assertIn('<meta property="og:image:height" content="630">', html)
                 self.assertIn('og:image:alt', html)
@@ -1617,7 +1618,7 @@ class TestDataFreshness(unittest.TestCase):
         self.assertNotIn('<div class="updated">', html)
         footer = html[html.index('<div class="sources">'):]
         self.assertIn('Page built ', footer)
-        self.assertIn('Updates every 3 hours.', footer)
+        self.assertIn('Updates hourly during hurricane season.', footer)
 
 
 class TestIntensityBarLabel(unittest.TestCase):
