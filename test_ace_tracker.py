@@ -2143,6 +2143,15 @@ class TestStormPages(unittest.TestCase):
             self.assertNotIn('?key=', html)
             self.assertIn('https://tiles.openfreemap.org/styles/dark', html)
 
+    def test_basemap_waits_for_the_leaflet_view(self):
+        # Opening a second dashboard map once MapLibre was cached threw in
+        # getMaplibreMap() and skipped drawing the track (Oct 11, 2026).
+        from ace_assets import TRACK_MAP_JS
+        body = TRACK_MAP_JS[TRACK_MAP_JS.index('function _addBasemap'):TRACK_MAP_JS.index('function _unwrapLon')]
+        self.assertLess(body.index('map.whenReady('), body.index('L.maplibreGL('))
+        self.assertIn('if(!glMap)', body)
+        self.assertIn("'styleimagemissing'", body)
+
     def test_vendored_maplibre_matches_its_integrity_hashes(self):
         import base64
         import hashlib

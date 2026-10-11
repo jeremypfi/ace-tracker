@@ -166,10 +166,20 @@ function _loadMaplibre(cb){
 function _addBasemap(map,slug){
   _loadMaplibre(function(ok){
     if(!ok){_hideTrackSkeleton(slug);return;}
-    var gl=L.maplibreGL({style:'%(style)s',
-      attribution:'<a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> &copy; <a href="https://www.openmaptiles.org/" target="_blank" rel="noopener">OpenMapTiles</a> Data from <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'
-    }).addTo(map);
-    gl.getMaplibreMap().once('load',function(){_hideTrackSkeleton(slug);});
+    // Once MapLibre is cached this runs synchronously, before _buildMap has set
+    // the view; Leaflet defers onAdd until then, so the GL map wouldn't exist yet.
+    map.whenReady(function(){
+      var gl=L.maplibreGL({style:'%(style)s',
+        attribution:'<a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> &copy; <a href="https://www.openmaptiles.org/" target="_blank" rel="noopener">OpenMapTiles</a> Data from <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'
+      }).addTo(map);
+      var glMap=gl.getMaplibreMap();
+      if(!glMap){_hideTrackSkeleton(slug);return;}
+      // The OpenFreeMap style names a few POI icons its sprite lacks; a blank stands in.
+      glMap.on('styleimagemissing',function(e){
+        if(!glMap.hasImage(e.id))glMap.addImage(e.id,{width:1,height:1,data:new Uint8Array(4)});
+      });
+      glMap.once('load',function(){_hideTrackSkeleton(slug);});
+    });
   });
 }
 function _unwrapLon(prevLon,lon){
