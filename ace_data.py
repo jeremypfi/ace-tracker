@@ -2417,6 +2417,11 @@ NHC_BIN_PREFIXES = {
     'pacific':  ('EP', 'CP'),
 }
 
+# NHC keeps a storm in CurrentStorms.json as 'PTC' (post-tropical cyclone)
+# for hours after its final advisory. It no longer counts toward ACE, so the
+# site should not call it active.
+NHC_NOT_ACTIVE_CLASSIFICATIONS = {'PTC'}
+
 
 def fetch_active_storm_cones(basin_key, storm_details):
     """Fetch and locally cache NHC forecast cone images for currently active storms.
@@ -2459,6 +2464,7 @@ def fetch_active_storm_cones(basin_key, storm_details):
         (storm.get('name') or '').upper()
         for storm in data.get('activeStorms', [])
         if (storm.get('binNumber') or '').startswith(prefixes)
+        and storm.get('classification') not in NHC_NOT_ACTIVE_CLASSIFICATIONS
     }
 
     for stale_name in candidate_names - live_active_names:
