@@ -170,6 +170,14 @@ def _nhc_tcr_links_html(year, basin_key, is_active=False):
 
 SHARE_IMAGE_ALT = 'ACE Tracker: live hurricane season ACE for the Atlantic and E/C Pacific'
 
+# Short basin labels for og:title/twitter:title, which chat apps truncate early (#161).
+SHARE_BASIN = {'atlantic': 'Atlantic', 'pacific': 'E/C Pacific'}
+
+
+def _season_share_title(payloads, season_year):
+    parts = [f"{SHARE_BASIN.get(bd['basin_key'], bd['basin_name'])} {bd['ace_total']:.1f} ACE" for bd in payloads]
+    return html_escape(f"{season_year} season: " + ', '.join(parts))
+
 
 def _season_year(basin_data):
     """The season year the pages describe (for titles), falling back to the
@@ -756,6 +764,7 @@ def render_dashboard_html(payloads, share_image=None, share_alt=None):
 
     season_year = max((bd['year'] for bd in payloads), default=datetime.now(timezone.utc).year)
     page_title = f'{season_year} Hurricane Season ACE Tracker: Atlantic &amp; East Pacific | aceofcanes.com'
+    share_title = _season_share_title(payloads, season_year)
     html = f'''<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -768,10 +777,10 @@ def render_dashboard_html(payloads, share_image=None, share_alt=None):
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="ACE Tracker">
 <meta property="og:url" content="https://aceofcanes.com/">
-<meta property="og:title" content="{page_title}">
+<meta property="og:title" content="{share_title}">
 <meta property="og:description" content="Track Accumulated Cyclone Energy (ACE) for the {season_year} Atlantic and Eastern Pacific hurricane seasons in real time. Updated hourly during hurricane season from official NOAA data.">
 {_share_image_meta(share_alt or SHARE_IMAGE_ALT, share_image or 'ace_preview.png')}
-<meta name="twitter:title" content="{page_title}">
+<meta name="twitter:title" content="{share_title}">
 <meta name="twitter:description" content="Track Accumulated Cyclone Energy (ACE) for the {season_year} Atlantic and Eastern Pacific hurricane seasons in real time. Updated hourly during hurricane season from official NOAA data.">
 <meta name="twitter:image" content="https://aceofcanes.com/{html_escape(share_image or 'ace_preview.png')}">
 <link rel="icon" type="image/png" href="ace.png">
