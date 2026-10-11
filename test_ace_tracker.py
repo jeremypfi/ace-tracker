@@ -2956,6 +2956,111 @@ class TestNhcGisFixtures(unittest.TestCase):
             self.capture.layer_ids(info, 'AT5')
 
 
+class TestSmokeTest(unittest.TestCase):
+    """smoke_test.check() on a minimal built site (#157)."""
+
+    def _site(self, tmp):
+        from ace_assets import BASEMAP
+        site = 'https://aceofcanes.com/'
+
+        def write(rel, text='x'):
+            path = os.path.join(tmp, rel)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, 'w') as f:
+                f.write(text)
+
+        og = '<meta property="og:image" content="{}">'
+        write('ACE_Dashboard.html', og.format(site + 'og/season-abc.png')
+              + '<script src="vendor/leaflet-1.9.4/leaflet.js"></script>')
+        for page in ('index.html', 'history.html', 'records.html', 'what-is-ace.html'):
+            write(page)
+        write('og/season-abc.png')
+        write('vendor/leaflet-1.9.4/leaflet.js')
+        for key in ('js', 'css', 'plugin'):
+            write('vendor/' + BASEMAP[key])
+        write('feed.xml', '<rss><channel/></rss>')
+        write('sitemap.xml', '<urlset><url><loc>' + site + 'storm/amy-2026.html</loc></url></urlset>')
+        write('storm/amy-2026.html', og.format(site + 'og/storm-amy-2026-abc.png'))
+        write('og/storm-amy-2026-abc.png')
+        write('api/v1/season.json', json.dumps({'version': 1, 'basins': {
+            'atlantic': {'storms': [{'name': 'Amy', 'url': site + 'storm/amy-2026.html'}]},
+            'pacific': {'storms': []}}}))
+
+    def test_complete_site_passes(self):
+        import tempfile
+        import smoke_test
+        with tempfile.TemporaryDirectory() as tmp:
+            self._site(tmp)
+            self.assertEqual(smoke_test.check(tmp), [])
+
+    def test_reports_each_kind_of_breakage(self):
+        import tempfile
+        import smoke_test
+        with tempfile.TemporaryDirectory() as tmp:
+            self._site(tmp)
+            os.remove(os.path.join(tmp, 'og', 'storm-amy-2026-abc.png'))
+            os.remove(os.path.join(tmp, 'vendor', 'leaflet-1.9.4', 'leaflet.js'))
+            open(os.path.join(tmp, 'feed.xml'), 'w').close()
+            with open(os.path.join(tmp, 'sitemap.xml'), 'w') as f:
+                f.write('<urlset/>')
+            problems = '\n'.join(smoke_test.check(tmp))
+        self.assertIn('Amy: share card missing', problems)
+        self.assertIn('vendor/leaflet-1.9.4/leaflet.js', problems)
+        self.assertIn('feed.xml not well-formed', problems)
+        self.assertIn('sitemap lists 0 storm pages, season.json has 1', problems)
+
+    def test_unparseable_season_json_fails(self):
+        import tempfile
+        import smoke_test
+        with tempfile.TemporaryDirectory() as tmp:
+            self._site(tmp)
+            with open(os.path.join(tmp, 'api', 'v1', 'season.json'), 'w') as f:
+                f.write('{oops')
+            self.assertTrue(any('does not parse' in p for p in smoke_test.check(tmp)))
+
+
+class TestFreshnessCheck(unittest.TestCase):
+    """freshness_check.problems() decides when to open the site-alert issue (#157)."""
+
+    NOW = datetime(2026, 10, 11, 22, 0, tzinfo=timezone.utc)
+
+    def _season(self, generated='2026-10-11T21:00:00Z', atl='2026-10-11T12:00:00Z'):
+        return {'generated_at': generated, 'basins': {
+            'atlantic': {'data_as_of': atl}, 'pacific': {'data_as_of': '2026-10-11T18:00:00Z'}}}
+
+    def test_fresh_site_has_no_problems(self):
+        from freshness_check import problems
+        self.assertEqual(problems(self._season(), self.NOW, ['AT4', 'EP5'], ['success', 'success']), [])
+
+    def test_stale_publish_in_season(self):
+        from freshness_check import problems
+        found = problems(self._season(generated='2026-10-11T16:00:00Z'), self.NOW, [], [])
+        self.assertTrue(found and 'last published 6.0 h ago' in found[0])
+
+    def test_off_season_allows_longer_gaps(self):
+        from freshness_check import problems
+        jan = datetime(2027, 1, 10, 22, 0, tzinfo=timezone.utc)
+        season = self._season(generated='2027-01-10T16:00:00Z')
+        self.assertEqual(problems(season, jan, [], []), [])
+
+    def test_stuck_data_only_matters_with_an_active_storm(self):
+        from freshness_check import problems
+        old = self._season(atl='2026-10-10T12:00:00Z')
+        self.assertEqual(problems(old, self.NOW, ['EP5'], []), [])
+        self.assertTrue(any('Atlantic' in p for p in problems(old, self.NOW, ['AT4'], [])))
+        self.assertEqual(problems(old, self.NOW, None, []), [])  # NHC unreachable: skip
+
+    def test_two_failed_publishes(self):
+        from freshness_check import problems
+        found = problems(self._season(), self.NOW, [], ['failure', 'failure'])
+        self.assertIn('The last two publish runs failed.', found)
+        self.assertEqual(problems(self._season(), self.NOW, [], ['failure', 'success']), [])
+
+    def test_unreachable_site(self):
+        from freshness_check import problems
+        self.assertTrue(any('Could not fetch' in p for p in problems(None, self.NOW, [], [])))
+
+
 def run_tests():
     """Run all tests"""
     unittest.main(verbosity=2)
