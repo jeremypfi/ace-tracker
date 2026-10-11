@@ -761,7 +761,7 @@ def render_dashboard_html(payloads, share_image=None, share_alt=None):
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="Track the {season_year} Atlantic and Eastern Pacific hurricane season ACE (Accumulated Cyclone Energy) in real time. Updated every 3 hours during hurricane season.">
+<meta name="description" content="Track the {season_year} Atlantic and Eastern Pacific hurricane season ACE (Accumulated Cyclone Energy) in real time. Updated hourly during hurricane season.">
 <meta name="theme-color" content="#4fc3f7">
 <link rel="canonical" href="https://aceofcanes.com/">
 <link rel="alternate" type="application/rss+xml" title="Ace of Canes storm feed" href="feed.xml">
@@ -769,10 +769,10 @@ def render_dashboard_html(payloads, share_image=None, share_alt=None):
 <meta property="og:site_name" content="ACE Tracker">
 <meta property="og:url" content="https://aceofcanes.com/">
 <meta property="og:title" content="{page_title}">
-<meta property="og:description" content="Track Accumulated Cyclone Energy (ACE) for the {season_year} Atlantic and Eastern Pacific hurricane seasons in real time. Updated every 3 hours from official NOAA data.">
+<meta property="og:description" content="Track Accumulated Cyclone Energy (ACE) for the {season_year} Atlantic and Eastern Pacific hurricane seasons in real time. Updated hourly during hurricane season from official NOAA data.">
 {_share_image_meta(share_alt or SHARE_IMAGE_ALT, share_image or 'ace_preview.png')}
 <meta name="twitter:title" content="{page_title}">
-<meta name="twitter:description" content="Track Accumulated Cyclone Energy (ACE) for the {season_year} Atlantic and Eastern Pacific hurricane seasons in real time. Updated every 3 hours from official NOAA data.">
+<meta name="twitter:description" content="Track Accumulated Cyclone Energy (ACE) for the {season_year} Atlantic and Eastern Pacific hurricane seasons in real time. Updated hourly during hurricane season from official NOAA data.">
 <meta name="twitter:image" content="https://aceofcanes.com/{html_escape(share_image or 'ace_preview.png')}">
 <link rel="icon" type="image/png" href="ace.png">
 <link rel="stylesheet" href="vendor/leaflet-1.9.4/leaflet.css" integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous" media="print" onload="this.media='all'">
@@ -924,7 +924,7 @@ def render_dashboard_html(payloads, share_image=None, share_alt=None):
   <p>ACE (Accumulated Cyclone Energy) is calculated at 6-hourly synoptic times (0000/0600/1200/1800 UTC) for systems with status TS, HU, or SS and wind ≥34 kt — extratropical (EX) phases are excluded per NHC methodology. Formula: ACE = Σ(V²<sub>max</sub>) × 10⁻⁴. Categories use the Saffir-Simpson scale in knots.</p>
   <p><b>Basin note:</b> The East &amp; Central Pacific tab combines both the Eastern Pacific (NHC, east of 140°W) and Central Pacific (CPHC, 140°W–180°) basins, consistent with the NOAA HURDAT2 Northeast &amp; North Central Pacific dataset. NHC tracks these separately on their <a href="https://www.nhc.noaa.gov/data/tcr/" target="_blank" rel="noopener noreferrer">TCR pages</a> (epac / cpac).</p>
   <p class="disclaimer">⚠️ This site is maintained by a hurricane data enthusiast — not a meteorologist, forecaster, or weather professional of any kind. I just love the data. All information is sourced directly from official NOAA/NHC databases. For official forecasts, watches, warnings, and life-safety information, always refer to the <a href="https://www.nhc.noaa.gov/" target="_blank" rel="noopener noreferrer">National Hurricane Center</a>.</p>
-  <p class="build-time">Page built {now.strftime('%B %d, %Y at %H:%M UTC')}. Updates every 3 hours. The data-as-of line above each basin's numbers shows how current the storm data is.</p>
+  <p class="build-time">Page built {now.strftime('%B %d, %Y at %H:%M UTC')}. Updates hourly during hurricane season. The data-as-of line above each basin's numbers shows how current the storm data is.</p>
 </div>
 <script>
 function _relTimes(){{
