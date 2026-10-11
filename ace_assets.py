@@ -40,6 +40,7 @@ STORM_PANEL_CSS = """  .track-row td { padding:0; border-bottom:2px solid var(--
   .track-panel.open { max-height:1500px; visibility:visible; transition:max-height 0.35s ease, visibility 0s; }
   .track-inner { padding:12px 14px 14px; }
   .track-map { height:320px; border-radius:8px; border:1px solid var(--border); margin-bottom:10px; }
+  .track-map.leaflet-container { background:#1b1b1d; } /* OpenFreeMap dark water, so no flash before the basemap loads */
   .track-map-wrap { position:relative; margin-bottom:10px; }
   .track-map-wrap .track-map { margin-bottom:0; }
   .track-map-skeleton { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:var(--box); border-radius:8px; border:1px solid var(--border); }
@@ -141,6 +142,36 @@ function _hideTrackSkeleton(slug){
   var sk=document.getElementById('trskel-'+slug);
   if(sk)sk.style.display='none';
 }
+// MapLibre is ~1 MB, so it loads on first map open, from the same vendor dir as Leaflet.
+var _mlglWaiting=null;
+function _loadMaplibre(cb){
+  if(window.maplibregl&&L.maplibreGL){cb(true);return;}
+  if(_mlglWaiting){_mlglWaiting.push(cb);return;}
+  _mlglWaiting=[cb];
+  var ls=document.querySelector('script[src*="leaflet-1.9.4/leaflet.js"]');
+  var base=ls?ls.src.slice(0,ls.src.indexOf('leaflet-1.9.4/')):'vendor/';
+  function done(ok){var w=_mlglWaiting;_mlglWaiting=ok?null:[];w.forEach(function(f){f(ok);});}
+  function add(tag,attrs,onload){
+    var e=document.createElement(tag);
+    Object.keys(attrs).forEach(function(k){e.setAttribute(k,attrs[k]);});
+    e.crossOrigin='anonymous';
+    if(onload){e.onload=onload;e.onerror=function(){done(false);};}
+    document.head.appendChild(e);
+  }
+  add('link',{rel:'stylesheet',href:base+'%(css)s',integrity:'%(css_sri)s'});
+  add('script',{src:base+'%(js)s',integrity:'%(js_sri)s'},function(){
+    add('script',{src:base+'%(plugin)s',integrity:'%(plugin_sri)s'},function(){done(true);});
+  });
+}
+function _addBasemap(map,slug){
+  _loadMaplibre(function(ok){
+    if(!ok){_hideTrackSkeleton(slug);return;}
+    var gl=L.maplibreGL({style:'%(style)s',
+      attribution:'<a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> &copy; <a href="https://www.openmaptiles.org/" target="_blank" rel="noopener">OpenMapTiles</a> Data from <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'
+    }).addTo(map);
+    gl.getMaplibreMap().once('load',function(){_hideTrackSkeleton(slug);});
+  });
+}
 function _unwrapLon(prevLon,lon){
   while(lon-prevLon>180)lon-=360;
   while(lon-prevLon<-180)lon+=360;
@@ -158,12 +189,8 @@ function _buildMap(slug){
   var el=document.getElementById('trmap-'+slug);
   if(!d||!d.points||!d.points.length||!el||el._leaflet_id){_hideTrackSkeleton(slug);return;}
   if(typeof L==='undefined'){_hideTrackSkeleton(slug);_libMissing(el,'Map unavailable right now. Storm details are shown above.');return;}
-  var map=L.map(el,{zoomControl:true,attributionControl:true});
-  var tiles=L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png?key=cb1_2ju7_1_dab4d1e9c4e0819a594bda11',{
-    attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>',
-    subdomains:'abcd',maxZoom:10
-  }).addTo(map);
-  tiles.on('load',function(){_hideTrackSkeleton(slug);});
+  var map=L.map(el,{zoomControl:true,attributionControl:true,maxZoom:10});
+  _addBasemap(map,slug);
   setTimeout(function(){_hideTrackSkeleton(slug);},4000);
   var pts=d.points,lls=_unwrapSeries(pts.map(function(p){return[p.lat,p.lon];}));
   for(var i=0;i<pts.length-1;i++){
@@ -216,6 +243,21 @@ THEME_INIT_JS = """(function(){try{var t=localStorage.getItem('ace-theme');if(t=
 # template carries the same values inline; a test keeps both in step.
 LEAFLET_CSS_SRI = 'sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H'
 LEAFLET_JS_SRI = 'sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH'
+
+# Track-map basemap: OpenFreeMap vector tiles (free, no key) drawn through
+# MapLibre inside Leaflet. 5.x because 6.x ships only as an ES module, which
+# the Leaflet plugin can't use. TRACK_MAP_JS loads these lazily.
+BASEMAP = {
+    'style': 'https://tiles.openfreemap.org/styles/dark',
+    'js': 'maplibre-gl-5.24.0/maplibre-gl.js',
+    'js_sri': 'sha384-5+cfbwT0iiub6VsQAdn6yz16nr6sDiQoHx6tm4O8OVYXHYOxcffFmCJBL0dgdvGp',
+    'css': 'maplibre-gl-5.24.0/maplibre-gl.css',
+    'css_sri': 'sha384-uTttxo/aOKbdE5RlD/SPzSDoDmNvGlUYPjONi2MN/b7c9HPSvW07OIuyP7uL6jxK',
+    'plugin': 'maplibre-gl-leaflet-0.1.4/leaflet-maplibre-gl.js',
+    'plugin_sri': 'sha384-tXYNKOHx4T02jMP7YYCtBxPIv1B5gaA5mcVPBzqMp6d7VzWzxJgI2aWF/nJLrQdS',
+}
+for _key, _value in BASEMAP.items():
+    TRACK_MAP_JS = TRACK_MAP_JS.replace(f'%({_key})s', _value)
 
 STORM_PAGE_CSS = """
   .container { max-width:900px; margin:0 auto; }
