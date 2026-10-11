@@ -2119,6 +2119,25 @@ class TestStormPages(unittest.TestCase):
         self.assertIn(f'integrity="{LEAFLET_CSS_SRI}"', dash)
         self.assertIn(f'integrity="{LEAFLET_JS_SRI}"', dash)
 
+    def test_basemap_is_openfreemap_not_carto(self):
+        dash = generate_dashboard_html(TestHTMLGeneration()._make_basin_data())
+        p = self._payload()
+        storm = render_storm_page_html(p, dict(p['storms'][0], landfall=[]))
+        for html in (dash, storm):
+            self.assertNotIn('cartocdn', html)
+            self.assertNotIn('?key=', html)
+            self.assertIn('https://tiles.openfreemap.org/styles/dark', html)
+
+    def test_vendored_maplibre_matches_its_integrity_hashes(self):
+        import base64
+        import hashlib
+        from ace_assets import BASEMAP
+        vendor = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'vendor')
+        for path_key in ('js', 'css', 'plugin'):
+            with open(os.path.join(vendor, BASEMAP[path_key]), 'rb') as f:
+                digest = base64.b64encode(hashlib.sha384(f.read()).digest()).decode()
+            self.assertEqual(BASEMAP[path_key + '_sri'], 'sha384-' + digest, path_key)
+
     def test_dashboard_links_each_storm_to_its_page(self):
         html = generate_dashboard_html(TestHTMLGeneration()._make_basin_data())
         self.assertIn('href="storm/arthur-2026.html">Open Arthur page', html)
