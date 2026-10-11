@@ -2862,6 +2862,46 @@ class TestLandfallGeocodingFixtures(unittest.TestCase):
         self.assertEqual(ace_data._detect_landfall_from_track(storm), [])
 
 
+class TestNhcGisFixtures(unittest.TestCase):
+    """Captured NHC GIS layers (#177) used by the location/proximity map work."""
+
+    CAPTURE = os.path.join(FIXTURES, 'nhc_gis', '2026-10-11')
+
+    @classmethod
+    def setUpClass(cls):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            'capture_nhc_gis', os.path.join(FIXTURES, 'capture_nhc_gis.py'))
+        cls.capture = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.capture)
+
+    def _load(self, name):
+        with open(os.path.join(self.CAPTURE, name)) as f:
+            return json.load(f)
+
+    def test_every_active_storm_has_all_layers(self):
+        for storm in self._load('CurrentStorms.json')['activeStorms']:
+            for key in self.capture.LAYERS.values():
+                data = self._load(f"{storm['binNumber']}_{key}.geojson")
+                self.assertEqual(data['type'], 'FeatureCollection')
+
+    def test_capture_covers_full_and_empty_storms(self):
+        # Simon (EP5, major hurricane) has a cone; Isaias (AT4, PTC) has nothing.
+        self.assertEqual(len(self._load('EP5_forecast_cone.geojson')['features']), 1)
+        self.assertEqual(len(self._load('EP5_forecast_points.geojson')['features']), 8)
+        self.assertEqual(self._load('AT4_forecast_cone.geojson')['features'], [])
+
+    def test_layer_ids_looked_up_by_name(self):
+        info = {'layers': [{'id': 86, 'name': 'AT4 Forecast Cone'},
+                           {'id': 84, 'name': 'AT4 Forecast Points'},
+                           {'id': 85, 'name': 'AT4 Forecast Track'},
+                           {'id': 87, 'name': 'AT4 Watch-Warning'},
+                           {'id': 94, 'name': 'AT4 Forecast Wind Radii'}]}
+        self.assertEqual(self.capture.layer_ids(info, 'AT4')['forecast_cone'], 86)
+        with self.assertRaises(KeyError):
+            self.capture.layer_ids(info, 'AT5')
+
+
 def run_tests():
     """Run all tests"""
     unittest.main(verbosity=2)
