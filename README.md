@@ -18,6 +18,7 @@ Tracks Accumulated Cyclone Energy (ACE) for Atlantic and Eastern Pacific hurrica
 | Season History (1991–present) | https://aceofcanes.com/history.html |
 | Records Since 1991 | https://aceofcanes.com/records.html |
 | What Is ACE? (explainer + calculator) | https://aceofcanes.com/what-is-ace.html |
+| JSON API & RSS docs | https://aceofcanes.com/api.html |
 
 Rebuilt hourly May–November and every 3 hours December–April. Hurricane seasons: Eastern Pacific May 15 – Nov 30, Atlantic Jun 1 – Nov 30. Each basin shows when its storm data is from ("Best-track data as of …"), which can lag the page build by a few hours; the build time is in the footer.
 
@@ -100,6 +101,7 @@ Generates in `data/`:
 - `history.html` — all-seasons history page
 - `records.html` — storm records since 1991
 - `what-is-ace.html` — ACE explainer and calculator
+- `api.html` — JSON API and RSS docs (every field, examples)
 
 ### Run tests
 
@@ -113,6 +115,8 @@ All tests must pass before committing. Use the `/pre-commit` skill in Claude Cod
 ---
 
 ## Public data
+
+Full field-by-field docs with examples: [aceofcanes.com/api.html](https://aceofcanes.com/api.html).
 
 - **JSON API:** [`https://aceofcanes.com/api/v1/season.json`](https://aceofcanes.com/api/v1/season.json) has both basins' current season: ACE totals, classification, counts, rank, every storm with its landfalls and track points, and yearly ACE since 1991. Wind is in knots, current-season values are preliminary, and the `version` field is `1`. Fields may be added to v1, but a rename or removal will ship as `/api/v2/`.
 - **RSS:** [`https://aceofcanes.com/feed.xml`](https://aceofcanes.com/feed.xml) adds an item for each named storm as it forms.
@@ -159,6 +163,7 @@ ace-tracker/
     ├── history.html
     ├── records.html
     ├── what-is-ace.html
+    ├── api.html
     ├── vendor/             # Self-hosted Leaflet 1.9.4 and Chart.js 4.5.1, with licenses
     └── cones/              # NHC forecast cone images, fetched fresh each run (gitignored)
 ```

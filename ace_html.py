@@ -929,6 +929,7 @@ def render_dashboard_html(payloads, share_image=None, share_alt=None):
     <li><a href="https://www.nhc.noaa.gov/data/#hurdat" target="_blank" rel="noopener noreferrer">NOAA HURDAT2</a> — Historical best-track data (1991–present) for storm tracks, wind speeds, and ACE calculations</li>
     <li><a href="https://www.nhc.noaa.gov/data/#hurdat" target="_blank" rel="noopener noreferrer">NHC Real-time Best Track</a> — Current season preliminary storm data fetched via Tropycal (<code>include_btk=True</code>); updated continuously during active storms</li>
     <li><a href="https://www.cpc.ncep.noaa.gov/products/outlooks/background_information.shtml" target="_blank" rel="noopener noreferrer">NOAA CPC</a> — Season classification thresholds and 1991–2020 climatological normals</li>
+    {API_DOCS_SOURCE_LI}
   </ul>
   <p>ACE (Accumulated Cyclone Energy) is calculated at 6-hourly synoptic times (0000/0600/1200/1800 UTC) for systems with status TS, HU, or SS and wind ≥34 kt — extratropical (EX) phases are excluded per NHC methodology. Formula: ACE = Σ(V²<sub>max</sub>) × 10⁻⁴. Categories use the Saffir-Simpson scale in knots.</p>
   <p><b>Basin note:</b> The East &amp; Central Pacific tab combines both the Eastern Pacific (NHC, east of 140°W) and Central Pacific (CPHC, 140°W–180°) basins, consistent with the NOAA HURDAT2 Northeast &amp; North Central Pacific dataset. NHC tracks these separately on their <a href="https://www.nhc.noaa.gov/data/tcr/" target="_blank" rel="noopener noreferrer">TCR pages</a> (epac / cpac).</p>
@@ -1561,6 +1562,7 @@ def generate_history_html(basin_data):
     <li><a href="https://www.nhc.noaa.gov/data/#hurdat" target="_blank" rel="noopener noreferrer">NOAA HURDAT2</a> — Official historical best-track database (1991–present) for all storm tracks, wind speeds, and ACE calculations</li>
     <li><a href="https://www.nhc.noaa.gov/data/#hurdat" target="_blank" rel="noopener noreferrer">NHC Real-time Best Track</a> — Current season preliminary storm data fetched via Tropycal (<code>include_btk=True</code>); updated continuously during active storms</li>
     <li><a href="https://www.cpc.ncep.noaa.gov/products/outlooks/background_information.shtml" target="_blank" rel="noopener noreferrer">NOAA CPC</a> — Season classification thresholds and 1991–2020 climatological normals</li>
+    {API_DOCS_SOURCE_LI}
   </ul>
   <p>ACE (Accumulated Cyclone Energy) is calculated at 6-hourly synoptic times (0000/0600/1200/1800 UTC) for systems with status TS, HU, or SS and wind ≥34 kt — extratropical (EX) phases are excluded per NHC methodology. Formula: ACE = Σ(V²<sub>max</sub>) × 10⁻⁴. Categories use the Saffir-Simpson scale in knots.</p>
   <p><b>Basin note:</b> The East &amp; Central Pacific tab combines both the Eastern Pacific (NHC, east of 140°W) and Central Pacific (CPHC, 140°W–180°) basins, consistent with the NOAA HURDAT2 Northeast &amp; North Central Pacific dataset. NHC tracks these separately on their <a href="https://www.nhc.noaa.gov/data/tcr/" target="_blank" rel="noopener noreferrer">TCR pages</a> (epac / cpac).</p>
@@ -1858,6 +1860,7 @@ def generate_records_html(basin_data):
   <h4>Data Sources</h4>
   <ul>
     <li><a href="https://www.nhc.noaa.gov/data/#hurdat" target="_blank" rel="noopener noreferrer">NOAA HURDAT2</a> — Official historical best-track database (1991–present) for all storm tracks, wind speeds, and ACE calculations</li>
+    {API_DOCS_SOURCE_LI}
   </ul>
   <p>ACE (Accumulated Cyclone Energy) is calculated at 6-hourly synoptic times (0000/0600/1200/1800 UTC) for systems with status TS, HU, or SS and wind ≥34 kt. Formula: ACE = Σ(V²<sub>max</sub>) × 10⁻⁴. Landfall category reflects the storm's intensity at the moment of landfall, not its peak intensity.</p>
   <p class="disclaimer">⚠️ This site is maintained by a hurricane data enthusiast — not a meteorologist, forecaster, or weather professional of any kind. All information is sourced directly from official NOAA/NHC databases. For official forecasts, watches, warnings, and life-safety information, always refer to the <a href="https://www.nhc.noaa.gov/" target="_blank" rel="noopener noreferrer">National Hurricane Center</a>.</p>
@@ -2079,7 +2082,8 @@ def generate_about_html(basin_data):
 <div class="sources">
   <h4>Sources</h4>
   <p><a href="https://www.cpc.ncep.noaa.gov/products/outlooks/background_information.shtml" target="_blank" rel="noopener noreferrer">NOAA Climate Prediction Center</a>: ACE definition and season classifications.
-  <a href="https://www.nhc.noaa.gov/data/#hurdat" target="_blank" rel="noopener noreferrer">NOAA HURDAT2</a>: storm data used for this site's numbers ({START_YEAR}–present).</p>
+  <a href="https://www.nhc.noaa.gov/data/#hurdat" target="_blank" rel="noopener noreferrer">NOAA HURDAT2</a>: storm data used for this site's numbers ({START_YEAR}–present).
+  <a href="api.html">JSON API &amp; RSS</a>: the same numbers in machine-readable form.</p>
   <p>This site is maintained by a hurricane data enthusiast, not a meteorologist. For forecasts, watches and warnings, always use the <a href="https://www.nhc.noaa.gov/" target="_blank" rel="noopener noreferrer">National Hurricane Center</a>.</p>
 </div>
 <script>
@@ -2116,6 +2120,209 @@ function toggleTheme() {{
   document.getElementById('themeBtn').textContent=light?'☀':'☾';document.getElementById('themeBtn').setAttribute('aria-label',document.documentElement.getAttribute('data-theme')==='light'?'Switch to dark mode':'Switch to light mode');
 }}
 document.getElementById('themeBtn').textContent=document.documentElement.getAttribute('data-theme')==='light'?'☾':'☀';document.getElementById('themeBtn').setAttribute('aria-label',document.documentElement.getAttribute('data-theme')==='light'?'Switch to dark mode':'Switch to light mode');
+</script>
+<!-- Cloudflare Web Analytics --><script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{{"token": "775dfcf117b94ff59e3c118c330d02aa"}}'></script><!-- End Cloudflare Web Analytics -->
+</body>
+</html>'''
+
+
+# ===============================================================================
+# API DOCS PAGE
+# ===============================================================================
+
+# Every field api/v1/season.json emits, as (path, type, description). A unit
+# test compares this list to build_api_v1() output both ways, so the docs page
+# cannot drift from the contract.
+API_V1_FIELDS = (
+    ('version', 'integer', 'Schema version. Always <code>1</code> at this URL.'),
+    ('generated_at', 'string', 'UTC time the file was built, ISO 8601 (<code>2026-09-20T12:00:00Z</code>).'),
+    ('source', 'string', 'Where the data comes from.'),
+    ('site', 'string', 'Site URL.'),
+    ('note', 'string', 'The preliminary-data caveat, in plain text.'),
+    ('basins', 'object', 'One entry per basin, keyed <code>atlantic</code> and <code>pacific</code> (East &amp; Central Pacific).'),
+    ('basins.&lt;basin&gt;.name', 'string', 'Display name of the basin.'),
+    ('basins.&lt;basin&gt;.year', 'integer', 'Season year.'),
+    ('basins.&lt;basin&gt;.preseason', 'boolean', '<code>true</code> before the season has any named storm.'),
+    ('basins.&lt;basin&gt;.is_backup_data', 'boolean', '<code>true</code> when the live fetch failed and the numbers are a stored fallback.'),
+    ('basins.&lt;basin&gt;.data_as_of', 'string', 'Time of the latest storm data point, ISO 8601 UTC. Can be empty.'),
+    ('basins.&lt;basin&gt;.ace_total', 'number', 'Season ACE so far, 2 decimals.'),
+    ('basins.&lt;basin&gt;.normal_ace', 'number', '1991–2020 average season ACE for the basin.'),
+    ('basins.&lt;basin&gt;.pct_of_normal', 'number', '<code>ace_total</code> as a percent of <code>normal_ace</code>, 1 decimal.'),
+    ('basins.&lt;basin&gt;.classification', 'string', 'NOAA class: Below Normal, Near Normal, Above Normal or Extremely Active.'),
+    ('basins.&lt;basin&gt;.named_storms', 'integer', 'Named storms so far.'),
+    ('basins.&lt;basin&gt;.hurricanes', 'integer', 'Hurricanes so far.'),
+    ('basins.&lt;basin&gt;.major_hurricanes', 'integer', 'Category 3+ hurricanes so far.'),
+    ('basins.&lt;basin&gt;.rank', 'integer', 'Rank of this season&rsquo;s ACE among all seasons since 1991 (1 = highest).'),
+    ('basins.&lt;basin&gt;.seasons_ranked', 'integer', 'How many seasons <code>rank</code> is out of.'),
+    ('basins.&lt;basin&gt;.storms', 'array', 'Named storms this season.'),
+    ('basins.&lt;basin&gt;.storms[].name', 'string', 'Storm name.'),
+    ('basins.&lt;basin&gt;.storms[].slug', 'string', 'URL-safe id, unique within the season.'),
+    ('basins.&lt;basin&gt;.storms[].url', 'string', 'The storm&rsquo;s page on this site.'),
+    ('basins.&lt;basin&gt;.storms[].ace', 'number', 'Storm ACE, 2 decimals.'),
+    ('basins.&lt;basin&gt;.storms[].pct_of_season', 'number', 'Share of the season&rsquo;s ACE, 1 decimal.'),
+    ('basins.&lt;basin&gt;.storms[].max_wind_kt', 'integer', 'Peak sustained wind in knots.'),
+    ('basins.&lt;basin&gt;.storms[].category', 'string', 'Peak category: TS, Cat 1 … Cat 5.'),
+    ('basins.&lt;basin&gt;.storms[].is_major', 'boolean', 'Reached Category 3 or higher.'),
+    ('basins.&lt;basin&gt;.storms[].is_active', 'boolean', 'Still active at build time.'),
+    ('basins.&lt;basin&gt;.storms[].start_date', 'string', 'Formation date as <code>M/D</code> in the season year; <code>—</code> if unknown.'),
+    ('basins.&lt;basin&gt;.storms[].landfalls', 'array', 'Landfalls, in order. Empty if none.'),
+    ('basins.&lt;basin&gt;.storms[].landfalls[].location', 'string', 'Where it made landfall.'),
+    ('basins.&lt;basin&gt;.storms[].landfalls[].category', 'string', 'Category at landfall, not at peak.'),
+    ('basins.&lt;basin&gt;.storms[].landfall_estimated', 'boolean', '<code>true</code> when landfall was estimated from the track instead of the NHC record.'),
+    ('basins.&lt;basin&gt;.storms[].track', 'array', 'Track points, oldest first.'),
+    ('basins.&lt;basin&gt;.storms[].track[].lat', 'number', 'Latitude, degrees north.'),
+    ('basins.&lt;basin&gt;.storms[].track[].lon', 'number', 'Longitude, degrees east (negative = west).'),
+    ('basins.&lt;basin&gt;.storms[].track[].wind_kt', 'integer', 'Sustained wind in knots.'),
+    ('basins.&lt;basin&gt;.storms[].track[].status', 'string', 'HURDAT2 status code (DB, TD, TS, HU, SS, EX, …). Only TS, SS and HU count toward ACE.'),
+    ('basins.&lt;basin&gt;.storms[].track[].time', 'string', 'Time of the point as <code>M/D HHZ</code> in UTC (<code>10/5 00Z</code>).'),
+    ('basins.&lt;basin&gt;.yearly_ace', 'object', 'Season ACE for every year since 1991, keyed by year as a string.'),
+)
+
+API_DOCS_SOURCE_LI = ('<li><a href="api.html">Ace of Canes JSON API &amp; RSS</a> — '
+                      'This site&rsquo;s numbers in machine-readable form, free to use</li>')
+
+
+def generate_api_docs_html():
+    """Static docs page for the public JSON API (api/v1/season.json) and RSS feed."""
+    api_url = f'{SITE_URL}/api/v1/season.json'
+    feed_url = f'{SITE_URL}/feed.xml'
+    rows = ''.join(f'<tr><td><code>{path}</code></td><td>{typ}</td><td>{desc}</td></tr>'
+                   for path, typ, desc in API_V1_FIELDS)
+    description = ('Free JSON API and RSS feed for Atlantic and East Pacific hurricane season ACE: '
+                   'endpoint, every field, examples and the versioning promise.')
+    page_title = 'ACE JSON API &amp; RSS Feed | aceofcanes.com'
+
+    return f'''<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="{description}">
+<meta name="theme-color" content="#4fc3f7">
+<link rel="canonical" href="{SITE_URL}/api.html">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="ACE Tracker">
+<meta property="og:url" content="{SITE_URL}/api.html">
+<meta property="og:title" content="{page_title}">
+<meta property="og:description" content="{description}">
+{_share_image_meta(SHARE_IMAGE_ALT)}
+<link rel="icon" type="image/png" href="ace.png">
+<link rel="alternate" type="application/rss+xml" title="Ace of Canes storm feed" href="feed.xml">
+<title>{page_title}</title>
+<script>{THEME_INIT_JS}</script>
+<style>
+{BASE_CSS}
+{NAV_CSS}
+{HEADINGS_CSS}
+  body {{ line-height:1.55; }}
+  .card {{ background:var(--card); border-radius:12px; padding:16px; margin-bottom:16px; }}
+  .card p, .card li {{ margin:8px 0; font-size:0.92em; }}
+  .card ul {{ padding-left:20px; }}
+  .card a {{ color:var(--accent); }}
+  code {{ font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:0.9em; color:var(--text-strong); }}
+  pre {{ background:var(--box); border-radius:8px; padding:12px; overflow-x:auto; font-size:0.85em; margin:8px 0; }}
+  .endpoint {{ background:var(--box); border-radius:8px; padding:12px; word-break:break-all; }}
+  .table-wrap {{ overflow-x:auto; }}
+  table {{ width:100%; border-collapse:collapse; font-size:0.85em; }}
+  th, td {{ text-align:left; padding:7px 8px; border-bottom:1px solid var(--border); vertical-align:top; }}
+  th {{ color:var(--muted); font-weight:600; font-size:0.85em; text-transform:uppercase; }}
+  td:first-child code {{ white-space:nowrap; }}
+  td:nth-child(2) {{ color:var(--muted); }}
+  @media(max-width:640px) {{
+    thead {{ display:none; }}
+    tr {{ display:block; padding:8px 0; border-bottom:1px solid var(--border); }}
+    td {{ display:inline; padding:0; border:none; }}
+    td:nth-child(2) {{ margin-left:6px; font-size:0.9em; }}
+    td:nth-child(3) {{ display:block; margin-top:3px; }}
+    td:first-child code {{ white-space:normal; word-break:break-all; }}
+  }}
+  .sources {{ background:var(--sources-bg); border-top:1px solid var(--border); margin-top:24px; padding:16px 12px; border-radius:8px; }}
+  .sources p {{ color:var(--muted); font-size:0.75em; line-height:1.5; }}
+  .sources a {{ color:var(--accent); }}
+  @media(min-width:768px) {{ body {{ max-width:960px; margin:0 auto; padding:24px; }} }}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1><img src="ace.png" class="logo" alt="" aria-hidden="true"> ACE Data API</h1>
+  <div class="header-actions">
+    <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" aria-label="Toggle light and dark theme">☀</button>
+  </div>
+</div>
+<div class="nav-link"><a href="/">← Current Season</a><a href="history.html">📊 Season History</a><a href="records.html">🏆 Records</a><a href="what-is-ace.html">❓ What is ACE?</a></div>
+
+<section class="card">
+  <h2>JSON endpoint</h2>
+  <p class="endpoint"><code>GET <a href="api/v1/season.json">{api_url}</a></code></p>
+  <p>One file with both basins&rsquo; current season: ACE total, NOAA classification, storm counts, rank since 1991,
+  every named storm with its landfalls and track, and the ACE of every season since 1991.
+  It is rebuilt with the site, about once an hour during the season. No key, no sign-up, CORS-friendly static file.</p>
+  <ul>
+    <li>Wind speeds are in <b>knots</b>.</li>
+    <li>Current-season values are <b>preliminary</b> (NHC real-time best track) and are revised in the post-season HURDAT2 release.</li>
+    <li>Each storm&rsquo;s <code>url</code> links to its page on this site, which is handy for linking back.</li>
+  </ul>
+</section>
+
+<section class="card">
+  <h2>Versioning</h2>
+  <p>The <code>/api/v1/</code> shape is a public contract. New fields can be added to v1 at any time, so ignore fields you don&rsquo;t know.
+  A field will never be renamed or removed in v1: that ships as a new <code>/api/v2/</code> path, and v1 keeps working.</p>
+</section>
+
+<section class="card">
+  <h2>Examples</h2>
+  <h3>curl + jq</h3>
+  <pre><code>curl -s {api_url} | jq '.basins.atlantic | {{ace_total, classification, rank}}'</code></pre>
+  <h3>JavaScript</h3>
+  <pre><code>const res = await fetch('{api_url}');
+const data = await res.json();
+const atl = data.basins.atlantic;
+console.log(`${{atl.year}} Atlantic ACE: ${{atl.ace_total}} (${{atl.classification}})`);</code></pre>
+  <h3>Python</h3>
+  <pre><code>import requests
+
+data = requests.get('{api_url}', timeout=10).json()
+for s in data['basins']['atlantic']['storms']:
+    print(s['name'], s['ace'], s['category'])</code></pre>
+</section>
+
+<section class="card">
+  <h2>Fields</h2>
+  <p><code>&lt;basin&gt;</code> is <code>atlantic</code> or <code>pacific</code>; <code>[]</code> means each item of an array.</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead>
+    <tbody>{rows}</tbody>
+  </table></div>
+</section>
+
+<section class="card">
+  <h2>RSS feed</h2>
+  <p class="endpoint"><code><a href="feed.xml">{feed_url}</a></code></p>
+  <p>One item per named storm in both basins, newest first, with its ACE, peak intensity and landfalls.
+  Each storm keeps the same <code>guid</code>, so your reader announces it once and the description updates as the storm grows.</p>
+</section>
+
+<div class="sources">
+  <p>Data: <a href="https://www.nhc.noaa.gov/data/#hurdat" target="_blank" rel="noopener noreferrer">NOAA National Hurricane Center</a> HURDAT2 and real-time best track,
+  via <a href="https://tropycal.github.io/tropycal/" target="_blank" rel="noopener noreferrer">Tropycal</a>. NOAA data is public domain; please credit NOAA NHC, and a link back to aceofcanes.com is appreciated.</p>
+  <p>This site is maintained by a hurricane data enthusiast, not a meteorologist. For forecasts, watches and warnings, always use the <a href="https://www.nhc.noaa.gov/" target="_blank" rel="noopener noreferrer">National Hurricane Center</a>.</p>
+</div>
+<script>
+function toggleTheme() {{
+  var h=document.documentElement;
+  var light=h.getAttribute('data-theme')==='light';
+  h.setAttribute('data-theme',light?'dark':'light');
+  try{{localStorage.setItem('ace-theme',light?'dark':'light');}}catch(e){{}}
+  _themeBtn();
+}}
+function _themeBtn() {{
+  var light=document.documentElement.getAttribute('data-theme')==='light';
+  var b=document.getElementById('themeBtn');
+  b.textContent=light?'☾':'☀';
+  b.setAttribute('aria-label',light?'Switch to dark mode':'Switch to light mode');
+}}
+_themeBtn();
 </script>
 <!-- Cloudflare Web Analytics --><script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{{"token": "775dfcf117b94ff59e3c118c330d02aa"}}'></script><!-- End Cloudflare Web Analytics -->
 </body>
