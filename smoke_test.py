@@ -14,7 +14,7 @@ import xml.etree.ElementTree as ET
 from ace_assets import BASEMAP
 
 SITE = 'https://aceofcanes.com/'
-PAGES = ('index.html', 'ACE_Dashboard.html', 'history.html', 'records.html', 'what-is-ace.html')
+PAGES = ('index.html', 'ACE_Dashboard.html', 'history.html', 'records.html', 'what-is-ace.html', 'api.html')
 OG_IMAGE = re.compile(r'<meta property="og:image" content="([^"]+)"')
 VENDOR_REF = re.compile(r'(?:src|href)="(?:\.\./)?(vendor/[^"]+)"')
 

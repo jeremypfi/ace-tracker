@@ -62,6 +62,7 @@ from ace_data import (
 )
 from ace_html import (
     generate_dashboard_html, generate_history_html, generate_records_html, generate_about_html,
+    generate_api_docs_html, API_V1_FIELDS,
     _decade_label, _nhc_tcr_links_html, _records_in_play_html, _year_storm_list_html,
     _data_as_of_html, _intensity_bar_html,
 )
@@ -1472,6 +1473,7 @@ class TestKeyboardAndAria(unittest.TestCase):
             'history': generate_history_html(basin_data),
             'records': generate_records_html(basin_data),
             'what-is-ace': generate_about_html(basin_data),
+            'api': generate_api_docs_html(),
         }
 
     def test_tooltips_do_not_add_tab_stops(self):
@@ -1498,7 +1500,7 @@ class TestKeyboardAndAria(unittest.TestCase):
             with self.subTest(page=name):
                 self.assertIn('id="themeBtn" onclick="toggleTheme()" aria-label="Toggle light and dark theme"', html)
                 self.assertIn("'Switch to dark mode':'Switch to light mode'", html)
-                if name != 'what-is-ace':
+                if name not in ('what-is-ace', 'api'):
                     self.assertIn('<button class="active" aria-pressed="true" onclick="show(\'atlantic\',this)">', html)
                     self.assertIn('<button aria-pressed="false" onclick="show(\'pacific\',this)">', html)
                     self.assertIn("btn.setAttribute('aria-pressed','true')", html)
@@ -1960,6 +1962,51 @@ class TestFeeds(unittest.TestCase):
     def test_dashboard_advertises_feed(self):
         html = generate_dashboard_html(TestHTMLGeneration()._make_basin_data())
         self.assertIn('<link rel="alternate" type="application/rss+xml"', html)
+
+
+class TestApiDocs(unittest.TestCase):
+    """api.html documents every field api/v1/season.json emits, and nothing else (#159)."""
+
+    def _emitted_paths(self, obj, prefix=''):
+        for key, value in obj.items():
+            path = f'{prefix}.{key}' if prefix else key
+            yield path
+            if key == 'basins':
+                for basin in value.values():
+                    yield from self._emitted_paths(basin, 'basins.<basin>')
+            elif key == 'yearly_ace':
+                continue
+            elif isinstance(value, dict):
+                yield from self._emitted_paths(value, path)
+            elif isinstance(value, list) and value and isinstance(value[0], dict):
+                yield from self._emitted_paths(value[0], path + '[]')
+
+    def test_docs_match_api_fields_both_ways(self):
+        api = ace_feeds.build_api_v1(TestFeeds()._payloads(), TestFeeds.NOW)
+        storm = api['basins']['atlantic']['storms'][0]
+        self.assertTrue(storm['landfalls'] and storm['track'], 'fixture must exercise nested arrays')
+        emitted = set(self._emitted_paths(api))
+        documented = {path.replace('&lt;', '<').replace('&gt;', '>') for path, _, _ in API_V1_FIELDS}
+        self.assertEqual(emitted - documented, set(), 'API field missing from api.html')
+        self.assertEqual(documented - emitted, set(), 'api.html documents a field the API does not emit')
+
+    def test_page_lists_every_field_endpoint_and_feed(self):
+        html = generate_api_docs_html()
+        for path, _, _ in API_V1_FIELDS:
+            self.assertIn(f'<td><code>{path}</code></td>', html)
+        self.assertIn(f'{ace_data.SITE_URL}/{ace_feeds.API_V1_PATH}', html)
+        self.assertIn(f'{ace_data.SITE_URL}/{ace_feeds.FEED_PATH}', html)
+        self.assertIn('/api/v2/', html)
+        self.assertIn('preliminary', html)
+        self.assertIn('rel="canonical" href="https://aceofcanes.com/api.html"', html)
+
+    def test_linked_from_every_page_and_sitemap(self):
+        basin_data = TestHTMLGeneration()._make_basin_data()
+        for gen in (generate_dashboard_html, generate_history_html, generate_records_html, generate_about_html):
+            with self.subTest(page=gen.__name__):
+                self.assertIn('href="api.html"', gen(basin_data))
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'sitemap.xml')) as f:
+            self.assertIn('<loc>https://aceofcanes.com/api.html</loc>', f.read())
 
 
 class TestShareCard(unittest.TestCase):
@@ -2996,7 +3043,7 @@ class TestSmokeTest(unittest.TestCase):
         og = '<meta property="og:image" content="{}">'
         write('ACE_Dashboard.html', og.format(site + 'og/season-abc.png')
               + '<script src="vendor/leaflet-1.9.4/leaflet.js"></script>')
-        for page in ('index.html', 'history.html', 'records.html', 'what-is-ace.html'):
+        for page in ('index.html', 'history.html', 'records.html', 'what-is-ace.html', 'api.html'):
             write(page)
         write('og/season-abc.png')
         write('vendor/leaflet-1.9.4/leaflet.js')

@@ -13,6 +13,7 @@ Output:
 - data/history.html        — all-seasons history page
 - data/records.html        — all-time-since-1991 storm records page
 - data/what-is-ace.html    — ACE explainer and calculator
+- data/api.html           — JSON API and RSS docs
 
 Usage:
     python3 ace_tracker.py
@@ -44,7 +45,8 @@ from ace_data import (
     generate_discord_text,
     generate_console_report,
 )
-from ace_html import render_dashboard_html, generate_history_html, generate_records_html, generate_about_html
+from ace_html import (render_dashboard_html, generate_history_html, generate_records_html, generate_about_html,
+                      generate_api_docs_html)
 from ace_feeds import api_v1_json, build_rss, build_sitemap, API_V1_PATH, FEED_PATH
 from ace_storm_pages import render_storm_page_html, storm_page_path
 import ace_cards
@@ -322,6 +324,16 @@ def main():
         except (OSError, PermissionError) as e:
             logger.error(f"Failed to save what-is-ACE page {about_path}: {e}")
             print(f"  ✗ Error: Could not save what-is-ACE page")
+
+        api_docs_path = os.path.join(OUTPUT_FOLDER, 'api.html')
+        try:
+            with open(api_docs_path, 'w', encoding='utf-8') as f:
+                f.write(generate_api_docs_html())
+            output_files.append(api_docs_path)
+            print(f"  ✓ API docs page saved to: {api_docs_path}")
+        except (OSError, PermissionError) as e:
+            logger.error(f"Failed to save API docs page {api_docs_path}: {e}")
+            print(f"  ✗ Error: Could not save API docs page")
 
     print("\n" + "=" * 50)
     print("All done! Dashboard updated.")
