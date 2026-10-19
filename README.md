@@ -107,7 +107,8 @@ Generates in `data/`:
 
 ```bash
 python3 test_ace_tracker.py     # unit + smoke tests
-python3 verify_pr.py            # unit tests + syntax check + a full live tracker run
+python3 test_ui.py              # browser tests (needs requirements-dev.txt + `playwright install chromium`)
+python3 verify_pr.py            # unit tests + syntax check + a full live tracker run + browser tests
 ```
 
 All tests must pass before committing. Use the `/pre-commit` skill in Claude Code for the full checklist.
@@ -134,8 +135,10 @@ ace-tracker/
 ├── ace_cards.py            # Live season share card (og/season-<hash>.png, drawn with Pillow)
 ├── ace_tracker.py          # CLI entrypoint — wires the modules above together
 ├── test_ace_tracker.py     # unit + smoke tests
+├── test_ui.py              # Playwright browser tests against the fixture site
+├── ui_fixture_site.py      # Builds the whole site offline from fixtures/ for test_ui.py
 ├── fixtures/               # Saved NHC feeds + HURDAT2 snippet for offline fetcher tests
-├── verify_pr.py            # Consolidated PR check: tests + syntax check + a live tracker run
+├── verify_pr.py            # Consolidated PR check: tests + syntax check + a live tracker run + UI tests
 ├── smoke_test.py           # Pre-deploy structural checks on the built data/ folder
 ├── freshness_check.py      # Live-site staleness check behind the site-alert issue
 ├── requirements.txt        # Python dependencies

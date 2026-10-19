@@ -12,12 +12,13 @@ disable-model-invocation: false
 uv run python verify_pr.py
 ```
 
-Runs the unit tests, a syntax check, and a full tracker run in one pass —
+Runs the unit tests, a syntax check, a full tracker run, and the Playwright
+browser tests (`test_ui.py`) in one pass —
 prints `OK: ...` on success, or the full diagnostic output for whichever
 check failed. All unit tests must pass; the tracker run must generate
 every page in `data/` (`ACE_Dashboard.html`, `history.html`, `records.html`,
 `what-is-ace.html`) with no errors or NaN values. Use `uv run python verify_pr.py --fast` to skip the live tracker run
-during quick iteration.
+and browser tests during quick iteration.
 
 ## 2. Security Check
 

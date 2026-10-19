@@ -13,16 +13,19 @@ Modules: `ace_data.py` (fetch, ACE math, domain constants), `ace_html.py` (page 
 ## Development Commands
 
 ```bash
-uv run python verify_pr.py          # unit tests + syntax check + live tracker run; must pass before any commit
+uv run python verify_pr.py          # unit tests + syntax check + live tracker run + UI tests; required before a PR
 uv run python verify_pr.py --fast   # unit tests + syntax check only
 uv run python ace_tracker.py        # generates HTML files in data/
+uv run python test_ui.py            # browser tests only, against the offline fixture site
 uv venv --python 3.12 && uv pip install -r requirements.txt   # one-time setup; 3.13+ unsupported
+uv pip install -r requirements-dev.txt && uv run python -m playwright install chromium   # one-time, for test_ui.py
 ```
 
 ## Testing
 
 - Use `unittest` in `test_ace_tracker.py` for logic, calculations and generated HTML strings.
-- Use Playwright only for behavior that needs a real browser and JS: tooltip positioning, tab switching, the no-JS fallback.
+- Use Playwright (`test_ui.py`) only for behavior that needs a real browser and JS: tab switching, track maps, share buttons, toggles, phone layout, the no-JS fallback.
+- `test_ui.py` runs against `ui_fixture_site.py`: the whole site built offline from `fixtures/` with the clock frozen at 2026-10-11 15:00 UTC (Isaias and Rachel post-tropical, Simon active). Tests may name those storms. Add new fixture storms there, not live data.
 
 ## Repository Rules
 
