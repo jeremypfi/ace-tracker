@@ -4,24 +4,25 @@ PR Verification Script
 =======================
 Consolidates the checks that used to be run as separate ad-hoc, one-off
 scripts during PR review (unit tests, a live tracker run, a module syntax
-check) into a single command with one pass/fail summary.
+check, browser tests) into a single command with one pass/fail summary.
 
 Silent on success; prints full diagnostic output only for whichever check
 failed.
 
 Usage:
-    python3 verify_pr.py             # unit tests + syntax check + full tracker run
-    python3 verify_pr.py --fast      # unit tests + syntax check only (skip live tracker run)
+    python3 verify_pr.py             # unit tests + syntax check + full tracker run + UI tests
+    python3 verify_pr.py --fast      # unit tests + syntax check only (what the commit hook runs)
 """
 
 import argparse
+import importlib.util
 import io
 import py_compile
 import subprocess
 import sys
 import unittest
 
-CORE_MODULES = ["ace_data.py", "ace_html.py", "ace_feeds.py", "ace_cards.py", "ace_assets.py", "ace_storm_pages.py", "ace_tracker.py", "smoke_test.py", "freshness_check.py"]
+CORE_MODULES = ["ace_data.py", "ace_html.py", "ace_feeds.py", "ace_cards.py", "ace_assets.py", "ace_storm_pages.py", "ace_tracker.py", "smoke_test.py", "freshness_check.py", "ui_fixture_site.py", "test_ui.py"]
 
 
 def check_unit_tests():
@@ -60,17 +61,28 @@ def check_tracker_run():
     return True, "tracker run completed, output files generated"
 
 
+def check_ui_tests():
+    if importlib.util.find_spec("playwright") is None:
+        return False, ("Playwright is not installed. One-time setup:\n"
+                       "  uv pip install -r requirements-dev.txt && uv run python -m playwright install chromium")
+    proc = subprocess.run([sys.executable, "test_ui.py"], capture_output=True, text=True, timeout=300)
+    if proc.returncode != 0:
+        return False, proc.stdout + proc.stderr
+    return True, "UI tests passed"
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--fast", action="store_true",
-        help="skip the live tracker run (network-dependent, slower)",
+        help="skip the live tracker run and the browser tests (slower)",
     )
     args = parser.parse_args()
 
     checks = [("unit tests", check_unit_tests), ("syntax check", check_syntax)]
     if not args.fast:
         checks.append(("tracker run", check_tracker_run))
+        checks.append(("UI tests", check_ui_tests))
 
     failures = []
     for name, check in checks:

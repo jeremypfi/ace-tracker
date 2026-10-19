@@ -33,6 +33,7 @@ logger = logging.getLogger(__name__)
 # ===============================================================================
 
 LANDFALL_CACHE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "landfall_cache.json")
+CONE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "cones")
 
 
 BASINS = {
@@ -2477,7 +2478,7 @@ def fetch_active_storm_cones(basin_key, storm_details):
     if not active_names:
         return {}
 
-    cone_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'cones')
+    cone_dir = CONE_DIR
     images = {}
 
     for storm in data.get('activeStorms', []):

@@ -48,4 +48,26 @@ jobs:
 
     - name: Check code syntax
       run: |
-        python -m py_compile ace_data.py ace_html.py ace_feeds.py ace_cards.py ace_assets.py ace_storm_pages.py ace_tracker.py
+        python -m py_compile ace_data.py ace_html.py ace_feeds.py ace_cards.py ace_assets.py ace_storm_pages.py ace_tracker.py ui_fixture_site.py test_ui.py
+
+  # Browser tests (#47) against the offline fixture site; see test_ui.py.
+  ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v7
+      with:
+        python-version: '3.12'
+
+    - name: Install dependencies and Chromium
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements-dev.txt
+        python -m playwright install --with-deps chromium
+
+    - name: Run UI tests
+      run: python test_ui.py
