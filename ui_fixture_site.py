@@ -7,9 +7,11 @@ Runs ace_tracker.main() with Tropycal faked, every urllib request answered
 from fixtures/ (anything else fails as offline), the clock frozen at
 FROZEN_NOW and nothing written outside OUT_DIR. Same input, same pages, so
 browser tests can name exact storms. The 2026-10-11 NHC snapshot gives three
-storms with maps: Isaias and Rachel post-tropical, Simon active.
+storms with maps: Isaias and Rachel post-tropical, Simon active. Kyle, an
+active Atlantic storm with no captured GIS layers, is added on top (#178).
 """
 import io
+import json
 import logging
 import os
 import shutil
@@ -63,7 +65,7 @@ def _track(start, hours, winds, lat, lon, dlat=0.6, dlon=-1.0, final=None):
 
 
 def current_storms():
-    """2026 storms. IDs for Isaias, Rachel and Simon match the NHC snapshot."""
+    """2026 storms. IDs for Isaias, Rachel, Simon and Kyle match current_storms_json()."""
     return {
         'atlantic': [
             FakeStorm('AL012026', 'ARTHUR', _track(datetime(2026, 6, 20), 6, [35, 40, 45, 45, 40], 28.0, -78.0, 0.5, 0.4)),
@@ -71,6 +73,8 @@ def current_storms():
             FakeStorm('AL092026', 'ISAIAS', _track(datetime(2026, 10, 6), 6,
                                                    [35, 45, 55, 70, 85, 100, 100, 95, 80, 70, 60, 55, 50, 45, 40, 35, 35],
                                                    16.0, -62.0, 0.8, -0.9)),
+            FakeStorm('AL112026', 'KYLE', _track(datetime(2026, 10, 10), 6,
+                                                 [30, 35, 40, 45, 50, 55, 60], 24.0, -70.0, 0.5, -0.3)),
         ],
         'pacific': [
             FakeStorm('EP022026', 'BORIS', _track(datetime(2026, 7, 1), 6, [40, 45, 50, 45], 15.0, -100.0, 0.2, -0.5)),
@@ -123,10 +127,27 @@ def _fixture(*parts):
         return f.read()
 
 
+# An active storm in the other basin, so the combined map (#178) spans both.
+# Its bin has no captured layers, like a storm whose GIS lags its advisory.
+KYLE_NHC = {
+    'id': 'al112026', 'binNumber': 'AT5', 'name': 'Kyle', 'classification': 'TS', 'intensity': '60',
+    'lastUpdate': '2026-10-11T12:00:00.000Z',
+    'forecastGraphics': {'fileUpdateTime': '2026-10-11T11:50:00.000Z',
+                         'url': 'https://www.nhc.noaa.gov/graphics_at5.shtml'},
+}
+
+
+def current_storms_json():
+    """The 2026-10-11 snapshot plus Kyle."""
+    data = json.loads(_fixture(NHC_SNAPSHOT, 'CurrentStorms.json'))
+    data['activeStorms'].append(KYLE_NHC)
+    return json.dumps(data).encode()
+
+
 def fake_urlopen(req, timeout=None, **_):
     url = req.full_url if hasattr(req, 'full_url') else str(req)
     if url == 'https://www.nhc.noaa.gov/CurrentStorms.json':
-        return _Resp(_fixture(NHC_SNAPSHOT, 'CurrentStorms.json'))
+        return _Resp(current_storms_json())
     if url.endswith('/xml/TWOAT.xml'):
         return _Resp(_fixture(FIXTURES, 'nhc_two_at_numbered.xml'))
     if url.endswith('/xml/TWOEP.xml'):

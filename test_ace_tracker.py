@@ -1896,6 +1896,49 @@ class TestBuildSeasonPayload(unittest.TestCase):
         self.assertNotIn('<span', text)
 
 
+class TestActiveStormsMap(unittest.TestCase):
+    """The dashboard's combined map of active storms in both basins (#178)."""
+
+    @staticmethod
+    def _storm(name, active, points=True):
+        return {'slug': name.lower(), 'name': name, 'is_active': active,
+                'track_points': [{'lat': 1, 'lon': 2}] if points else []}
+
+    def test_active_storms_across_basins_in_order(self):
+        from ace_html import _active_storms
+        payloads = [
+            {'basin_key': 'atlantic', 'storms': [self._storm('Kyle', True), self._storm('Isaias', False)]},
+            {'basin_key': 'pacific', 'storms': [self._storm('Simon', True), self._storm('Vance', True),
+                                                self._storm('Nopoints', True, points=False)]},
+        ]
+        self.assertEqual(_active_storms(payloads), [
+            {'slug': 'kyle', 'name': 'Kyle', 'basin': 'atlantic'},
+            {'slug': 'simon', 'name': 'Simon', 'basin': 'pacific'},
+            {'slug': 'vance', 'name': 'Vance', 'basin': 'pacific'},
+        ])
+
+    def test_section_only_when_something_is_active(self):
+        from ace_html import _active_map_html, render_dashboard_html
+        self.assertEqual(_active_map_html([]), '')
+        def track(bd):
+            bd['current']['storm_details']['Bertha']['track_points'] = [
+                {'lat': 20.0, 'lon': -60.0, 'time': '07/02 00Z', 'status': 'HU', 'wind': 70}]
+        payload, _ = TestBuildSeasonPayload()._payload(track)  # Bertha active
+        html = render_dashboard_html([payload])
+        self.assertIn('id="trmap-active"', html)
+        self.assertIn('var ACE_ACTIVE=[{"slug": "bertha", "name": "Bertha", "basin": "atlantic"}];', html)
+        self.assertIn('href="#storm-row-bertha"', html)
+        self.assertLess(html.index('id="active-storms"'), html.index('class="toggle"'))
+
+        def calm(bd):
+            track(bd)
+            bd['current']['storm_details']['Bertha']['is_active'] = False
+        payload, _ = TestBuildSeasonPayload()._payload(calm)
+        html = render_dashboard_html([payload])
+        self.assertNotIn('id="active-storms"', html)
+        self.assertIn('var ACE_ACTIVE=[];', html)
+
+
 class TestFeeds(unittest.TestCase):
     """ace_feeds: the JSON API is a public contract and the RSS must be valid XML."""
 
