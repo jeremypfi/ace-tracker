@@ -62,7 +62,10 @@ STORM_PANEL_CSS = """  .track-row td { padding:0; border-bottom:2px solid var(--
   .lib-missing { color:var(--muted); font-size:0.85em; text-align:center; padding:24px 8px; }
   .sp-cycle { color:var(--muted); font-size:0.9em; }
   .sp-note { font-size:0.72em; color:var(--muted); margin-top:4px; }
-  .spaghetti-legend .legend-dot { width:14px; height:3px; border-radius:2px; }
+  .spaghetti-legend .legend-dot, .legend-dot.legend-line { width:14px; height:3px; border-radius:2px; }
+  .nhc-legend { margin-top:8px; }
+  .nhc-legend .legend-dot { box-shadow:0 0 0 1px var(--muted); }
+  .nhc-legend:empty { display:none; }
   .nhc-link { font-size:0.78em; color:var(--muted); text-align:right; margin-top:6px; }
   .nhc-link a { color:var(--accent); text-decoration:none; }
   .nhc-link a:hover { text-decoration:underline; }"""
@@ -194,6 +197,79 @@ function _unwrapSeries(lls){
   }
   return out;
 }
+// NHC advisory layers (#169), drawn under the best track. Each layer is its own
+// request; one that fails, times out or comes back empty is just left off.
+var _NHC_WW={HWR:['#ff1744','Hurricane Warning'],HWA:['#ff80ab','Hurricane Watch'],TWR:['#2979ff','Tropical Storm Warning'],TWA:['#ffeb3b','Tropical Storm Watch']};
+var _NHC_RADII={34:'#ffeb3b',50:'#ff9800',64:'#f44336'};
+// Bottom to top. Only the fields we style by, at ~100 m precision, and only the
+// current wind radii (tau 0): the full forecast set is ~10x the bytes.
+var _NHC_LAYERS=[
+  {key:'swath',z:360,fields:'radii'},
+  {key:'cone',z:370,fields:'objectid'},
+  {key:'radii',z:380,fields:'radii',where:'tau=0'},
+  {key:'warnings',z:390,fields:'tcww'},
+  {key:'track',z:395,fields:'objectid'}
+];
+function _nhcStyle(key,p){
+  if(key==='cone')return{color:'#ffffff',weight:1,opacity:0.7,fillColor:'#ffffff',fillOpacity:0.15};
+  if(key==='track')return{color:'#ffffff',weight:2,opacity:0.9,dashArray:'6,4'};
+  if(key==='warnings'){var w=_NHC_WW[p.tcww];return{color:w?w[0]:'#ffffff',weight:5,opacity:1};}
+  var c=_NHC_RADII[p.radii]||_NHC_RADII[34];
+  if(key==='swath')return{stroke:false,fillColor:c,fillOpacity:0.12};
+  return{color:c,weight:1,opacity:0.9,fillColor:c,fillOpacity:0.2};
+}
+function _nhcFetch(url,cb){
+  if(!window.fetch)return;
+  var ctl=window.AbortController?new AbortController():null;
+  var timer=ctl?setTimeout(function(){ctl.abort();},10000):null;
+  fetch(url,ctl?{signal:ctl.signal}:{}).then(function(r){return r.ok?r.json():null;}).then(function(j){
+    clearTimeout(timer);
+    // ArcGIS reports query errors as a 200 with {error:...} and no features.
+    if(j&&j.features&&j.features.length)cb(j);
+  }).catch(function(){clearTimeout(timer);});
+}
+function _nhcLegend(slug,drawn){
+  var el=document.getElementById('nhclegend-'+slug);
+  if(!el)return;
+  var items=[];
+  function add(color,label,line){items.push('<div class="legend-item"><div class="legend-dot'+(line?' legend-line':'')+'" style="background:'+color+'"></div>'+label+'</div>');}
+  if(drawn.cone)add('#ffffff','Forecast cone');
+  if(drawn.track)add('#ffffff','NHC forecast track',true);
+  if(drawn.radii)[34,50,64].forEach(function(r){if(drawn.radii[r])add(_NHC_RADII[r],r+' kt winds');});
+  if(drawn.warnings)['HWR','HWA','TWR','TWA'].forEach(function(k){if(drawn.warnings[k])add(_NHC_WW[k][0],_NHC_WW[k][1],true);});
+  if(drawn.swath)add('rgba(255,235,59,0.45)','Past wind swath');
+  el.innerHTML=items.join('');
+}
+function _addNhcLayers(map,slug,d,refLon){
+  var ids=d.nhc_layers,drawn={},credited=false;
+  _NHC_LAYERS.forEach(function(spec){
+    // The OFCL model track is this same forecast, already drawn.
+    if(spec.key==='track'&&d.spaghetti&&d.spaghetti.OFCL)return;
+    var url='%(nhc_service)s/'+ids[spec.key]+'/query?where='+encodeURIComponent(spec.where||'1=1')
+      +'&outFields='+spec.fields+'&geometryPrecision=3&f=geojson';
+    _nhcFetch(url,function(gj){
+      var pane='nhc-'+spec.key;
+      if(!map.getPane(pane))map.createPane(pane).style.zIndex=spec.z;
+      L.geoJSON(gj,{pane:pane,interactive:spec.key==='warnings',
+        // NHC sends -180..180; shift into the track's unwrapped frame near the antimeridian.
+        coordsToLatLng:function(c){return L.latLng(c[1],_unwrapLon(refLon,c[0]));},
+        style:function(f){return _nhcStyle(spec.key,f.properties||{});},
+        onEachFeature:function(f,layer){
+          var p=f.properties||{};
+          if(spec.key==='radii'||spec.key==='warnings'){
+            var k=spec.key==='radii'?p.radii:p.tcww;
+            drawn[spec.key]=drawn[spec.key]||{};drawn[spec.key][k]=true;
+          }else drawn[spec.key]=true;
+          if(spec.key==='warnings'&&_NHC_WW[p.tcww])layer.bindTooltip(_NHC_WW[p.tcww][1],{sticky:true});
+        }}).addTo(map);
+      if(!credited){
+        credited=true;
+        map.attributionControl.addAttribution('Advisory layers: <a href="https://www.nhc.noaa.gov/gis/" target="_blank" rel="noopener">NHC</a>');
+      }
+      _nhcLegend(slug,drawn);
+    });
+  });
+}
 function _buildMap(slug){
   var d=ACE_TRACKS[slug];
   var el=document.getElementById('trmap-'+slug);
@@ -212,6 +288,7 @@ function _buildMap(slug){
     mk.bindTooltip('<b>'+d.name+'</b><br>'+p.time+'<br>'+p.status+' \xb7 '+_fmtWind(p.wind),{direction:'top',offset:[0,-6]});
     if(last&&d.active)mk.bindPopup('<b>Current Position</b><br>'+p.time+'<br>'+p.status+' \xb7 '+_fmtWind(p.wind),{maxWidth:160}).openPopup();
   });
+  if(d.active&&d.nhc_layers)_addNhcLayers(map,slug,d,lls[lls.length-1][1]);
   var boundsPts=lls.slice();
   var spagGroup=L.layerGroup();
   var legendHtml='';
@@ -268,6 +345,12 @@ BASEMAP = {
 }
 for _key, _value in BASEMAP.items():
     TRACK_MAP_JS = TRACK_MAP_JS.replace(f'%({_key})s', _value)
+
+# NHC's live advisory layers (#169). Layer ids per storm come from
+# ace_data.nhc_gis_layer_ids(); the service sends CORS headers for any origin.
+NHC_GIS_SERVICE = ('https://mapservices.weather.noaa.gov/tropical/rest/services/'
+                   'tropical/NHC_tropical_weather/MapServer')
+TRACK_MAP_JS = TRACK_MAP_JS.replace('%(nhc_service)s', NHC_GIS_SERVICE)
 
 STORM_PAGE_CSS = """
   .container { max-width:900px; margin:0 auto; }

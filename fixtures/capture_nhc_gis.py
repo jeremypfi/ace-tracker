@@ -2,7 +2,9 @@
 
 Run while storms are active: uv run python fixtures/capture_nhc_gis.py
 Writes fixtures/nhc_gis/<UTC date>/ with CurrentStorms.json plus one
-GeoJSON file per storm bin and layer. Empty layers are kept on purpose:
+GeoJSON file per storm bin and layer, and refreshes the service's layer list
+in fixtures/nhc_gis/service_layers.json (checked against
+ace_data.nhc_gis_layer_ids by the unit tests). Empty layers are kept on purpose:
 NHC drops a storm's layers after its final advisory while still listing it
 as post-tropical ('PTC'), and the map must handle that.
 """
@@ -50,6 +52,9 @@ def main():
         json.dump(storms, f, indent=1)
 
     service_info = get_json(f'{SERVICE}?f=json')
+    layers = [{'id': layer['id'], 'name': layer['name']} for layer in service_info['layers']]
+    with open(os.path.join(os.path.dirname(out_dir), 'service_layers.json'), 'w') as f:
+        f.write('{"layers": [\n' + ',\n'.join(json.dumps(x) for x in layers) + '\n]}\n')
     for storm in active:
         bin_number = storm['binNumber']
         for key, layer_id in layer_ids(service_info, bin_number).items():

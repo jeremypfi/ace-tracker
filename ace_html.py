@@ -28,6 +28,7 @@ from ace_data import (
     depression_only_landfalls,
     average_landfall_share,
     _portable_strftime,
+    nhc_gis_layer_ids,
     MIN_NAMED_STORM_WIND,
 )
 
@@ -512,6 +513,7 @@ def _storm_track_entry(st):
         'spaghetti': st['spaghetti'],
         'spaghetti_cycles': {m: _cycle_label(c) for m, c in st['spaghetti_cycles'].items()
                              if _cycle_label(c)},
+        'nhc_layers': nhc_gis_layer_ids(st.get('nhc_bin')) if st['is_active'] else None,
     }
 
 
@@ -577,11 +579,16 @@ def _storm_panel_inner_html(st, asset_prefix=''):
         f'<div class="sp-note">Latest run of each model (UTC), shown as published.</div>'
     ) if spaghetti else ''
 
+    # Filled by the map JS with whichever NHC advisory layers loaded.
+    nhc_legend = (f'<div class="track-legend nhc-legend" id="nhclegend-{slug}" aria-label="NHC advisory layers"></div>'
+                  if is_active else '')
+
     map_div = (
         f'<div class="track-map-wrap">'
         f'<div class="track-map" id="trmap-{slug}"></div>'
         f'<div class="track-map-skeleton" id="trskel-{slug}"><div class="skeleton-spinner"></div></div>'
         f'</div>'
+        f'{nhc_legend}'
         f'{spaghetti_toggle}'
     ) if track_points else (
         '<p style="color:var(--muted);font-size:0.82em;text-align:center;padding:8px 0">No track data available</p>')
@@ -928,6 +935,7 @@ def render_dashboard_html(payloads, share_image=None, share_alt=None):
   <ul>
     <li><a href="https://www.nhc.noaa.gov/data/#hurdat" target="_blank" rel="noopener noreferrer">NOAA HURDAT2</a> — Historical best-track data (1991–present) for storm tracks, wind speeds, and ACE calculations</li>
     <li><a href="https://www.nhc.noaa.gov/data/#hurdat" target="_blank" rel="noopener noreferrer">NHC Real-time Best Track</a> — Current season preliminary storm data fetched via Tropycal (<code>include_btk=True</code>); updated continuously during active storms</li>
+    <li><a href="https://www.nhc.noaa.gov/gis/" target="_blank" rel="noopener noreferrer">NHC GIS</a> — Live forecast cone, watches/warnings and wind radii on active storms' track maps, loaded from NOAA's map service when you open a map</li>
     <li><a href="https://www.cpc.ncep.noaa.gov/products/outlooks/background_information.shtml" target="_blank" rel="noopener noreferrer">NOAA CPC</a> — Season classification thresholds and 1991–2020 climatological normals</li>
     {API_DOCS_SOURCE_LI}
   </ul>

@@ -2418,6 +2418,25 @@ NHC_BIN_PREFIXES = {
     'pacific':  ('EP', 'CP'),
 }
 
+# NHC's live advisory GIS layers (#169), fetched by the browser from
+# ace_assets.NHC_GIS_SERVICE. Each storm bin (AT1..AT5, EP1..EP5, CP1..CP5) is
+# a group of 26 layer ids starting at its basin's base; the layers we draw sit
+# at fixed offsets inside the group.
+NHC_GIS_BIN_BASE = {'AT': 4, 'EP': 134, 'CP': 264}
+NHC_GIS_BIN_STRIDE = 26
+NHC_GIS_LAYER_OFFSETS = {'track': 3, 'cone': 4, 'warnings': 5, 'swath': 9, 'radii': 12}
+
+
+def nhc_gis_layer_ids(bin_number):
+    """Service layer ids for one storm bin, e.g. 'EP5' -> {'cone': 242, ...}.
+    None for anything that isn't a bin NHC uses."""
+    bin_number = (bin_number or '').upper()
+    base = NHC_GIS_BIN_BASE.get(bin_number[:2])
+    if base is None or bin_number[2:] not in ('1', '2', '3', '4', '5'):
+        return None
+    group = base + (int(bin_number[2:]) - 1) * NHC_GIS_BIN_STRIDE
+    return {key: group + offset for key, offset in NHC_GIS_LAYER_OFFSETS.items()}
+
 # NHC keeps a storm in CurrentStorms.json as 'PTC' (post-tropical cyclone)
 # for hours after its final advisory. It no longer counts toward ACE, so the
 # site should not call it active.
@@ -2441,7 +2460,8 @@ def fetch_active_storm_cones(basin_key, storm_details):
 
     Returns a dict of storm_name -> relative path (e.g. 'cones/ep042026.png'),
     or {} if nothing is active or the fetch fails. Also records each cone's
-    advisory time as storm_details[name]['cone_issued'] (ISO UTC).
+    advisory time as storm_details[name]['cone_issued'] (ISO UTC), and each
+    active storm's NHC bin (e.g. 'EP5') as storm_details[name]['nhc_bin'].
     """
     import urllib.request
 
@@ -2488,6 +2508,10 @@ def fetch_active_storm_cones(basin_key, storm_details):
         name = (storm.get('name') or '').upper()
         if name not in active_names:
             continue
+        for orig_name in storm_details:
+            if orig_name.upper() == name:
+                storm_details[orig_name]['nhc_bin'] = bin_number
+                break
 
         storm_id = storm.get('id', '')
         update_time = (storm.get('forecastGraphics') or {}).get('fileUpdateTime')
@@ -2587,6 +2611,7 @@ def build_season_payload(basin_data):
             'spaghetti_cycles': {m: c for m, c in (d.get('spaghetti_cycles') or {}).items() if m in spaghetti},
             'cone_image': cone_images.get(name) if is_active else None,
             'cone_issued': d.get('cone_issued'),
+            'nhc_bin': d.get('nhc_bin') if is_active else None,
         })
 
     return {

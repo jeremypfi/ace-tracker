@@ -1876,6 +1876,19 @@ class TestBuildSeasonPayload(unittest.TestCase):
         self.assertEqual(p['storms'], [])
         self.assertIsNone(p['rank'])
 
+    def test_nhc_layers_only_for_active_storms_with_a_bin(self):
+        from ace_html import _storm_track_entry
+
+        def bins(bd):
+            bd['current']['storm_details']['Bertha']['nhc_bin'] = 'AT2'
+            bd['current']['storm_details']['Arthur']['nhc_bin'] = 'AT1'  # stale: not active
+        p, _ = self._payload(bins)
+        bertha, arthur = p['storms']
+        self.assertEqual(bertha['nhc_bin'], 'AT2')
+        self.assertIsNone(arthur['nhc_bin'])
+        self.assertEqual(_storm_track_entry(bertha)['nhc_layers'], ace_data.nhc_gis_layer_ids('AT2'))
+        self.assertIsNone(_storm_track_entry(arthur)['nhc_layers'])
+
     def test_payload_is_json_serializable_with_no_html(self):
         p, _ = self._payload(cones={'Bertha': 'cones/x.png'})
         text = json.dumps(p)
@@ -2898,6 +2911,8 @@ class TestForecastConeFixtures(unittest.TestCase):
         images, _, _ = self._run('pacific', pacific, storms_json)
         self.assertFalse(pacific['Rachel']['is_active'])
         self.assertTrue(pacific['Simon']['is_active'])
+        self.assertEqual(pacific['Simon']['nhc_bin'], 'EP5')
+        self.assertNotIn('nhc_bin', pacific['Rachel'])
         self.assertEqual(list(images), ['Simon'])
         atlantic = {'Isaias': {'is_active': True}}
         self.assertEqual(self._run('atlantic', atlantic, storms_json)[0], {})
@@ -3025,6 +3040,33 @@ class TestNhcGisFixtures(unittest.TestCase):
         self.assertEqual(self.capture.layer_ids(info, 'AT4')['forecast_cone'], 86)
         with self.assertRaises(KeyError):
             self.capture.layer_ids(info, 'AT5')
+
+
+class TestNhcGisLayerIds(unittest.TestCase):
+    """ace_data.nhc_gis_layer_ids(): the layer ids the map JS fetches (#169)."""
+
+    NAMES = {'track': 'Forecast Track', 'cone': 'Forecast Cone', 'warnings': 'Watch-Warning',
+             'swath': 'Past Cumulative Wind Swath', 'radii': 'Forecast Wind Radii'}
+
+    def test_known_bins(self):
+        self.assertEqual(ace_data.nhc_gis_layer_ids('AT1'),
+                         {'track': 7, 'cone': 8, 'warnings': 9, 'swath': 13, 'radii': 16})
+        self.assertEqual(ace_data.nhc_gis_layer_ids('ep5')['cone'], 242)
+        self.assertEqual(ace_data.nhc_gis_layer_ids('CP5')['radii'], 380)
+
+    def test_unknown_bins(self):
+        for bad in (None, '', 'AT', 'AT0', 'AT6', 'AL1', 'WP1', 'EP12'):
+            self.assertIsNone(ace_data.nhc_gis_layer_ids(bad), bad)
+
+    def test_ids_match_the_live_service_layer_names(self):
+        # Saved by fixtures/capture_nhc_gis.py; rerun it if NHC renumbers the service.
+        with open(os.path.join(FIXTURES, 'nhc_gis', 'service_layers.json')) as f:
+            by_id = {layer['id']: layer['name'] for layer in json.load(f)['layers']}
+        for basin in ('AT', 'EP', 'CP'):
+            for n in range(1, 6):
+                bin_number = f'{basin}{n}'
+                for key, layer_id in ace_data.nhc_gis_layer_ids(bin_number).items():
+                    self.assertEqual(by_id.get(layer_id), f'{bin_number} {self.NAMES[key]}')
 
 
 class TestSmokeTest(unittest.TestCase):

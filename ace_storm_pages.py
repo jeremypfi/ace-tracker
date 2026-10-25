@@ -76,6 +76,9 @@ def render_storm_page_html(payload, storm, share_image=None, share_alt=None):
                   f'{_utc_label(as_of)}</time></p>') if as_of else ''
     panel = _storm_panel_inner_html(storm, asset_prefix='../')
     slug = storm['slug']
+    nhc_gis_credit = (' Forecast cone, watches/warnings and wind radii on the map: live from '
+                      '<a href="https://www.nhc.noaa.gov/gis/" target="_blank" rel="noopener noreferrer">NHC GIS</a>.'
+                      if storm['is_active'] else '')
 
     return f'''<!DOCTYPE html>
 <html lang="en">
@@ -144,7 +147,7 @@ def render_storm_page_html(payload, storm, share_image=None, share_alt=None):
 </div>
 </main>
 <div class="sources">
-  Data: <a href="https://www.nhc.noaa.gov/data/#hurdat" target="_blank" rel="noopener noreferrer">NOAA NHC</a> best track via Tropycal.
+  Data: <a href="https://www.nhc.noaa.gov/data/#hurdat" target="_blank" rel="noopener noreferrer">NOAA NHC</a> best track via Tropycal.{nhc_gis_credit}
   ACE = sum of squared 6-hourly wind speeds (knots) at tropical-storm strength or higher, divided by 10,000.
 </div>
 </div>
