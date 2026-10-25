@@ -17,7 +17,9 @@ import json
 import os
 import tempfile
 import threading
+import time
 import unittest
+import urllib.parse
 
 from playwright.sync_api import expect, sync_playwright
 
@@ -118,9 +120,17 @@ class UITestCase(unittest.TestCase):
         if msg.type in ('error', 'warning') and GL_DRIVER_NOISE not in msg.text:
             self.console.append(f'{msg.type}: {msg.text}')
 
+    # Chrome's own log line for a request that a test fails on purpose. Page
+    # code can't suppress it; tests that fail requests set allow_failed_loads.
+    FAILED_LOAD = 'error: Failed to load resource: '
+    allow_failed_loads = False
+
+    def page_errors(self):
+        return [m for m in self.console if not (self.allow_failed_loads and m.startswith(self.FAILED_LOAD))]
+
     def tearDown(self):
-        if getattr(self, 'console', None):
-            self.fail('console errors/warnings:\n' + '\n'.join(self.console))
+        if getattr(self, 'console', None) and self.page_errors():
+            self.fail('console errors/warnings:\n' + '\n'.join(self.page_errors()))
 
     def assert_map_drawn(self, slug):
         """The track map for `slug` has its OpenFreeMap GL basemap loaded (our
@@ -214,6 +224,7 @@ class TestNhcAdvisoryLayers(UITestCase):
         expect(page.locator('#trmap-simon .leaflet-control-attribution')).to_contain_text('Advisory layers: NHC')
 
     def test_service_down_leaves_map_as_before(self):
+        self.allow_failed_loads = True
         for failure in ('abort', 'http500', 'arcgis_error'):
             with self.subTest(failure=failure):
                 hits = []
@@ -239,7 +250,8 @@ class TestNhcAdvisoryLayers(UITestCase):
                     self.assertNotIn('NHC', page.locator(f'#trmap-{slug} .leaflet-control-attribution').inner_text())
                 # Simon's map: 4 (OFCL stands in for the track). Active map: 5 each for Kyle and Simon.
                 self.assertEqual(len(hits), 14)
-                self.assertEqual(self.console, [])  # the next open() resets it
+                page.wait_for_timeout(200)  # Chrome's failed-load lines arrive late
+                self.assertEqual(self.page_errors(), [])  # the next open() resets it
 
     def test_inactive_storms_make_no_requests(self):
         page = self.open('index.html#pacific')
@@ -287,6 +299,145 @@ class TestActiveStormsMap(UITestCase):
         self.assert_map_drawn('active')
         self.assertTrue(self.no_horizontal_scroll())
         self.assertLessEqual(page.locator('#trmap-active').bounding_box()['width'], PHONE['width'])
+
+
+def _place(lat, lon, kind, **address):
+    address.setdefault('country', 'United States')
+    address.setdefault('country_code', 'us')
+    return {'lat': str(lat), 'lon': str(lon), 'addresstype': kind, 'address': address,
+            'display_name': ', '.join(v for k, v in address.items() if k != 'country_code')}
+
+
+# What Nominatim answered on 2026-10-25, trimmed to the fields the page reads.
+GEOCODER = {
+    'austin tx': [_place(30.27, -97.74, 'city', city='Austin', county='Travis County', state='Texas'),
+                  _place(29.89, -96.24, 'county', county='Austin County', state='Texas')],
+    'springfield': [_place(39.80, -89.64, 'city', city='Springfield', state='Illinois'),
+                    _place(42.10, -72.59, 'city', city='Springfield', state='Massachusetts'),
+                    _place(37.21, -93.29, 'city', city='Springfield', state='Missouri')],
+    '78701': [_place(30.27, -97.74, 'postcode', postcode='78701', city='Austin', state='Texas')],
+    'nowhere': [],
+}
+
+
+class TestLocationInput(UITestCase):
+    """Location search, geolocation and pin drop on the active-storms map (#179).
+    Nominatim is mocked; 'boom' makes it fail."""
+
+    def open(self, path='index.html', **kwargs):
+        self.geocoded = []
+
+        def geocoder(route):
+            self.geocoded.append((time.monotonic(), route.request.url))
+            q = urllib.parse.parse_qs(urllib.parse.urlparse(route.request.url).query)['q'][0]
+            if q == 'boom':
+                route.fulfill(status=500, body='', headers={'access-control-allow-origin': '*'})
+            else:
+                route.fulfill(status=200, content_type='application/json', body=json.dumps(GEOCODER[q.lower()]),
+                              headers={'access-control-allow-origin': '*'})
+        page = super().open(path, routes=[('https://nominatim.openstreetmap.org/**', geocoder)], **kwargs)
+        self.assert_map_drawn('active')
+        return page
+
+    def search(self, text):
+        self.page.locator('#loc-q').fill(text)
+        self.page.locator('#loc-q').press('Enter')
+
+    def pins(self):
+        return self.page.locator('#trmap-active .loc-pin').count()
+
+    def in_view(self, latlon):
+        return self.page.evaluate('ll => _trMapObjs.active.getBounds().contains(ll)', latlon)
+
+    def test_city_search_pins_it_and_fits_the_storms(self):
+        page = self.open()
+        self.search('Austin TX')
+        expect(page.locator('#loc-msg')).to_have_text('Showing Austin, Texas.')  # Austin County dropped
+        self.assertEqual(self.pins(), 1)
+        expect(page.locator('#loc-picks')).to_be_hidden()
+        self.assertTrue(self.in_view([30.27, -97.74]))
+        for slug in ('kyle', 'simon'):
+            ll = page.evaluate('s => { const p = ACE_TRACKS[s].points; return [p[p.length-1].lat, p[p.length-1].lon]; }', slug)
+            self.assertTrue(self.in_view(ll), slug)
+        self.assertNotIn('30.2', page.evaluate('location.href'))
+        self.assertNotIn('Austin', page.evaluate('location.href'))
+        page.locator('#loc-clear').click()
+        self.assertEqual(self.pins(), 0)
+        expect(page.locator('#loc-clear')).to_be_hidden()
+
+    def test_ambiguous_name_offers_a_pick_list(self):
+        page = self.open()
+        self.search('Springfield')
+        picks = page.locator('#loc-picks .loc-pick')
+        expect(picks).to_have_count(3)
+        expect(picks.first).to_be_focused()
+        page.keyboard.press('Tab')
+        page.keyboard.press('Tab')
+        expect(picks.nth(2)).to_have_text('Springfield, Missouri')
+        page.keyboard.press('Enter')
+        expect(page.locator('#loc-msg')).to_have_text('Showing Springfield, Missouri.')
+        expect(page.locator('#loc-picks')).to_be_hidden()
+        self.assertTrue(self.in_view([37.21, -93.29]))
+
+    def test_zip_searches_the_us_only(self):
+        page = self.open()
+        self.search('78701')
+        expect(page.locator('#loc-msg')).to_have_text('Showing 78701, Austin, Texas.')
+        self.assertIn('countrycodes=us', self.geocoded[0][1])
+
+    def test_no_match_and_service_down_keep_the_map(self):
+        self.allow_failed_loads = True
+        page = self.open()
+        self.search('nowhere')
+        expect(page.locator('#loc-msg')).to_contain_text('No place found for "nowhere"')
+        self.search('boom')
+        expect(page.locator('#loc-msg')).to_contain_text('not responding')
+        self.assertEqual(self.pins(), 0)
+        self.assertEqual(page.locator('#trmap-active .leaflet-overlay-pane path.leaflet-interactive').count(), 2)
+        # Nominatim's usage policy: at most one request a second.
+        self.assertGreaterEqual(self.geocoded[1][0] - self.geocoded[0][0], 0.95)
+
+    def test_use_my_location(self):
+        page = self.open(geolocation={'latitude': 25.77, 'longitude': -80.19}, permissions=['geolocation'])
+        page.locator('#loc-geo').click()
+        expect(page.locator('#loc-msg')).to_have_text('Showing Your current location.')
+        self.assertTrue(self.in_view([25.77, -80.19]))
+        self.assertEqual(self.geocoded, [])  # coordinates never go to the geocoder
+
+    def test_use_my_location_denied(self):
+        page = self.open()
+        page.evaluate("""() => { navigator.geolocation.getCurrentPosition = (ok, fail) =>
+                                    fail({code: 1, message: 'User denied Geolocation'}); }""")
+        page.locator('#loc-geo').click()
+        expect(page.locator('#loc-msg')).to_contain_text('Location access is off')
+        self.assertEqual(self.pins(), 0)
+
+    def test_tap_map_drops_pin_but_storm_marker_opens_its_row(self):
+        page = self.open()
+        box = page.locator('#trmap-active').bounding_box()
+        page.mouse.click(box['x'] + box['width'] - 60, box['y'] + box['height'] - 60)
+        expect(page.locator('#loc-msg')).to_contain_text('Showing Dropped pin (')
+        self.assertEqual(self.pins(), 1)
+        page.locator('#loc-clear').click()
+        pt = page.evaluate("""() => { const p = ACE_TRACKS.simon.points.at(-1);
+                                      return _trMapObjs.active.latLngToContainerPoint([p.lat, p.lon]); }""")
+        page.mouse.click(box['x'] + pt['x'], box['y'] + pt['y'])
+        expect(page.locator('#trbtn-simon')).to_have_attribute('aria-expanded', 'true')
+        self.assertEqual(self.pins(), 0)
+
+    def test_remembered_location_comes_back_without_a_search(self):
+        page = self.open()
+        page.locator('#loc-remember').check()
+        self.search('Austin TX')
+        expect(page.locator('#loc-msg')).to_have_text('Showing Austin, Texas.')
+        page.reload()
+        self.assert_map_drawn('active')
+        expect(page.locator('#loc-msg')).to_have_text('Showing Austin, Texas.')
+        expect(page.locator('#loc-remember')).to_be_checked()
+        self.assertEqual(self.pins(), 1)
+        self.assertEqual(len(self.geocoded), 1)
+        page.locator('#loc-remember').uncheck()
+        self.assertIsNone(page.evaluate("localStorage.getItem('ace-location')"))
 
 
 class TestShareButtons(UITestCase):

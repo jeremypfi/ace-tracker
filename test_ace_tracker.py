@@ -1938,6 +1938,23 @@ class TestActiveStormsMap(unittest.TestCase):
         self.assertNotIn('id="active-storms"', html)
         self.assertIn('var ACE_ACTIVE=[];', html)
 
+    def test_location_form_is_labeled_and_says_where_the_text_goes(self):
+        from ace_html import _active_map_html
+        html = _active_map_html([{'slug': 'kyle', 'name': 'Kyle', 'basin': 'atlantic'}])
+        self.assertIn('<label for="loc-q"', html)
+        self.assertIn('<input id="loc-q" type="search"', html)
+        self.assertIn('role="status" aria-live="polite"', html)
+        self.assertIn('Your location stays in your browser', html)
+        self.assertIn('href="https://nominatim.org/"', html)
+        self.assertIn('id="loc-geo" hidden', html)  # shown by JS only where geolocation works
+
+    def test_dashboard_credits_nominatim_and_osm(self):
+        from ace_assets import ACTIVE_MAP_JS, NOMINATIM_SEARCH
+        html = generate_dashboard_html(TestHTMLGeneration()._make_basin_data())
+        self.assertIn('Nominatim</a> (<a href="https://www.openstreetmap.org/copyright"', html)
+        self.assertIn(NOMINATIM_SEARCH + '?format=jsonv2', ACTIVE_MAP_JS)
+        self.assertNotIn('%(', ACTIVE_MAP_JS)
+
 
 class TestFeeds(unittest.TestCase):
     """ace_feeds: the JSON API is a public contract and the RSS must be valid XML."""

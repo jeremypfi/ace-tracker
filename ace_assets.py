@@ -327,6 +327,8 @@ function _toggleSpaghetti(slug){
   if(cb.checked)group.addTo(map);else map.removeLayer(group);
 }"""
 
+NOMINATIM_SEARCH = 'https://nominatim.openstreetmap.org/search'
+
 # Dashboard-only: one map of every active storm in both basins (#178). Builds
 # after the page has loaded, so MapLibre never competes with the first paint.
 ACTIVE_MAP_CSS = """  .active-map { background:var(--card); border-radius:12px; padding:16px; margin-bottom:16px; }
@@ -335,7 +337,24 @@ ACTIVE_MAP_CSS = """  .active-map { background:var(--card); border-radius:12px; 
   .active-map-storms { display:flex; flex-wrap:wrap; gap:8px; margin-top:4px; }
   .active-map-storm { color:var(--accent); text-decoration:none; border:1px solid var(--border); border-radius:16px; padding:4px 12px; font-size:0.85em; }
   .active-map-storm:hover, .active-map-storm:focus-visible { border-color:var(--accent); }
-  .active-map-basin { color:var(--muted); font-size:0.85em; }"""
+  .active-map-basin { color:var(--muted); font-size:0.85em; }
+  .loc-form { margin-bottom:12px; }
+  .loc-label { display:block; font-size:0.9em; color:var(--text); margin-bottom:6px; }
+  .loc-row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+  .loc-row input[type=search] { flex:1 1 180px; min-width:0; font:inherit; font-size:16px; color:var(--text); background:var(--box); border:1px solid var(--border); border-radius:8px; padding:9px 12px; }
+  .loc-btn { font:inherit; font-size:0.9em; min-height:40px; cursor:pointer; border-radius:8px; padding:8px 14px; border:1px solid var(--border); background:var(--box); color:var(--text); }
+  .loc-btn.loc-primary { background:var(--accent); border-color:var(--accent); color:var(--bg); font-weight:bold; }
+  .loc-btn:focus-visible, .loc-row input:focus-visible, .loc-pick:focus-visible, .loc-link:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  .loc-msg { min-height:1.2em; margin:6px 0 0; font-size:0.85em; color:var(--text); }
+  .loc-msg:empty { display:none; }
+  .loc-picks { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+  .loc-pick { font:inherit; font-size:0.85em; cursor:pointer; border-radius:16px; padding:6px 12px; border:1px solid var(--accent); background:transparent; color:var(--accent); text-align:left; }
+  .loc-meta { margin-top:8px; font-size:0.82em; color:var(--muted); justify-content:space-between; }
+  .loc-remember { display:flex; align-items:center; gap:6px; cursor:pointer; }
+  .loc-link { font:inherit; background:none; border:none; padding:4px 0; color:var(--accent); cursor:pointer; text-decoration:underline; }
+  .loc-note { margin:6px 0 0; font-size:0.75em; color:var(--muted); }
+  .loc-note a { color:var(--accent); }
+  .loc-pin span { display:block; width:18px; height:18px; border-radius:50% 50% 50% 0; background:#00e676; border:2px solid #fff; transform:rotate(-45deg); box-shadow:0 2px 6px rgba(0,0,0,0.5); }"""
 
 ACTIVE_MAP_JS = """function _buildActiveMap(){
   var el=document.getElementById('trmap-active');
@@ -355,15 +374,158 @@ ACTIVE_MAP_JS = """function _buildActiveMap(){
     var c=_tc(p.status,p.wind);
     L.circleMarker(ll,{radius:8,fillColor:c,color:'#fff',weight:2,fillOpacity:1,opacity:1}).addTo(map)
       .bindTooltip('<b>'+d.name+'</b><br>'+p.status+' \xb7 '+_fmtWind(p.wind),{direction:'top',offset:[0,-8]})
-      .on('click',function(){_openStormRow('storm-row-'+s.slug);});
+      .on('click',function(e){L.DomEvent.stopPropagation(e);_openStormRow('storm-row-'+s.slug);});  // not a pin drop
     boundsPts.push(ll);
     var ofcl=d.spaghetti&&d.spaghetti.OFCL;
     if(ofcl&&ofcl.length)boundsPts=boundsPts.concat(_unwrapSeries([ll].concat(ofcl.map(function(q){return[q.lat,q.lon];}))).slice(1));
     if(d.nhc_layers)_addNhcLayers(map,d,ll[1],{legend:'nhclegend-active',drawn:drawn,skipTrack:false});
   });
-  if(boundsPts.length)map.fitBounds(L.latLngBounds(boundsPts),{padding:[40,40],maxZoom:6});
+  map._stormBounds=boundsPts;
+  map.on('click',function(e){
+    var lat=e.latlng.lat,lon=((e.latlng.lng+540)%360)-180;
+    _locSet({lat:lat,lon:lon,label:'Dropped pin ('+Math.abs(lat).toFixed(2)+(lat<0?'S':'N')+', '+Math.abs(lon).toFixed(2)+(lon<0?'W':'E')+')'});
+  });
+  var start=_aceLoc||_locLoad();
+  if(start)_locSet(start);
+  else _locFit();
 }
-window.addEventListener('load',_buildActiveMap);"""
+window.addEventListener('load',_buildActiveMap);
+
+// Location input (#179). The place a visitor gives stays in this page (and in
+// localStorage only if they ask); searches go from the browser to Nominatim.
+var _aceLoc=null,_locPin=null,_locLast=-1e9,_locBusy=false;
+var _LOC_KEY='ace-location';
+function _el(id){return document.getElementById(id);}
+function _locMsg(t){var e=_el('loc-msg');if(e)e.textContent=t||'';}
+function _kmBetween(lat1,lon1,lat2,lon2){
+  var r=Math.PI/180,a=Math.sin((lat2-lat1)*r/2),b=Math.sin((lon2-lon1)*r/2);
+  return 12742*Math.asin(Math.sqrt(a*a+Math.cos(lat1*r)*Math.cos(lat2*r)*b*b));
+}
+function _locLabel(r){
+  var a=r.address||{},parts=[];
+  var street=[a.house_number,a.road].filter(Boolean).join(' ');
+  if(street)parts.push(street);
+  else if(r.addresstype==='postcode'&&a.postcode)parts.push(a.postcode);
+  var place=a.city||a.town||a.village||a.hamlet||a.suburb||a.county;
+  if(place)parts.push(place);
+  if(a.state)parts.push(a.state);
+  if(a.country&&a.country_code!=='us')parts.push(a.country);
+  return parts.length?parts.join(', '):(r.display_name||'Selected place');
+}
+// Nominatim also returns the county or state a city sits in, and repeats of one
+// address; a pick list of those would be noise.
+function _locDistinct(results){
+  var places=results.filter(function(r){return['county','state','country','region'].indexOf(r.addresstype)<0;});
+  if(!places.length)places=results;
+  var out=[];
+  places.forEach(function(r){
+    var lat=+r.lat,lon=+r.lon;
+    if(!isFinite(lat)||!isFinite(lon))return;
+    if(!out.some(function(o){return _kmBetween(o.lat,o.lon,lat,lon)<25;}))out.push({lat:lat,lon:lon,label:_locLabel(r)});
+  });
+  return out;
+}
+function _locPicks(places){
+  var box=_el('loc-picks');
+  if(!box)return;
+  box.innerHTML='';
+  box.hidden=!places.length;
+  places.forEach(function(p){
+    var b=document.createElement('button');
+    b.type='button';b.className='loc-pick';b.textContent=p.label;
+    b.onclick=function(){_locSet(p);_el('loc-q').focus();};
+    box.appendChild(b);
+  });
+  if(places.length)box.firstChild.focus();
+}
+function _locSubmit(ev){
+  if(ev)ev.preventDefault();
+  var q=_el('loc-q').value.trim();
+  if(!q){_locMsg('Enter a city, ZIP code or address.');return false;}
+  if(_locBusy||!window.fetch)return false;
+  _locBusy=true;_locPicks([]);_locMsg('Searching...');
+  // Nominatim's usage policy allows one request a second.
+  var wait=Math.max(0,1000-(performance.now()-_locLast));
+  setTimeout(function(){
+    _locLast=performance.now();
+    var url='%(nominatim)s?format=jsonv2&addressdetails=1&limit=5&q='+encodeURIComponent(q)
+      +(/^[0-9]{5}(-[0-9]{4})?$/.test(q)?'&countrycodes=us':'');
+    var ctl=window.AbortController?new AbortController():null;
+    var timer=ctl?setTimeout(function(){ctl.abort();},10000):null;
+    fetch(url,ctl?{signal:ctl.signal}:{}).then(function(r){if(!r.ok)throw new Error(r.status);return r.json();}).then(function(rs){
+      clearTimeout(timer);_locBusy=false;
+      var places=_locDistinct(Array.isArray(rs)?rs:[]);
+      if(!places.length)_locMsg('No place found for "'+q+'". Try a city and state, or a ZIP code.');
+      else if(places.length===1)_locSet(places[0]);
+      else{_locMsg('Several places match "'+q+'". Pick one:');_locPicks(places);}
+    }).catch(function(){
+      clearTimeout(timer);_locBusy=false;
+      _locMsg('Place search is not responding right now. Try again, use your location, or tap the map.');
+    });
+  },wait);
+  return false;
+}
+function _locUseMine(){
+  if(!navigator.geolocation)return;
+  _locMsg('Finding your location...');
+  navigator.geolocation.getCurrentPosition(function(pos){
+    _locSet({lat:pos.coords.latitude,lon:pos.coords.longitude,label:'Your current location'});
+  },function(err){
+    _locMsg(err&&err.code===1
+      ?'Location access is off for this site. Search for a place or tap the map instead.'
+      :'Could not get your location. Search for a place or tap the map instead.');
+  },{timeout:10000,maximumAge:600000});
+}
+function _locFit(){
+  var map=_trMapObjs.active;
+  if(!map)return;
+  var pts=(map._stormBounds||[]).slice();
+  if(_locPin)pts.push(_locPin.getLatLng());
+  if(pts.length)map.fitBounds(L.latLngBounds(pts),{padding:[40,40],maxZoom:6});
+}
+function _locSet(p){
+  _aceLoc=p;
+  _locPicks([]);
+  _locMsg('Showing '+p.label+'.');
+  _el('loc-clear').hidden=false;
+  if(_el('loc-remember').checked)_locSave();
+  var map=_trMapObjs.active;
+  if(!map)return;  // drawn when the map builds
+  var ll=[p.lat,p.lon>90?p.lon-360:p.lon];  // the storms' frame
+  if(!_locPin)_locPin=L.marker(ll,{icon:L.divIcon({className:'loc-pin',html:'<span></span>',iconSize:[22,22],iconAnchor:[11,24]}),keyboard:false,title:'Your location'}).addTo(map);
+  else _locPin.setLatLng(ll);
+  _locPin.unbindTooltip().bindTooltip(document.createTextNode(p.label),{direction:'top',offset:[0,-22]});
+  _locFit();
+}
+function _locClear(){
+  _aceLoc=null;
+  if(_locPin){_locPin.remove();_locPin=null;}
+  _locMsg('');_locPicks([]);
+  _el('loc-clear').hidden=true;
+  try{localStorage.removeItem(_LOC_KEY);}catch(e){}
+  _locFit();
+}
+function _locSave(){try{localStorage.setItem(_LOC_KEY,JSON.stringify(_aceLoc));}catch(e){}}
+function _locRemember(){
+  if(_el('loc-remember').checked){if(_aceLoc)_locSave();}
+  else{try{localStorage.removeItem(_LOC_KEY);}catch(e){}}
+}
+function _locLoad(){
+  try{
+    var v=JSON.parse(localStorage.getItem(_LOC_KEY)||'null');
+    if(v&&isFinite(v.lat)&&isFinite(v.lon)){
+      _el('loc-remember').checked=true;
+      return{lat:+v.lat,lon:+v.lon,label:String(v.label||'Saved location')};
+    }
+  }catch(e){}
+  return null;
+}
+document.addEventListener('DOMContentLoaded',function(){
+  var geo=_el('loc-geo');
+  if(geo&&navigator.geolocation&&window.isSecureContext)geo.hidden=false;
+});
+"""
+ACTIVE_MAP_JS = ACTIVE_MAP_JS.replace('%(nominatim)s', NOMINATIM_SEARCH)
 
 THEME_INIT_JS = """(function(){try{var t=localStorage.getItem('ace-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light');else if(!t&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches)document.documentElement.setAttribute('data-theme','light');}catch(e){}})();"""
 
