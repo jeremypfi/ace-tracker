@@ -21,6 +21,7 @@ import unittest
 
 from playwright.sync_api import expect, sync_playwright
 
+import ace_data
 import ui_fixture_site
 
 BASEMAP_STYLE = json.dumps({
@@ -57,12 +58,36 @@ class _QuietHandler(http.server.SimpleHTTPRequestHandler):
         pass
 
 
+NHC_GIS_HOST = 'https://mapservices.weather.noaa.gov/'
+# Simon (EP5) is the fixture's one active storm. No swath was captured, so it
+# comes back empty like a missing layer.
+_SIMON_IDS = ace_data.nhc_gis_layer_ids('EP5')
+SIMON_GIS = {_SIMON_IDS[key]: f'EP5_{name}.geojson' for key, name in {
+    'cone': 'forecast_cone', 'track': 'forecast_track', 'warnings': 'watch_warning',
+    'radii': 'forecast_wind_radii'}.items()}
+
+
+def _nhc_gis_body(url):
+    layer_id = int(url.split('/MapServer/')[1].split('/')[0])
+    name = SIMON_GIS.get(layer_id)
+    if not name:
+        return json.dumps({'type': 'FeatureCollection', 'features': []})
+    with open(os.path.join(ui_fixture_site.NHC_SNAPSHOT, name)) as f:
+        data = json.load(f)
+    if 'where=tau%3D0' in url:  # what the service does with the page's filter
+        data['features'] = [x for x in data['features'] if x['properties'].get('tau') == 0]
+    return json.dumps(data)
+
+
 def _route(route):
     url = route.request.url
     if url.startswith('http://127.0.0.1:'):
         route.continue_()
     elif url.startswith('https://tiles.openfreemap.org/styles/'):
         route.fulfill(status=200, content_type='application/json', body=BASEMAP_STYLE)
+    elif url.startswith(NHC_GIS_HOST):
+        route.fulfill(status=200, content_type='application/json', body=_nhc_gis_body(url),
+                      headers={'access-control-allow-origin': '*'})
     else:
         route.fulfill(status=200, body='')
 
@@ -166,6 +191,59 @@ class TestTrackMaps(UITestCase):
         self.assertLess(paths(), with_models)
         page.locator('#sptoggle-simon').check()
         self.assertEqual(paths(), with_models)
+
+
+class TestNhcAdvisoryLayers(UITestCase):
+    """Live NHC GIS layers on active storms' maps (#169)."""
+
+    def test_active_storm_draws_cone_warnings_and_radii(self):
+        page = self.open('index.html#storm-row-simon')
+        self.assert_map_drawn('simon')
+        legend = page.locator('#nhclegend-simon')
+        for label in ('Forecast cone', 'Hurricane Warning', 'Hurricane Watch', '34 kt winds', '64 kt winds'):
+            expect(legend).to_contain_text(label)
+        # The OFCL model track already shows NHC's forecast, and no swath was captured.
+        self.assertNotIn('NHC forecast track', legend.inner_text())
+        self.assertNotIn('swath', legend.inner_text())
+        for pane in ('cone', 'radii', 'warnings'):
+            self.assertGreater(page.locator(f'#trmap-simon .leaflet-nhc-{pane}-pane path').count(), 0, pane)
+        expect(page.locator('#trmap-simon .leaflet-control-attribution')).to_contain_text('Advisory layers: NHC')
+
+    def test_service_down_leaves_map_as_before(self):
+        for failure in ('abort', 'http500', 'arcgis_error'):
+            with self.subTest(failure=failure):
+                page = self.open('index.html#pacific')
+
+                hits = []
+
+                def fail(route, failure=failure):
+                    hits.append(route.request.url)
+                    if failure == 'abort':
+                        route.abort('connectionfailed')
+                    elif failure == 'http500':
+                        route.fulfill(status=500, body='', headers={'access-control-allow-origin': '*'})
+                    else:
+                        route.fulfill(status=200, content_type='application/json',
+                                      body='{"error":{"code":400,"message":"Invalid query"}}',
+                                      headers={'access-control-allow-origin': '*'})
+                self.context.route(NHC_GIS_HOST + '**', fail)
+                page.locator('#trbtn-simon').click()
+                self.assert_map_drawn('simon')
+                page.wait_for_timeout(300)
+                expect(page.locator('#nhclegend-simon')).to_be_hidden()
+                self.assertEqual(page.locator('#trmap-simon [class*="leaflet-nhc-"] path').count(), 0)
+                self.assertNotIn('NHC', page.locator('#trmap-simon .leaflet-control-attribution').inner_text())
+                self.assertEqual(len(hits), 4)  # swath, cone, radii, warnings (track: OFCL shown)
+                self.assertEqual(self.console, [])  # the next open() resets it
+
+    def test_inactive_storms_make_no_requests(self):
+        page = self.open('index.html#pacific')
+        seen = []
+        page.on('request', lambda r: r.url.startswith(NHC_GIS_HOST) and seen.append(r.url))
+        page.locator('#trbtn-rachel').click()  # post-tropical in the fixture
+        self.assert_map_drawn('rachel')
+        self.assertEqual(page.locator('#nhclegend-rachel').count(), 0)
+        self.assertEqual(seen, [])
 
 
 class TestShareButtons(UITestCase):
