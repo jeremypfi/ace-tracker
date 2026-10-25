@@ -88,9 +88,10 @@ function _convertWind(kt) {
   if(unit==='kmh')return Math.round(kt*1.852);
   return kt;
 }
-// Distances follow the wind unit: kt -> nautical miles, mph -> miles, km/h -> km.
-var DIST_UNIT_KM={kt:1.852,mph:1.609344,kmh:1};
-var DIST_UNIT_LABELS={kt:'nm',mph:'mi',kmh:'km'};
+// Distances follow the wind unit's system: miles with kt or mph (US visitors,
+// whatever the site's knots default), km with km/h.
+var DIST_UNIT_KM={kt:1.609344,mph:1.609344,kmh:1};
+var DIST_UNIT_LABELS={kt:'mi',mph:'mi',kmh:'km'};
 function _fmtDist(km) {
   var unit=_windUnit();
   return Math.round(km/DIST_UNIT_KM[unit]).toLocaleString('en-US')+' '+DIST_UNIT_LABELS[unit];

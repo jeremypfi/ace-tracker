@@ -488,9 +488,9 @@ class TestProximityReadout(UITestCase):
         kyle = self.items().nth(0)
         expect(kyle).to_contain_text('Distance to the center only')
         expect(kyle).to_contain_text('Tropical storm')
-        self.assertRegex(kyle.locator('.prox-dist').inner_text(), r'^[0-9,]+ nm [NESW]{1,3}$')
+        self.assertRegex(kyle.locator('.prox-dist').inner_text(), r'^[0-9,]+ mi [NESW]{1,3}$')
         simon = self.items().nth(1)  # ~3,500 km away: no closer detail
-        expect(simon).to_contain_text('Not forecast to come within ~810 nm.')
+        expect(simon).to_contain_text('Not forecast to come within ~932 mi.')
         expect(simon).not_to_contain_text('inside the forecast cone')
         expect(simon).not_to_contain_text('Tropical-storm-force winds are')
         expect(page.locator('#loc-readout .prox-disclaimer')).to_contain_text('Not for safety decisions')
@@ -505,17 +505,19 @@ class TestProximityReadout(UITestCase):
         # 24 h after the 11/1800 UTC advisory point is Mon 18 UTC: 1 PM in Chicago.
         expect(simon).to_contain_text('Forecast to pass over or near you around Mon 1 PM.')
         self.pin(21.0, -105.0, 'Inland, 165 km east')
-        self.assertRegex(simon.inner_text(), r'Forecast to pass ~[0-9]+ nm [NESW]{1,3} of you around Mon [0-9]+ [AP]M[.]')
+        self.assertRegex(simon.inner_text(), r'Forecast to pass ~[0-9]+ mi [NESW]{1,3} of you around Mon [0-9]+ [AP]M[.]')
         self.assertRegex(simon.inner_text(), r'(Inside the|Tropical-storm-force winds are ~)')
 
     def test_distances_follow_the_unit_toggle(self):
         page = self.open()
         self.pin(25.77, -80.19, 'Miami, Florida')
         first = self.items().nth(0).locator('.prox-dist')
-        self.assertIn(' nm ', first.inner_text())
-        page.locator('#unitBtn').click()
+        self.assertIn(' mi ', first.inner_text())  # miles by default, though wind is in knots
+        page.locator('#unitBtn').click()  # mph
         self.assertIn(' mi ', first.inner_text())
-        self.assertIn(' mi', page.locator('#trmap-active .dist-tip').first.inner_text())
+        page.locator('#unitBtn').click()  # km/h
+        self.assertIn(' km ', first.inner_text())
+        self.assertIn(' km', page.locator('#trmap-active .dist-tip').first.inner_text())
 
     def test_clearing_removes_readout_and_lines(self):
         page = self.open()
