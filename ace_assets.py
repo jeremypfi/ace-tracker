@@ -228,8 +228,8 @@ function _nhcFetch(url,cb){
     if(j&&j.features&&j.features.length)cb(j);
   }).catch(function(){clearTimeout(timer);});
 }
-function _nhcLegend(slug,drawn){
-  var el=document.getElementById('nhclegend-'+slug);
+function _nhcLegend(legendId,drawn){
+  var el=document.getElementById(legendId);
   if(!el)return;
   var items=[];
   function add(color,label,line){items.push('<div class="legend-item"><div class="legend-dot'+(line?' legend-line':'')+'" style="background:'+color+'"></div>'+label+'</div>');}
@@ -240,11 +240,13 @@ function _nhcLegend(slug,drawn){
   if(drawn.swath)add('rgba(255,235,59,0.45)','Past wind swath');
   el.innerHTML=items.join('');
 }
-function _addNhcLayers(map,slug,d,refLon){
-  var ids=d.nhc_layers,drawn={},credited=false;
+// `opts.legend` is the legend element's id and `opts.drawn` what's on it so far,
+// shared when several storms draw on one map. `opts.skipTrack` when the map
+// already shows the OFCL model track, which is this same forecast.
+function _addNhcLayers(map,d,refLon,opts){
+  var ids=d.nhc_layers,drawn=opts.drawn;
   _NHC_LAYERS.forEach(function(spec){
-    // The OFCL model track is this same forecast, already drawn.
-    if(spec.key==='track'&&d.spaghetti&&d.spaghetti.OFCL)return;
+    if(spec.key==='track'&&opts.skipTrack)return;
     var url='%(nhc_service)s/'+ids[spec.key]+'/query?where='+encodeURIComponent(spec.where||'1=1')
       +'&outFields='+spec.fields+'&geometryPrecision=3&f=geojson';
     _nhcFetch(url,function(gj){
@@ -262,11 +264,11 @@ function _addNhcLayers(map,slug,d,refLon){
           }else drawn[spec.key]=true;
           if(spec.key==='warnings'&&_NHC_WW[p.tcww])layer.bindTooltip(_NHC_WW[p.tcww][1],{sticky:true});
         }}).addTo(map);
-      if(!credited){
-        credited=true;
+      if(!map._nhcCredited){
+        map._nhcCredited=true;
         map.attributionControl.addAttribution('Advisory layers: <a href="https://www.nhc.noaa.gov/gis/" target="_blank" rel="noopener">NHC</a>');
       }
-      _nhcLegend(slug,drawn);
+      _nhcLegend(opts.legend,drawn);
     });
   });
 }
@@ -288,7 +290,8 @@ function _buildMap(slug){
     mk.bindTooltip('<b>'+d.name+'</b><br>'+p.time+'<br>'+p.status+' \xb7 '+_fmtWind(p.wind),{direction:'top',offset:[0,-6]});
     if(last&&d.active)mk.bindPopup('<b>Current Position</b><br>'+p.time+'<br>'+p.status+' \xb7 '+_fmtWind(p.wind),{maxWidth:160}).openPopup();
   });
-  if(d.active&&d.nhc_layers)_addNhcLayers(map,slug,d,lls[lls.length-1][1]);
+  if(d.active&&d.nhc_layers)_addNhcLayers(map,d,lls[lls.length-1][1],
+    {legend:'nhclegend-'+slug,drawn:{},skipTrack:!!(d.spaghetti&&d.spaghetti.OFCL)});
   var boundsPts=lls.slice();
   var spagGroup=L.layerGroup();
   var legendHtml='';
@@ -323,6 +326,44 @@ function _toggleSpaghetti(slug){
   if(!cb||!group||!map)return;
   if(cb.checked)group.addTo(map);else map.removeLayer(group);
 }"""
+
+# Dashboard-only: one map of every active storm in both basins (#178). Builds
+# after the page has loaded, so MapLibre never competes with the first paint.
+ACTIVE_MAP_CSS = """  .active-map { background:var(--card); border-radius:12px; padding:16px; margin-bottom:16px; }
+  .active-map .track-map { height:clamp(300px,55vh,480px); }
+  .active-map .nhc-legend { margin-top:0; }
+  .active-map-storms { display:flex; flex-wrap:wrap; gap:8px; margin-top:4px; }
+  .active-map-storm { color:var(--accent); text-decoration:none; border:1px solid var(--border); border-radius:16px; padding:4px 12px; font-size:0.85em; }
+  .active-map-storm:hover, .active-map-storm:focus-visible { border-color:var(--accent); }
+  .active-map-basin { color:var(--muted); font-size:0.85em; }"""
+
+ACTIVE_MAP_JS = """function _buildActiveMap(){
+  var el=document.getElementById('trmap-active');
+  if(!el||el._leaflet_id||!ACE_ACTIVE.length)return;
+  if(typeof L==='undefined'){_hideTrackSkeleton('active');_libMissing(el,'Map unavailable right now. Active storms are listed below.');return;}
+  var map=L.map(el,{zoomControl:true,attributionControl:true,maxZoom:10});
+  _addBasemap(map,'active');
+  setTimeout(function(){_hideTrackSkeleton('active');},4000);
+  _trMapObjs.active=map;
+  var drawn={},boundsPts=[];
+  ACE_ACTIVE.forEach(function(s){
+    var d=ACE_TRACKS[s.slug];
+    if(!d||!d.points||!d.points.length)return;
+    var p=d.points[d.points.length-1];
+    // One frame for both basins: a Central Pacific storm past 180 deg stays west of Hawaii.
+    var ll=[p.lat,p.lon>90?p.lon-360:p.lon];
+    var c=_tc(p.status,p.wind);
+    L.circleMarker(ll,{radius:8,fillColor:c,color:'#fff',weight:2,fillOpacity:1,opacity:1}).addTo(map)
+      .bindTooltip('<b>'+d.name+'</b><br>'+p.status+' \xb7 '+_fmtWind(p.wind),{direction:'top',offset:[0,-8]})
+      .on('click',function(){_openStormRow('storm-row-'+s.slug);});
+    boundsPts.push(ll);
+    var ofcl=d.spaghetti&&d.spaghetti.OFCL;
+    if(ofcl&&ofcl.length)boundsPts=boundsPts.concat(_unwrapSeries([ll].concat(ofcl.map(function(q){return[q.lat,q.lon];}))).slice(1));
+    if(d.nhc_layers)_addNhcLayers(map,d,ll[1],{legend:'nhclegend-active',drawn:drawn,skipTrack:false});
+  });
+  if(boundsPts.length)map.fitBounds(L.latLngBounds(boundsPts),{padding:[40,40],maxZoom:6});
+}
+window.addEventListener('load',_buildActiveMap);"""
 
 THEME_INIT_JS = """(function(){try{var t=localStorage.getItem('ace-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light');else if(!t&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches)document.documentElement.setAttribute('data-theme','light');}catch(e){}})();"""
 

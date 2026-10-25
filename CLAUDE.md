@@ -25,7 +25,7 @@ uv pip install -r requirements-dev.txt && uv run python -m playwright install ch
 
 - Use `unittest` in `test_ace_tracker.py` for logic, calculations and generated HTML strings.
 - Use Playwright (`test_ui.py`) only for behavior that needs a real browser and JS: tab switching, track maps, share buttons, toggles, phone layout, the no-JS fallback.
-- `test_ui.py` runs against `ui_fixture_site.py`: the whole site built offline from `fixtures/` with the clock frozen at 2026-10-11 15:00 UTC (Isaias and Rachel post-tropical, Simon active). Tests may name those storms. Add new fixture storms there, not live data.
+- `test_ui.py` runs against `ui_fixture_site.py`: the whole site built offline from `fixtures/` with the clock frozen at 2026-10-11 15:00 UTC (Isaias and Rachel post-tropical; Simon active in the Pacific, Kyle in the Atlantic with no NHC GIS layers). Tests may name those storms. Add new fixture storms there, not live data.
 
 ## Repository Rules
 

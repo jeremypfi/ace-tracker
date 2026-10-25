@@ -96,11 +96,15 @@ class UITestCase(unittest.TestCase):
     """Each test gets a fresh browser context with the clock pinned to the
     fixture's 'now', so relative times like '3h ago' are stable."""
 
-    def open(self, path='index.html', **context_args):
+    def open(self, path='index.html', routes=(), **context_args):
+        """`routes`: extra (url pattern, handler) pairs, set before the page loads
+        and taking precedence over the offline defaults."""
         context_args.setdefault('viewport', {'width': 1280, 'height': 900})
         self.context = _browser.new_context(**context_args)
         self.addCleanup(self.context.close)
         self.context.route('**/*', _route)
+        for pattern, handler in routes:
+            self.context.route(pattern, handler)
         page = self.context.new_page()
         self.console = []
         page.on('console', self._on_console)
@@ -212,8 +216,6 @@ class TestNhcAdvisoryLayers(UITestCase):
     def test_service_down_leaves_map_as_before(self):
         for failure in ('abort', 'http500', 'arcgis_error'):
             with self.subTest(failure=failure):
-                page = self.open('index.html#pacific')
-
                 hits = []
 
                 def fail(route, failure=failure):
@@ -226,24 +228,65 @@ class TestNhcAdvisoryLayers(UITestCase):
                         route.fulfill(status=200, content_type='application/json',
                                       body='{"error":{"code":400,"message":"Invalid query"}}',
                                       headers={'access-control-allow-origin': '*'})
-                self.context.route(NHC_GIS_HOST + '**', fail)
+                page = self.open('index.html#pacific', routes=[(NHC_GIS_HOST + '**', fail)])
                 page.locator('#trbtn-simon').click()
-                self.assert_map_drawn('simon')
+                for slug in ('simon', 'active'):
+                    self.assert_map_drawn(slug)
                 page.wait_for_timeout(300)
-                expect(page.locator('#nhclegend-simon')).to_be_hidden()
-                self.assertEqual(page.locator('#trmap-simon [class*="leaflet-nhc-"] path').count(), 0)
-                self.assertNotIn('NHC', page.locator('#trmap-simon .leaflet-control-attribution').inner_text())
-                self.assertEqual(len(hits), 4)  # swath, cone, radii, warnings (track: OFCL shown)
+                for slug in ('simon', 'active'):
+                    expect(page.locator(f'#nhclegend-{slug}')).to_be_hidden()
+                    self.assertEqual(page.locator(f'#trmap-{slug} [class*="leaflet-nhc-"] path').count(), 0)
+                    self.assertNotIn('NHC', page.locator(f'#trmap-{slug} .leaflet-control-attribution').inner_text())
+                # Simon's map: 4 (OFCL stands in for the track). Active map: 5 each for Kyle and Simon.
+                self.assertEqual(len(hits), 14)
                 self.assertEqual(self.console, [])  # the next open() resets it
 
     def test_inactive_storms_make_no_requests(self):
         page = self.open('index.html#pacific')
+        rachel = {f'/MapServer/{i}/' for i in ace_data.nhc_gis_layer_ids('EP3').values()}
         seen = []
-        page.on('request', lambda r: r.url.startswith(NHC_GIS_HOST) and seen.append(r.url))
+        page.on('request', lambda r: any(i in r.url for i in rachel) and seen.append(r.url))
         page.locator('#trbtn-rachel').click()  # post-tropical in the fixture
         self.assert_map_drawn('rachel')
         self.assertEqual(page.locator('#nhclegend-rachel').count(), 0)
         self.assertEqual(seen, [])
+
+
+class TestActiveStormsMap(UITestCase):
+    """The dashboard's combined map (#178): Kyle (Atlantic, no GIS layers) and Simon (Pacific)."""
+
+    def last_position(self, slug):
+        return self.page.evaluate('s => { const p = ACE_TRACKS[s].points; return [p[p.length-1].lat, p[p.length-1].lon]; }', slug)
+
+    def test_both_basins_on_one_map(self):
+        page = self.open()
+        self.assert_map_drawn('active')
+        self.assertEqual(page.locator('#trmap-active .leaflet-overlay-pane path.leaflet-interactive').count(), 2)
+        for slug in ('kyle', 'simon'):
+            self.assertTrue(page.evaluate('ll => _trMapObjs.active.getBounds().contains(ll)', self.last_position(slug)), slug)
+        # Simon's layers draw, including NHC's own forecast track (no model tracks on this map);
+        # Kyle's come back empty and just leave his marker.
+        legend = page.locator('#nhclegend-active')
+        for label in ('Forecast cone', 'NHC forecast track', 'Hurricane Warning', '34 kt winds'):
+            expect(legend).to_contain_text(label)
+        expect(page.locator('#trmap-active .leaflet-control-attribution')).to_contain_text('Advisory layers: NHC')
+
+    def test_storm_link_opens_its_row_in_the_other_basin(self):
+        page = self.open()
+        expect(page.locator('#atlantic')).to_be_visible()
+        link = page.locator('#active-storms a[href="#storm-row-simon"]')
+        link.click()
+        expect(page.locator('#pacific')).to_be_visible()
+        expect(page.locator('#trbtn-simon')).to_have_attribute('aria-expanded', 'true')
+        self.assert_map_drawn('simon')
+        link.click()  # opens, never toggles shut
+        expect(page.locator('#trbtn-simon')).to_have_attribute('aria-expanded', 'true')
+
+    def test_phone_width(self):
+        page = self.open(viewport=PHONE)
+        self.assert_map_drawn('active')
+        self.assertTrue(self.no_horizontal_scroll())
+        self.assertLessEqual(page.locator('#trmap-active').bounding_box()['width'], PHONE['width'])
 
 
 class TestShareButtons(UITestCase):
@@ -319,6 +362,7 @@ class TestNoJavaScript(UITestCase):
     def test_dashboard_shows_default_basin_storms(self):
         page = self.open(java_script_enabled=False)
         self.assertTrue(page.locator('#atlantic').is_visible())
+        self.assertFalse(page.locator('#active-storms').is_visible())  # would be an empty map box
         for name in ('Arthur', 'Fay', 'Isaias'):
             self.assertTrue(page.locator(f'#storm-row-{name.lower()}').is_visible(), name)
 

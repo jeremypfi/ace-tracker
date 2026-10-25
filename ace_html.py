@@ -34,7 +34,7 @@ from ace_data import (
 
 from ace_assets import (
     BASE_CSS, NAV_CSS, HEADINGS_CSS, STORM_PANEL_CSS, CONE_CSS,
-    WIND_JS, LIB_MISSING_JS, TRACK_MAP_JS, THEME_INIT_JS,
+    WIND_JS, LIB_MISSING_JS, TRACK_MAP_JS, THEME_INIT_JS, ACTIVE_MAP_CSS, ACTIVE_MAP_JS,
 )
 
 logger = logging.getLogger(__name__)
@@ -517,6 +517,48 @@ def _storm_track_entry(st):
     }
 
 
+_CATEGORY_LEGEND_HTML = (
+    '<div class="track-legend">'
+    '<div class="legend-item"><div class="legend-dot" style="background:#9e9e9e"></div>TD</div>'
+    '<div class="legend-item"><div class="legend-dot" style="background:#81d4fa"></div>TS/SS</div>'
+    '<div class="legend-item"><div class="legend-dot" style="background:#ffe082"></div>Cat 1</div>'
+    '<div class="legend-item"><div class="legend-dot" style="background:#ffb74d"></div>Cat 2</div>'
+    '<div class="legend-item"><div class="legend-dot" style="background:#ff8a65"></div>Cat 3</div>'
+    '<div class="legend-item"><div class="legend-dot" style="background:#ef5350"></div>Cat 4/5</div>'
+    '</div>'
+)
+
+
+def _active_storms(payloads):
+    """Active storms in every basin, for the combined map (#178): slug, name and
+    basin, in basin order then by ACE. The map reads positions and NHC layer
+    ids from each storm's ACE_TRACKS entry."""
+    return [{'slug': st['slug'], 'name': st['name'], 'basin': bd['basin_key']}
+            for bd in payloads for st in bd['storms'] if st['is_active'] and st['track_points']]
+
+
+def _active_map_html(active):
+    """Combined active-storms map section, or '' when nothing is active."""
+    if not active:
+        return ''
+    links = ''.join(
+        f'<a href="#storm-row-{html_escape(s["slug"])}" class="active-map-storm" '
+        f'onclick="return !_openStormRow(this.hash.slice(1))">{html_escape(s["name"])}'
+        f' <span class="active-map-basin">{"Atlantic" if s["basin"] == "atlantic" else "Pacific"}</span></a>'
+        for s in active)
+    return f'''<section class="active-map" id="active-storms" aria-labelledby="active-map-title">
+  <noscript><style>#active-storms {{ display:none; }}</style></noscript>
+  <h2 id="active-map-title">Active storms</h2>
+  <div class="track-map-wrap">
+    <div class="track-map" id="trmap-active" role="region" aria-label="Map of active storms in the Atlantic and Pacific"></div>
+    <div class="track-map-skeleton" id="trskel-active"><div class="skeleton-spinner"></div></div>
+  </div>
+  {_CATEGORY_LEGEND_HTML}
+  <div class="track-legend nhc-legend" id="nhclegend-active" aria-label="NHC advisory layers"></div>
+  <div class="active-map-storms">{links}</div>
+</section>'''
+
+
 def _storm_panel_inner_html(st, asset_prefix=''):
     """Expanded panel for one storm: meta boxes, intensity bar, map, cone.
     `asset_prefix` is the path from the page to the site root ('' or '../').
@@ -552,16 +594,7 @@ def _storm_panel_inner_html(st, asset_prefix=''):
         )
 
     ibar = _intensity_bar_html(track_points)
-    legend = (
-        '<div class="track-legend">'
-        '<div class="legend-item"><div class="legend-dot" style="background:#9e9e9e"></div>TD</div>'
-        '<div class="legend-item"><div class="legend-dot" style="background:#81d4fa"></div>TS/SS</div>'
-        '<div class="legend-item"><div class="legend-dot" style="background:#ffe082"></div>Cat 1</div>'
-        '<div class="legend-item"><div class="legend-dot" style="background:#ffb74d"></div>Cat 2</div>'
-        '<div class="legend-item"><div class="legend-dot" style="background:#ff8a65"></div>Cat 3</div>'
-        '<div class="legend-item"><div class="legend-dot" style="background:#ef5350"></div>Cat 4/5</div>'
-        '</div>'
-    ) if track_points else ''
+    legend = _CATEGORY_LEGEND_HTML if track_points else ''
 
     meta = (
         f'<div class="storm-meta">'
@@ -768,6 +801,8 @@ def render_dashboard_html(payloads, share_image=None, share_alt=None):
     # Escape </ sequences so the JSON blobs can't break out of the <script> tag
     _track_json = json.dumps(all_track_data).replace('</', '<\\/')
     _pace_json = json.dumps(all_pace_data).replace('</', '<\\/')
+    active = _active_storms(payloads)
+    _active_json = json.dumps(active).replace('</', '<\\/')
 
     season_year = max((bd['year'] for bd in payloads), default=datetime.now(timezone.utc).year)
     page_title = f'{season_year} Hurricane Season ACE Tracker: Atlantic &amp; East Pacific | aceofcanes.com'
@@ -908,6 +943,7 @@ def render_dashboard_html(payloads, share_image=None, share_alt=None):
   @media(min-width:768px) {{ .pace-chart-wrap {{ height:300px; }} }}
 {CONE_CSS}
   .storm-page-link {{ font-size:0.85em; text-align:right; margin-top:8px; }}
+{ACTIVE_MAP_CSS}
   .storm-page-link a {{ color:var(--accent); text-decoration:none; }}
   .storm-page-link a:hover {{ text-decoration:underline; }}
 </style>
@@ -925,6 +961,7 @@ def render_dashboard_html(payloads, share_image=None, share_alt=None):
   <summary>What is ACE? <span class="ace-explain-hint">(tap to expand)</span></summary>
   <p>Accumulated Cyclone Energy (ACE) measures total hurricane season activity by combining storm intensity and duration. A major hurricane that lasts two weeks contributes far more than a brief tropical storm. NOAA uses seasonal ACE totals to classify years as <b>Below Normal</b> (&lt;73), <b>Near Normal</b> (73–126), <b>Above Normal</b> (126–159), or <b>Extremely Active</b> (159+). <a href="what-is-ace.html">More on ACE, plus a calculator →</a></p>
 </details>
+{_active_map_html(active)}
 <div class="toggle">
   <button class="active" aria-pressed="true" onclick="show('atlantic',this)">Atlantic</button>
   <button aria-pressed="false" onclick="show('pacific',this)">E/C Pacific</button>
@@ -1016,22 +1053,29 @@ document.addEventListener('DOMContentLoaded',function() {{
   if(match) {{
     match.click();
   }} else if(hash.indexOf('storm-row-')===0) {{
-    var row=document.getElementById(hash);
-    if(row) {{
-      var card=row.closest('.basin-card');
-      var basinBtn=card&&[].slice.call(document.querySelectorAll('.toggle button')).filter(function(b){{return(b.getAttribute('onclick')||'').indexOf("'"+card.id+"'")>=0;}})[0];
-      if(basinBtn)basinBtn.click();
-      toggleTrack(hash.slice('storm-row-'.length));
-      setTimeout(function(){{
-        row.scrollIntoView({{behavior:'smooth',block:'center'}});
-        row.classList.add('storm-highlight');
-        setTimeout(function(){{row.classList.remove('storm-highlight');}},2500);
-      }},60);
-    }}
+    _openStormRow(hash);
   }}
   var activeCard=document.querySelector('.basin-card.active');
   if(activeCard)_renderPaceChart(activeCard.id);
 }});
+// Shows a storm's row with its map open: switches basin tab, scrolls, flashes.
+// Returns false if there's no such row.
+function _openStormRow(id) {{
+  var row=document.getElementById(id);
+  if(!row)return false;
+  var slug=id.slice('storm-row-'.length);
+  var card=row.closest('.basin-card');
+  var basinBtn=card&&[].slice.call(document.querySelectorAll('.toggle button')).filter(function(b){{return(b.getAttribute('onclick')||'').indexOf("'"+card.id+"'")>=0;}})[0];
+  if(basinBtn&&!card.classList.contains('active'))basinBtn.click();
+  var panel=document.getElementById('trpanel-'+slug);
+  if(panel&&!panel.classList.contains('open'))toggleTrack(slug);
+  setTimeout(function(){{
+    row.scrollIntoView({{behavior:'smooth',block:'center'}});
+    row.classList.add('storm-highlight');
+    setTimeout(function(){{row.classList.remove('storm-highlight');}},2500);
+  }},60);
+  return true;
+}}
 var _ds={{}};
 function sortDash(th,col,type){{
   var card=th.closest('.basin-card');
@@ -1058,6 +1102,7 @@ function sortDash(th,col,type){{
   card.querySelectorAll('th.sort-th').forEach(function(h,i){{if(i===col)h.setAttribute('aria-sort',asc?'ascending':'descending');else h.removeAttribute('aria-sort');}});
 }}
 var ACE_TRACKS={_track_json};
+var ACE_ACTIVE={_active_json};
 var ACE_PACE={_pace_json};
 var _paceCharts={{}};
 function _paceColors(){{
@@ -1140,6 +1185,7 @@ function _restylePaceCharts(){{
   }});
 }}
 {TRACK_MAP_JS}
+{ACTIVE_MAP_JS}
 </script>
 <script src="vendor/leaflet-1.9.4/leaflet.js" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script>
 <script src="vendor/chart.js-4.5.1/chart.umd.min.js" integrity="sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ" crossorigin="anonymous"></script>
