@@ -549,6 +549,21 @@ def _active_map_html(active):
     return f'''<section class="active-map" id="active-storms" aria-labelledby="active-map-title">
   <noscript><style>#active-storms {{ display:none; }}</style></noscript>
   <h2 id="active-map-title">Active storms</h2>
+  <form class="loc-form" id="loc-form" role="search" onsubmit="return _locSubmit(event)">
+    <label for="loc-q" class="loc-label">Show where you are on the map</label>
+    <div class="loc-row">
+      <input id="loc-q" type="search" autocomplete="off" maxlength="200" enterkeyhint="search" placeholder="City, ZIP or address">
+      <button type="submit" class="loc-btn loc-primary">Find</button>
+      <button type="button" class="loc-btn" id="loc-geo" hidden onclick="_locUseMine()">Use my location</button>
+    </div>
+    <p class="loc-msg" id="loc-msg" role="status" aria-live="polite"></p>
+    <div class="loc-picks" id="loc-picks" role="group" aria-label="Matching places" hidden></div>
+    <div class="loc-row loc-meta">
+      <label class="loc-remember"><input type="checkbox" id="loc-remember" onchange="_locRemember()"> Remember on this device</label>
+      <button type="button" class="loc-link" id="loc-clear" hidden onclick="_locClear()">Clear location</button>
+    </div>
+    <p class="loc-note">Or tap the map to drop a pin. Your location stays in your browser; searches are looked up by OpenStreetMap&#8217;s <a href="https://nominatim.org/" target="_blank" rel="noopener">Nominatim</a>.</p>
+  </form>
   <div class="track-map-wrap">
     <div class="track-map" id="trmap-active" role="region" aria-label="Map of active storms in the Atlantic and Pacific"></div>
     <div class="track-map-skeleton" id="trskel-active"><div class="skeleton-spinner"></div></div>
@@ -973,6 +988,7 @@ def render_dashboard_html(payloads, share_image=None, share_alt=None):
     <li><a href="https://www.nhc.noaa.gov/data/#hurdat" target="_blank" rel="noopener noreferrer">NOAA HURDAT2</a> — Historical best-track data (1991–present) for storm tracks, wind speeds, and ACE calculations</li>
     <li><a href="https://www.nhc.noaa.gov/data/#hurdat" target="_blank" rel="noopener noreferrer">NHC Real-time Best Track</a> — Current season preliminary storm data fetched via Tropycal (<code>include_btk=True</code>); updated continuously during active storms</li>
     <li><a href="https://www.nhc.noaa.gov/gis/" target="_blank" rel="noopener noreferrer">NHC GIS</a> — Live forecast cone, watches/warnings and wind radii on active storms' track maps, loaded from NOAA's map service when you open a map</li>
+    <li><a href="https://nominatim.org/" target="_blank" rel="noopener noreferrer">Nominatim</a> (<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">© OpenStreetMap contributors</a>) — Place search on the active-storms map; only the text you search is sent, straight from your browser</li>
     <li><a href="https://www.cpc.ncep.noaa.gov/products/outlooks/background_information.shtml" target="_blank" rel="noopener noreferrer">NOAA CPC</a> — Season classification thresholds and 1991–2020 climatological normals</li>
     {API_DOCS_SOURCE_LI}
   </ul>
