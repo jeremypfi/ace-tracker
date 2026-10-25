@@ -1947,6 +1947,7 @@ class TestActiveStormsMap(unittest.TestCase):
         self.assertIn('Your location stays in your browser', html)
         self.assertIn('href="https://nominatim.org/"', html)
         self.assertIn('id="loc-geo" hidden', html)  # shown by JS only where geolocation works
+        self.assertIn('<div class="loc-readout" id="loc-readout" aria-live="polite" hidden></div>', html)  # #180
 
     def test_dashboard_credits_nominatim_and_osm(self):
         from ace_assets import ACTIVE_MAP_JS, NOMINATIM_SEARCH
@@ -3105,12 +3106,12 @@ class TestNhcGisFixtures(unittest.TestCase):
 class TestNhcGisLayerIds(unittest.TestCase):
     """ace_data.nhc_gis_layer_ids(): the layer ids the map JS fetches (#169)."""
 
-    NAMES = {'track': 'Forecast Track', 'cone': 'Forecast Cone', 'warnings': 'Watch-Warning',
+    NAMES = {'points': 'Forecast Points', 'track': 'Forecast Track', 'cone': 'Forecast Cone', 'warnings': 'Watch-Warning',
              'swath': 'Past Cumulative Wind Swath', 'radii': 'Forecast Wind Radii'}
 
     def test_known_bins(self):
         self.assertEqual(ace_data.nhc_gis_layer_ids('AT1'),
-                         {'track': 7, 'cone': 8, 'warnings': 9, 'swath': 13, 'radii': 16})
+                         {'points': 6, 'track': 7, 'cone': 8, 'warnings': 9, 'swath': 13, 'radii': 16})
         self.assertEqual(ace_data.nhc_gis_layer_ids('ep5')['cone'], 242)
         self.assertEqual(ace_data.nhc_gis_layer_ids('CP5')['radii'], 380)
 

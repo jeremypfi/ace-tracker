@@ -88,6 +88,13 @@ function _convertWind(kt) {
   if(unit==='kmh')return Math.round(kt*1.852);
   return kt;
 }
+// Distances follow the wind unit: kt -> nautical miles, mph -> miles, km/h -> km.
+var DIST_UNIT_KM={kt:1.852,mph:1.609344,kmh:1};
+var DIST_UNIT_LABELS={kt:'nm',mph:'mi',kmh:'km'};
+function _fmtDist(km) {
+  var unit=_windUnit();
+  return Math.round(km/DIST_UNIT_KM[unit]).toLocaleString('en-US')+' '+DIST_UNIT_LABELS[unit];
+}
 function _fmtWind(kt) {
   return _convertWind(kt)+' '+WIND_UNIT_LABELS[_windUnit()];
 }
@@ -97,6 +104,9 @@ function applyWindUnit() {
   if(btn){btn.textContent=WIND_UNIT_LABELS[unit];btn.setAttribute('aria-label','Wind speed unit: '+WIND_UNIT_LABELS[unit]);}
   document.querySelectorAll('.wind-val').forEach(function(el){
     el.textContent=String(_convertWind(parseFloat(el.getAttribute('data-kt'))));
+  });
+  document.querySelectorAll('.dist-val').forEach(function(el){
+    el.textContent=_fmtDist(parseFloat(el.getAttribute('data-km')));
   });
   document.querySelectorAll('.wind-val-unit').forEach(function(el){
     el.textContent=_fmtWind(parseFloat(el.getAttribute('data-kt')));
@@ -208,7 +218,9 @@ var _NHC_LAYERS=[
   {key:'cone',z:370,fields:'objectid'},
   {key:'radii',z:380,fields:'radii',where:'tau=0'},
   {key:'warnings',z:390,fields:'tcww'},
-  {key:'track',z:395,fields:'objectid'}
+  {key:'track',z:395,fields:'objectid'},
+  // Not drawn: their times give the proximity readout's closest approach (#180).
+  {key:'points',fields:'tau,validtime,fldatelbl',dataOnly:true}
 ];
 function _nhcStyle(key,p){
   if(key==='cone')return{color:'#ffffff',weight:1,opacity:0.7,fillColor:'#ffffff',fillOpacity:0.15};
@@ -218,15 +230,16 @@ function _nhcStyle(key,p){
   if(key==='swath')return{stroke:false,fillColor:c,fillOpacity:0.12};
   return{color:c,weight:1,opacity:0.9,fillColor:c,fillOpacity:0.2};
 }
+// cb(geojson) with at least one feature, or cb(null) on any failure or empty layer.
 function _nhcFetch(url,cb){
-  if(!window.fetch)return;
+  if(!window.fetch){cb(null);return;}
   var ctl=window.AbortController?new AbortController():null;
   var timer=ctl?setTimeout(function(){ctl.abort();},10000):null;
   fetch(url,ctl?{signal:ctl.signal}:{}).then(function(r){return r.ok?r.json():null;}).then(function(j){
     clearTimeout(timer);
     // ArcGIS reports query errors as a 200 with {error:...} and no features.
-    if(j&&j.features&&j.features.length)cb(j);
-  }).catch(function(){clearTimeout(timer);});
+    cb(j&&j.features&&j.features.length?j:null);
+  }).catch(function(){clearTimeout(timer);cb(null);});
 }
 function _nhcLegend(legendId,drawn){
   var el=document.getElementById(legendId);
@@ -243,13 +256,18 @@ function _nhcLegend(legendId,drawn){
 // `opts.legend` is the legend element's id and `opts.drawn` what's on it so far,
 // shared when several storms draw on one map. `opts.skipTrack` when the map
 // already shows the OFCL model track, which is this same forecast.
+// `opts.onData(key, geojson|null)`, if given, hears every layer's outcome and
+// also gets the data-only layers.
 function _addNhcLayers(map,d,refLon,opts){
   var ids=d.nhc_layers,drawn=opts.drawn;
   _NHC_LAYERS.forEach(function(spec){
     if(spec.key==='track'&&opts.skipTrack)return;
+    if(spec.dataOnly&&!opts.onData)return;
     var url='%(nhc_service)s/'+ids[spec.key]+'/query?where='+encodeURIComponent(spec.where||'1=1')
       +'&outFields='+spec.fields+'&geometryPrecision=3&f=geojson';
     _nhcFetch(url,function(gj){
+      if(opts.onData)opts.onData(spec.key,gj);
+      if(!gj||spec.dataOnly)return;
       var pane='nhc-'+spec.key;
       if(!map.getPane(pane))map.createPane(pane).style.zIndex=spec.z;
       L.geoJSON(gj,{pane:pane,interactive:spec.key==='warnings',
@@ -354,6 +372,21 @@ ACTIVE_MAP_CSS = """  .active-map { background:var(--card); border-radius:12px; 
   .loc-link { font:inherit; background:none; border:none; padding:4px 0; color:var(--accent); cursor:pointer; text-decoration:underline; }
   .loc-note { margin:6px 0 0; font-size:0.75em; color:var(--muted); }
   .loc-note a { color:var(--accent); }
+  .loc-readout { margin:4px 0 12px; }
+  .prox-title { margin:8px 0; }
+  .prox-list { list-style:none; display:grid; gap:8px; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); }
+  .prox-item { background:var(--box); border:1px solid var(--border); border-radius:8px; padding:10px 12px; }
+  .prox-top { display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
+  .prox-name { color:var(--accent); font-weight:bold; text-decoration:none; }
+  .prox-cat { font-size:0.75em; color:var(--muted); border:1px solid; border-radius:10px; padding:1px 8px; white-space:nowrap; }
+  .prox-dist { font-size:1.3em; font-weight:bold; color:var(--text-strong); margin:4px 0; font-variant-numeric:tabular-nums; }
+  .prox-facts { list-style:none; font-size:0.85em; color:var(--text); display:grid; gap:3px; }
+  .prox-note { color:var(--muted); }
+  .prox-asof { font-size:0.72em; color:var(--muted); margin-top:6px; }
+  .prox-disclaimer { font-size:0.8em; color:var(--muted); border-left:3px solid var(--accent); padding:4px 10px; margin-top:10px; }
+  .prox-disclaimer a { color:var(--accent); }
+  .leaflet-tooltip.dist-tip { background:var(--card); color:var(--text-strong); border:1px solid var(--border); font-weight:bold; font-size:12px; box-shadow:none; padding:1px 6px; }
+  .leaflet-tooltip.dist-tip::before { display:none; }
   .loc-pin span { display:block; width:18px; height:18px; border-radius:50% 50% 50% 0; background:#00e676; border:2px solid #fff; transform:rotate(-45deg); box-shadow:0 2px 6px rgba(0,0,0,0.5); }"""
 
 ACTIVE_MAP_JS = """function _buildActiveMap(){
@@ -365,12 +398,14 @@ ACTIVE_MAP_JS = """function _buildActiveMap(){
   setTimeout(function(){_hideTrackSkeleton('active');},4000);
   _trMapObjs.active=map;
   var drawn={},boundsPts=[];
+  _proxStorms=[];
   ACE_ACTIVE.forEach(function(s){
     var d=ACE_TRACKS[s.slug];
     if(!d||!d.points||!d.points.length)return;
     var p=d.points[d.points.length-1];
     // One frame for both basins: a Central Pacific storm past 180 deg stays west of Hawaii.
     var ll=[p.lat,p.lon>90?p.lon-360:p.lon];
+    _proxStorms.push({slug:s.slug,name:d.name,lat:ll[0],lon:ll[1],status:p.status,wind:p.wind,time:p.time,nhc:!!d.nhc_layers});
     var c=_tc(p.status,p.wind);
     L.circleMarker(ll,{radius:8,fillColor:c,color:'#fff',weight:2,fillOpacity:1,opacity:1}).addTo(map)
       .bindTooltip('<b>'+d.name+'</b><br>'+p.status+' \xb7 '+_fmtWind(p.wind),{direction:'top',offset:[0,-8]})
@@ -378,7 +413,11 @@ ACTIVE_MAP_JS = """function _buildActiveMap(){
     boundsPts.push(ll);
     var ofcl=d.spaghetti&&d.spaghetti.OFCL;
     if(ofcl&&ofcl.length)boundsPts=boundsPts.concat(_unwrapSeries([ll].concat(ofcl.map(function(q){return[q.lat,q.lon];}))).slice(1));
-    if(d.nhc_layers)_addNhcLayers(map,d,ll[1],{legend:'nhclegend-active',drawn:drawn,skipTrack:false});
+    if(d.nhc_layers){
+      var data=_nhcData[s.slug]={pending:_NHC_LAYERS.length};
+      _addNhcLayers(map,d,ll[1],{legend:'nhclegend-active',drawn:drawn,skipTrack:false,
+        onData:function(key,gj){data[key]=gj;data.pending--;_locRender();}});
+    }
   });
   map._stormBounds=boundsPts;
   map.on('click',function(e){
@@ -469,7 +508,7 @@ function _locUseMine(){
   if(!navigator.geolocation)return;
   _locMsg('Finding your location...');
   navigator.geolocation.getCurrentPosition(function(pos){
-    _locSet({lat:pos.coords.latitude,lon:pos.coords.longitude,label:'Your current location'});
+    _locSet({lat:pos.coords.latitude,lon:pos.coords.longitude,label:'your current location'});
   },function(err){
     _locMsg(err&&err.code===1
       ?'Location access is off for this site. Search for a place or tap the map instead.'
@@ -496,6 +535,7 @@ function _locSet(p){
   else _locPin.setLatLng(ll);
   _locPin.unbindTooltip().bindTooltip(document.createTextNode(p.label),{direction:'top',offset:[0,-22]});
   _locFit();
+  _locRender();
 }
 function _locClear(){
   _aceLoc=null;
@@ -504,6 +544,7 @@ function _locClear(){
   _el('loc-clear').hidden=true;
   try{localStorage.removeItem(_LOC_KEY);}catch(e){}
   _locFit();
+  _locRender();
 }
 function _locSave(){try{localStorage.setItem(_LOC_KEY,JSON.stringify(_aceLoc));}catch(e){}}
 function _locRemember(){
@@ -519,6 +560,141 @@ function _locLoad(){
     }
   }catch(e){}
   return null;
+}
+// Proximity readout (#180): how far each active storm is from the pin, and,
+// from NHC's layers when they loaded, the cone, closest approach and wind field.
+var _proxStorms=[],_nhcData={},_locLines=null;
+function _esc(t){var d=document.createElement('div');d.textContent=t;return d.innerHTML;}
+function _bearing(lat1,lon1,lat2,lon2){
+  var r=Math.PI/180,dl=(lon2-lon1)*r;
+  var y=Math.sin(dl)*Math.cos(lat2*r),x=Math.cos(lat1*r)*Math.sin(lat2*r)-Math.sin(lat1*r)*Math.cos(lat2*r)*Math.cos(dl);
+  return(Math.atan2(y,x)/r+360)%360;
+}
+var _COMPASS=['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+function _compass(deg){return _COMPASS[Math.round(deg/22.5)%16];}
+// Flat km grid centered on (lat0,lon0): close enough at storm-to-coast distances.
+function _proj(lat0,lon0,lat,lon){return[(_unwrapLon(lon0,lon)-lon0)*111.32*Math.cos(lat0*Math.PI/180),(lat-lat0)*110.57];}
+// Nearest point to p on segment a-b, all [x,y]: returns [fraction along a-b, distance].
+function _segNearest(p,a,b){
+  var dx=b[0]-a[0],dy=b[1]-a[1],l=dx*dx+dy*dy;
+  var t=l?Math.max(0,Math.min(1,((p[0]-a[0])*dx+(p[1]-a[1])*dy)/l)):0;
+  var x=a[0]+t*dx-p[0],y=a[1]+t*dy-p[1];
+  return[t,Math.sqrt(x*x+y*y)];
+}
+// Outer rings ([lon,lat] lists) of a feature's Polygon or MultiPolygon.
+function _rings(f){
+  var g=f.geometry||{};
+  if(g.type==='Polygon')return[g.coordinates[0]];
+  if(g.type==='MultiPolygon')return g.coordinates.map(function(p){return p[0];});
+  return[];
+}
+function _inRing(lat,lon,ring){
+  var inside=false;
+  for(var i=0,j=ring.length-1;i<ring.length;j=i++){
+    var xi=_unwrapLon(lon,ring[i][0]),yi=ring[i][1],xj=_unwrapLon(lon,ring[j][0]),yj=ring[j][1];
+    if((yi>lat)!==(yj>lat)&&lon<(xj-xi)*(lat-yi)/(yj-yi)+xi)inside=!inside;
+  }
+  return inside;
+}
+function _kmToRing(lat,lon,ring){
+  var best=Infinity,p=[0,0];
+  for(var i=1;i<ring.length;i++){
+    var d=_segNearest(p,_proj(lat,lon,ring[i-1][1],ring[i-1][0]),_proj(lat,lon,ring[i][1],ring[i][0]))[1];
+    if(d<best)best=d;
+  }
+  return best;
+}
+// A forecast point's time in ms: validtime is 'DD/HHMM' UTC, and fldatelbl
+// ('2026-10-25 12:00 PM Sun CST') supplies the year and month.
+function _nhcTime(props){
+  var m=/^([0-9]+)-([0-9]+)-([0-9]+)/.exec(props.fldatelbl||''),v=/^([0-9]+)[/]([0-9]{2})([0-9]{2})$/.exec(props.validtime||'');
+  if(!m||!v)return null;
+  var month=+m[2]-1,day=+v[1];
+  if(day-+m[3]>15)month--;else if(+m[3]-day>15)month++;
+  return Date.UTC(+m[1],month,day,+v[2],+v[3]);
+}
+function _catName(status,wind){
+  if(status==='HU'){
+    var c=wind>=137?5:wind>=113?4:wind>=96?3:wind>=83?2:1;
+    return'Category '+c+' hurricane';
+  }
+  return{TS:'Tropical storm',SS:'Subtropical storm',TD:'Tropical depression',SD:'Subtropical depression'}[status]||status;
+}
+function _distHtml(km){return'<span class="dist-val" data-km="'+km.toFixed(1)+'">'+_fmtDist(km)+'</span>';}
+// Beyond this the flat-grid distances drift and the detail isn't useful.
+var _PROX_DETAIL_KM=1500;
+// Facts from NHC's layers for one storm, as sentences; [] when there are none.
+function _proxFacts(st,lat,lon){
+  var data=_nhcData[st.slug],facts=[];
+  if(!data)return facts;
+  var cone=data.cone&&data.cone.features.some(function(f){return _rings(f).some(function(r){return _inRing(lat,lon,r);});});
+  if(cone)facts.push('You are inside the forecast cone.');
+  var pts=data.points&&data.points.features.filter(function(f){return f.geometry&&f.geometry.type==='Point';})
+    .sort(function(a,b){return a.properties.tau-b.properties.tau;});
+  if(pts&&pts.length>1){
+    var xy=pts.map(function(f){return _proj(lat,lon,f.geometry.coordinates[1],f.geometry.coordinates[0]);});
+    var best={d:Infinity};
+    for(var i=1;i<xy.length;i++){
+      var n=_segNearest([0,0],xy[i-1],xy[i]);
+      if(n[1]<best.d)best={d:n[1],i:i,t:n[0]};
+    }
+    var a=pts[best.i-1].properties,b=pts[best.i].properties;
+    var tau=a.tau+best.t*(b.tau-a.tau),t0=_nhcTime(pts[0].properties);
+    if(best.d>_PROX_DETAIL_KM)facts.push('Not forecast to come within ~'+_distHtml(_PROX_DETAIL_KM)+'.');
+    else if(tau<1)facts.push('Not forecast to come any closer than it is now.');
+    else{
+      var x=xy[best.i-1][0]+best.t*(xy[best.i][0]-xy[best.i-1][0]),y=xy[best.i-1][1]+best.t*(xy[best.i][1]-xy[best.i-1][1]);
+      var hour=3600000,when=t0===null?'':' around '+new Date(Math.round((t0+tau*hour)/hour)*hour).toLocaleString('en-US',{weekday:'short',hour:'numeric'});
+      facts.push(best.d<10?'Forecast to pass over or near you'+when+'.'
+        :'Forecast to pass ~'+_distHtml(best.d)+' '+_compass((Math.atan2(x,y)*180/Math.PI+360)%360)+' of you'+when+'.');
+    }
+  }
+  if(data.radii){
+    var byKt={};
+    data.radii.features.forEach(function(f){var k=f.properties.radii;(byKt[k]=byKt[k]||[]).push(f);});
+    function inside(k){return(byKt[k]||[]).some(function(f){return _rings(f).some(function(r){return _inRing(lat,lon,r);});});}
+    if(inside(64))facts.push('Inside the hurricane-force (64 kt) wind field.');
+    else if(inside(50))facts.push('Inside the 50 kt wind field.');
+    else if(inside(34))facts.push('Inside the tropical-storm-force wind field.');
+    else if(byKt[34]){
+      var edge=Math.min.apply(null,byKt[34].map(function(f){return Math.min.apply(null,_rings(f).map(function(r){return _kmToRing(lat,lon,r);}));}));
+      if(edge<=_PROX_DETAIL_KM)facts.push('Tropical-storm-force winds are ~'+_distHtml(edge)+' away.');
+    }
+  }
+  return facts;
+}
+function _locRender(){
+  var box=_el('loc-readout'),map=_trMapObjs.active;
+  if(!box)return;
+  if(_locLines){_locLines.remove();_locLines=null;}
+  if(!_aceLoc||!_proxStorms.length){box.hidden=true;box.innerHTML='';return;}
+  var lat=_aceLoc.lat,lon=_aceLoc.lon;
+  var rows=_proxStorms.map(function(st){return{st:st,km:_kmBetween(lat,lon,st.lat,st.lon)};})
+    .sort(function(a,b){return a.km-b.km;});
+  if(map)_locLines=L.layerGroup().addTo(map);
+  var items=rows.map(function(row){
+    var st=row.st,c=_tc(st.status,st.wind),data=_nhcData[st.slug];
+    if(_locLines){
+      var pin=[lat,_unwrapLon(st.lon,lon)];
+      L.polyline([pin,[st.lat,st.lon]],{color:c,weight:2,opacity:0.9,dashArray:'5,5',interactive:false})
+        .bindTooltip(_distHtml(row.km),{permanent:true,direction:'center',className:'dist-tip',interactive:false})
+        .addTo(_locLines);
+    }
+    var facts=_proxFacts(st,lat,lon);
+    var note=facts.length?'':!st.nhc||(data&&!data.pending)
+      ?'<li class="prox-note">Distance to the center only: NHC forecast layers aren&#8217;t available for this storm right now.</li>'
+      :'<li class="prox-note">Loading NHC forecast&#8230;</li>';
+    return'<li class="prox-item" data-slug="'+st.slug+'">'
+      +'<div class="prox-top"><a class="prox-name" href="#storm-row-'+st.slug+'" onclick="return !_openStormRow(this.hash.slice(1))">'+_esc(st.name)+'</a>'
+      +'<span class="prox-cat" style="border-color:'+c+'">'+_catName(st.status,st.wind)+'</span></div>'
+      +'<div class="prox-dist">'+_distHtml(row.km)+' '+_compass(_bearing(lat,lon,st.lat,st.lon))+'</div>'
+      +'<ul class="prox-facts">'+facts.map(function(f){return'<li>'+f+'</li>';}).join('')+note+'</ul>'
+      +'<div class="prox-asof">Center as of '+_esc(st.time||'')+'</div></li>';
+  });
+  box.innerHTML='<h3 class="prox-title">Distance from '+_esc(_aceLoc.label)+'</h3>'
+    +'<ol class="prox-list">'+items.join('')+'</ol>'
+    +'<p class="prox-disclaimer">Not for safety decisions. Follow the <a href="https://www.nhc.noaa.gov/" target="_blank" rel="noopener">National Hurricane Center</a> and your local officials.</p>';
+  box.hidden=false;
 }
 document.addEventListener('DOMContentLoaded',function(){
   var geo=_el('loc-geo');
