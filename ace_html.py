@@ -570,6 +570,7 @@ def _active_map_html(active):
   </div>
   {_CATEGORY_LEGEND_HTML}
   <div class="track-legend nhc-legend" id="nhclegend-active" aria-label="NHC advisory layers"></div>
+  <div class="loc-readout" id="loc-readout" aria-live="polite" hidden></div>
   <div class="active-map-storms">{links}</div>
 </section>'''
 

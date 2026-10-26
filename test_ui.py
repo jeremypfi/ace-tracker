@@ -65,7 +65,7 @@ NHC_GIS_HOST = 'https://mapservices.weather.noaa.gov/'
 # comes back empty like a missing layer.
 _SIMON_IDS = ace_data.nhc_gis_layer_ids('EP5')
 SIMON_GIS = {_SIMON_IDS[key]: f'EP5_{name}.geojson' for key, name in {
-    'cone': 'forecast_cone', 'track': 'forecast_track', 'warnings': 'watch_warning',
+    'points': 'forecast_points', 'cone': 'forecast_cone', 'track': 'forecast_track', 'warnings': 'watch_warning',
     'radii': 'forecast_wind_radii'}.items()}
 
 
@@ -248,8 +248,9 @@ class TestNhcAdvisoryLayers(UITestCase):
                     expect(page.locator(f'#nhclegend-{slug}')).to_be_hidden()
                     self.assertEqual(page.locator(f'#trmap-{slug} [class*="leaflet-nhc-"] path').count(), 0)
                     self.assertNotIn('NHC', page.locator(f'#trmap-{slug} .leaflet-control-attribution').inner_text())
-                # Simon's map: 4 (OFCL stands in for the track). Active map: 5 each for Kyle and Simon.
-                self.assertEqual(len(hits), 14)
+                # Simon's map: 4 (OFCL stands in for the track). Active map: 6 each for Kyle and
+                # Simon (forecast points too, for the proximity readout).
+                self.assertEqual(len(hits), 16)
                 page.wait_for_timeout(200)  # Chrome's failed-load lines arrive late
                 self.assertEqual(self.page_errors(), [])  # the next open() resets it
 
@@ -400,7 +401,7 @@ class TestLocationInput(UITestCase):
     def test_use_my_location(self):
         page = self.open(geolocation={'latitude': 25.77, 'longitude': -80.19}, permissions=['geolocation'])
         page.locator('#loc-geo').click()
-        expect(page.locator('#loc-msg')).to_have_text('Showing Your current location.')
+        expect(page.locator('#loc-msg')).to_have_text('Showing your current location.')
         self.assertTrue(self.in_view([25.77, -80.19]))
         self.assertEqual(self.geocoded, [])  # coordinates never go to the geocoder
 
@@ -438,6 +439,102 @@ class TestLocationInput(UITestCase):
         self.assertEqual(len(self.geocoded), 1)
         page.locator('#loc-remember').uncheck()
         self.assertIsNone(page.evaluate("localStorage.getItem('ace-location')"))
+
+
+class TestProximityGeometry(UITestCase):
+    """The readout's inline geometry helpers (#180), run in the page."""
+
+    def test_helpers(self):
+        page = self.open()
+        km = page.evaluate('_kmBetween(30.27, -97.74, 25.77, -80.19)')  # Austin to Miami
+        self.assertAlmostEqual(km / 1.609344, 1110, delta=15)
+        self.assertEqual(page.evaluate('_compass(_bearing(30.27, -97.74, 25.77, -80.19))'), 'ESE')
+        self.assertEqual(page.evaluate('_compass(_bearing(25.77, -80.19, 40.71, -74.01))'), 'NNE')
+        square = '[[-1,-1],[1,-1],[1,1],[-1,1],[-1,-1]]'
+        self.assertTrue(page.evaluate(f'_inRing(0, 0, {square})'))
+        self.assertFalse(page.evaluate(f'_inRing(2, 0, {square})'))
+        self.assertTrue(page.evaluate('_inRing(0, 179.5, [[-179,-1],[179,-1],[179,1],[-179,1],[-179,-1]])'))  # across 180
+        self.assertEqual(page.evaluate('_segNearest([0,0],[-1,1],[1,1])'), [0.5, 1])
+        self.assertEqual(page.evaluate('_segNearest([5,0],[-1,1],[1,1])')[0], 1)
+        # validtime is UTC; the label's local date can sit in the previous month.
+        self.assertEqual(page.evaluate("new Date(_nhcTime({fldatelbl:'2026-10-31 07:00 PM Sat CDT', validtime:'01/0000'})).toISOString()"),
+                         '2026-11-01T00:00:00.000Z')
+        self.assertEqual(page.evaluate("_catName('HU', 100)"), 'Category 3 hurricane')
+
+
+class TestProximityReadout(UITestCase):
+    """Distances from a pin to every active storm (#180). Kyle has no NHC layers."""
+
+    def pin(self, lat, lon, label):
+        self.page.evaluate('p => _locSet(p)', {'lat': lat, 'lon': lon, 'label': label})
+
+    def items(self):
+        return self.page.locator('#loc-readout .prox-item')
+
+    def open(self, path='index.html', **kwargs):
+        kwargs.setdefault('timezone_id', 'America/Chicago')
+        page = super().open(path, **kwargs)
+        self.assert_map_drawn('active')
+        expect(page.locator('#nhclegend-active')).to_contain_text('Forecast cone')  # Simon's layers are in
+        return page
+
+    def test_nearest_first_across_basins_with_fallback(self):
+        page = self.open()
+        expect(page.locator('#loc-readout')).to_be_hidden()
+        self.pin(25.77, -80.19, 'Miami, Florida')
+        expect(self.items()).to_have_count(2)
+        self.assertEqual([self.items().nth(i).get_attribute('data-slug') for i in range(2)], ['kyle', 'simon'])
+        expect(page.locator('#loc-readout .prox-title')).to_have_text('Distance from Miami, Florida')
+        kyle = self.items().nth(0)
+        expect(kyle).to_contain_text('Distance to the center only')
+        expect(kyle).to_contain_text('Tropical storm')
+        self.assertRegex(kyle.locator('.prox-dist').inner_text(), r'^[0-9,]+ mi [NESW]{1,3}$')
+        simon = self.items().nth(1)  # ~3,500 km away: no closer detail
+        expect(simon).to_contain_text('Not forecast to come within ~932 mi.')
+        expect(simon).not_to_contain_text('inside the forecast cone')
+        expect(simon).not_to_contain_text('Tropical-storm-force winds are')
+        expect(page.locator('#loc-readout .prox-disclaimer')).to_contain_text('Not for safety decisions')
+        # One labeled line per storm.
+        self.assertEqual(page.locator('#trmap-active .leaflet-tooltip.dist-tip').count(), 2)
+
+    def test_inside_the_cone_with_closest_approach_time(self):
+        page = self.open()
+        self.pin(21.0, -106.6, 'Puerto Vallarta area')  # Simon's 24 h forecast point
+        simon = page.locator('#loc-readout .prox-item[data-slug="simon"]')
+        expect(simon).to_contain_text('You are inside the forecast cone.')
+        # 24 h after the 11/1800 UTC advisory point is Mon 18 UTC: 1 PM in Chicago.
+        expect(simon).to_contain_text('Forecast to pass over or near you around Mon 1 PM.')
+        self.pin(21.0, -105.0, 'Inland, 165 km east')
+        self.assertRegex(simon.inner_text(), r'Forecast to pass ~[0-9]+ mi [NESW]{1,3} of you around Mon [0-9]+ [AP]M[.]')
+        self.assertRegex(simon.inner_text(), r'(Inside the|Tropical-storm-force winds are ~)')
+
+    def test_distances_follow_the_unit_toggle(self):
+        page = self.open()
+        self.pin(25.77, -80.19, 'Miami, Florida')
+        first = self.items().nth(0).locator('.prox-dist')
+        self.assertIn(' mi ', first.inner_text())  # miles by default, though wind is in knots
+        page.locator('#unitBtn').click()  # mph
+        self.assertIn(' mi ', first.inner_text())
+        page.locator('#unitBtn').click()  # km/h
+        self.assertIn(' km ', first.inner_text())
+        self.assertIn(' km', page.locator('#trmap-active .dist-tip').first.inner_text())
+
+    def test_clearing_removes_readout_and_lines(self):
+        page = self.open()
+        self.pin(25.77, -80.19, 'Miami, Florida')
+        expect(self.items()).to_have_count(2)
+        page.locator('#loc-clear').click()
+        expect(page.locator('#loc-readout')).to_be_hidden()
+        expect(page.locator('#trmap-active .dist-tip')).to_have_count(0)  # after Leaflet's 200 ms fade
+
+    def test_nhc_down_falls_back_to_center_distance(self):
+        self.allow_failed_loads = True
+        page = super().open('index.html', timezone_id='America/Chicago',
+                            routes=[(NHC_GIS_HOST + '**', lambda r: r.abort('connectionfailed'))])
+        self.assert_map_drawn('active')
+        self.pin(21.0, -106.6, 'Puerto Vallarta area')
+        for slug in ('kyle', 'simon'):
+            expect(page.locator(f'#loc-readout .prox-item[data-slug="{slug}"]')).to_contain_text('Distance to the center only')
 
 
 class TestShareButtons(UITestCase):

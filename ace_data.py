@@ -2424,7 +2424,7 @@ NHC_BIN_PREFIXES = {
 # at fixed offsets inside the group.
 NHC_GIS_BIN_BASE = {'AT': 4, 'EP': 134, 'CP': 264}
 NHC_GIS_BIN_STRIDE = 26
-NHC_GIS_LAYER_OFFSETS = {'track': 3, 'cone': 4, 'warnings': 5, 'swath': 9, 'radii': 12}
+NHC_GIS_LAYER_OFFSETS = {'points': 2, 'track': 3, 'cone': 4, 'warnings': 5, 'swath': 9, 'radii': 12}
 
 
 def nhc_gis_layer_ids(bin_number):
