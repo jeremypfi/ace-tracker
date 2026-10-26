@@ -540,6 +540,64 @@ class TestProximityReadout(UITestCase):
             expect(page.locator(f'#loc-readout .prox-item[data-slug="{slug}"]')).to_contain_text('Distance to the center only')
 
 
+class TestNearestStormBadge(UITestCase):
+    """Dashboard badge from a remembered location (#181). From Miami, Kyle is nearest."""
+
+    MIAMI = "localStorage.setItem('ace-location', JSON.stringify({lat: 25.77, lon: -80.19, label: 'Miami, Florida'}));"
+    badge = property(lambda self: self.page.locator('#near-badge'))
+
+    def test_saved_location_shows_nearest_storm(self):
+        page = self.open(init_script=self.MIAMI)
+        expect(self.badge).to_be_visible()
+        link = self.badge.locator('a')
+        self.assertRegex(link.inner_text(), r'^Kyle, [0-9,]+ mi [NESW]{1,3}$')
+        self.assertEqual(link.get_attribute('href'), '#active-storms')
+        self.assert_map_drawn('active')
+        readout = page.locator('#loc-readout .prox-item[data-slug="kyle"] .prox-dist')
+        self.assertEqual(link.inner_text(), 'Kyle, ' + readout.inner_text())
+        page.locator('#unitBtn').click()
+        page.locator('#unitBtn').click()  # km/h
+        self.assertRegex(link.inner_text(), r'^Kyle, [0-9,]+ km [NESW]{1,3}$')
+
+    def test_forget_location(self):
+        page = self.open(init_script=self.MIAMI)
+        self.assert_map_drawn('active')
+        expect(page.locator('#trmap-active .loc-pin')).to_have_count(1)
+        self.badge.get_by_role('button', name='Forget location').click()
+        expect(self.badge).to_be_hidden()
+        expect(page.locator('#trmap-active .loc-pin')).to_have_count(0)
+        expect(page.locator('#loc-readout')).to_be_hidden()
+        self.assertIsNone(page.evaluate("localStorage.getItem('ace-location')"))
+
+    def test_hidden_without_a_remembered_location(self):
+        page = self.open()
+        self.assert_map_drawn('active')
+        expect(self.badge).to_be_hidden()
+        page.evaluate("_locSet({lat: 25.77, lon: -80.19, label: 'Miami, Florida'})")  # not remembered
+        expect(self.badge).to_be_hidden()
+        page.locator('#loc-remember').check()
+        expect(self.badge).to_be_visible()
+        page.locator('#loc-remember').uncheck()
+        expect(self.badge).to_be_hidden()
+
+    def test_storage_blocked(self):
+        page = self.open(init_script="""Object.defineProperty(window, 'localStorage',
+            {get() { throw new DOMException('blocked', 'SecurityError'); }});""")
+        self.assert_map_drawn('active')
+        expect(self.badge).to_be_hidden()
+        page.evaluate("_locSet({lat: 25.77, lon: -80.19, label: 'Miami, Florida'})")
+        page.locator('#loc-remember').check()  # can't save, but this page still knows it
+        expect(self.badge).to_contain_text('Nearest storm: Kyle')
+
+    def test_hidden_when_no_storm_is_active(self):
+        # The section only renders with an active storm, so blank the list as the page assigns it.
+        self.open(init_script=self.MIAMI + """
+            Object.defineProperty(window, 'ACE_ACTIVE', {configurable: true,
+                set(v) { Object.defineProperty(window, 'ACE_ACTIVE', {value: [], writable: true}); }});""")
+        self.page.wait_for_load_state('load')
+        expect(self.badge).to_be_hidden()
+
+
 class TestShareButtons(UITestCase):
 
     def test_storm_link_copies_to_clipboard(self):
