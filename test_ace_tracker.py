@@ -3261,6 +3261,33 @@ class TestFreshnessCheck(unittest.TestCase):
         from freshness_check import problems
         self.assertTrue(any('Could not fetch' in p for p in problems(None, self.NOW, [], [])))
 
+    def test_republish_before_alerting(self):
+        from freshness_check import needs_publish, problems
+        late = self._season(generated='2026-10-11T19:30:00Z')  # 2.5 h: publish, no alert yet
+        self.assertTrue(needs_publish(late, self.NOW))
+        self.assertEqual(problems(late, self.NOW, [], []), [])
+        self.assertFalse(needs_publish(self._season(), self.NOW))
+        self.assertFalse(needs_publish(None, self.NOW))
+        jan = datetime(2027, 1, 10, 22, 0, tzinfo=timezone.utc)
+        self.assertFalse(needs_publish(self._season(generated='2027-01-10T18:00:00Z'), jan))
+        self.assertTrue(needs_publish(self._season(generated='2027-01-10T15:00:00Z'), jan))
+
+    def test_main_writes_publish_output(self):
+        import freshness_check
+        import tempfile
+        late = self._season(generated='2026-10-11T19:30:00Z')
+        with tempfile.TemporaryDirectory() as tmp:
+            out = os.path.join(tmp, 'out')
+            with mock.patch.object(freshness_check, '_get_json', side_effect=[{'activeStorms': []}, late]), \
+                 mock.patch.object(freshness_check, 'datetime') as dt, \
+                 mock.patch.dict(os.environ, {'GITHUB_OUTPUT': out}), \
+                 mock.patch('sys.argv', ['x', os.devnull, 'success']):
+                dt.now.return_value = self.NOW
+                dt.strptime = datetime.strptime
+                freshness_check.main()
+            with open(out) as f:
+                self.assertEqual(f.read(), 'publish=true\n')
+
 
 def run_tests():
     """Run all tests"""
