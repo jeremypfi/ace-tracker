@@ -34,15 +34,15 @@ This project is a hurricane tracking tool that:
 
 This project relies on third-party Python packages (see `requirements.txt`):
 - `tropycal` — hurricane data library (HURDAT2 + NHC best track)
-- `openpyxl` — Excel file generation
 - `shapely`, `cartopy` — geographic calculations (via Tropycal)
-- `setuptools<84` — pinned due to Tropycal dependency on `pkg_resources`
+- `pillow` — share-card images
+- `setuptools>=84.1.0,<85` — floor for GHSA-xmj3-9gf7-h52w; cap kept from the old Tropycal `pkg_resources` dependency
 
 Dependency updates are automated via Dependabot (weekly, grouped minor/patch PRs).
 
 **Security best practice:** Always install from official sources:
 ```bash
-pip3 install -r requirements.txt
+uv pip install -r requirements.txt
 ```
 
 ## Reporting a Vulnerability

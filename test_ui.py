@@ -98,9 +98,10 @@ class UITestCase(unittest.TestCase):
     """Each test gets a fresh browser context with the clock pinned to the
     fixture's 'now', so relative times like '3h ago' are stable."""
 
-    def open(self, path='index.html', routes=(), **context_args):
+    def open(self, path='index.html', routes=(), init_script=None, **context_args):
         """`routes`: extra (url pattern, handler) pairs, set before the page loads
-        and taking precedence over the offline defaults."""
+        and taking precedence over the offline defaults. `init_script` runs
+        before any page script."""
         context_args.setdefault('viewport', {'width': 1280, 'height': 900})
         self.context = _browser.new_context(**context_args)
         self.addCleanup(self.context.close)
@@ -112,6 +113,8 @@ class UITestCase(unittest.TestCase):
         page.on('console', self._on_console)
         page.on('pageerror', lambda e: self.console.append(f'pageerror: {e}'))
         page.clock.set_fixed_time(ui_fixture_site.FROZEN_NOW.isoformat() + 'Z')
+        if init_script:
+            page.add_init_script(init_script)
         page.goto(f'http://127.0.0.1:{_server.server_port}/{path}')
         self.page = page
         return page
@@ -596,6 +599,21 @@ class TestStormPage(UITestCase):
         cone = page.locator('img[src="../cones/ep202026.png"]')
         cone.scroll_into_view_if_needed()  # loading="lazy"
         page.wait_for_function('img => img.complete && img.naturalWidth > 0', arg=cone.element_handle())
+
+    def test_marker_tooltip_shows_markup_in_a_name_as_text(self):
+        # Rewrites Simon's name as the page assigns ACE_TRACKS, before the map reads it.
+        page = self.open('storm/simon-2026.html', init_script="""
+            Object.defineProperty(window, 'ACE_TRACKS', {configurable: true,
+                set(v) { v.simon.name = '<img src=x onerror="window.pwned=1">Simon';
+                         Object.defineProperty(window, 'ACE_TRACKS', {value: v, writable: true}); }});""")
+        self.assert_map_drawn('simon')
+        page.evaluate("""() => { let mk = null;
+            _trMapObjs.simon.eachLayer(l => { if (l instanceof L.CircleMarker && l.getTooltip()) mk = l; });
+            mk.openTooltip(); }""")
+        tip = page.locator('#trmap-simon .leaflet-tooltip', has_text='Simon')
+        expect(tip).to_contain_text('<img src=x')
+        self.assertEqual(tip.locator('img').count(), 0)
+        self.assertIsNone(page.evaluate('window.pwned'))
 
     def test_no_horizontal_scroll_at_phone_width(self):
         for path in ('index.html', 'history.html', 'records.html', 'what-is-ace.html', 'api.html',
