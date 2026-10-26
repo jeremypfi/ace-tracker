@@ -3,9 +3,11 @@ name: Site Freshness Check
 # Opens (or updates) a "site-alert" issue when the live site stops updating:
 # stale publish, stuck storm data during an active storm, or two failed
 # publishes in a row. Closes the issue again once a check passes. See #157.
+# Also starts a publish when GitHub has skipped the scheduled ones (#199).
+# Hourly so each check is a second chance for a dropped publish cron.
 on:
   schedule:
-    - cron: '47 */2 * * *'
+    - cron: '47 * * * *'
   workflow_dispatch:
 
 concurrency:
@@ -15,7 +17,7 @@ concurrency:
 permissions:
   contents: read
   issues: write
-  actions: read
+  actions: write   # gh workflow run publish.yml
 
 jobs:
   check:
@@ -43,6 +45,19 @@ jobs:
         if [ "$CODE" -eq 2 ]; then echo "stale=true" >> "$GITHUB_OUTPUT"
         elif [ "$CODE" -eq 0 ]; then echo "stale=false" >> "$GITHUB_OUTPUT"
         else exit "$CODE"; fi
+
+    # GITHUB_TOKEN may trigger workflow_dispatch. Skip if a publish is already
+    # queued or running: publish.yml cancels in-progress runs on a new start.
+    - name: Start a missed publish
+      if: steps.check.outputs.publish == 'true'
+      run: |
+        BUSY=$(gh run list --workflow publish.yml --limit 5 --json status -q '[.[] | select(.status != "completed")] | length')
+        if [ "$BUSY" -eq 0 ]; then
+          gh workflow run publish.yml
+          echo "Site is behind; started a publish."
+        else
+          echo "A publish is already queued or running."
+        fi
 
     - name: Open or update alert issue
       if: steps.check.outputs.stale == 'true'

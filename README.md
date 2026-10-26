@@ -156,7 +156,7 @@ ace-tracker/
 │   ├── workflows/
 │   │   ├── tests.yml       # CI: runs tests on push/PR (Python 3.11, 3.12)
 │   │   ├── publish.yml     # Scheduled: generates, smoke-tests and deploys the dashboard hourly in season
-│   │   └── freshness.yml   # Every 2 h: opens/closes a site-alert issue if the live site goes stale
+│   │   └── freshness.yml   # Hourly: starts a missed publish; opens/closes a site-alert issue if the site goes stale
 │   ├── dependabot.yml      # Automated dependency updates
 │   └── CODEOWNERS          # @jeremypfi must approve all PRs
 ├── SECURITY.md

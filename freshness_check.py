@@ -3,7 +3,8 @@
 Usage: python freshness_check.py REPORT_PATH [PUBLISH_CONCLUSIONS]
 PUBLISH_CONCLUSIONS is a comma list of the latest completed publish runs,
 newest first (from `gh run list`). Exit 0 = healthy, 2 = problems written to
-REPORT_PATH as Markdown for the alert issue.
+REPORT_PATH as Markdown for the alert issue. In Actions it also writes
+publish=true|false to GITHUB_OUTPUT so the workflow can start a missed publish (#199).
 """
 import json
 import os
@@ -21,6 +22,10 @@ NOT_ACTIVE = {'PTC'}
 # Publish runs hourly in season (May 15-Nov 30) and every 3 h otherwise;
 # GitHub can delay scheduled runs, so allow a few missed runs before alerting.
 MAX_PUBLISH_AGE_H = {True: 5, False: 10}
+# GitHub runs only a fraction of the hourly publish crons (Oct 2026: 4-5 a day,
+# gaps up to 8 h), so the hourly freshness check starts a publish itself once
+# the site is two runs behind, well before the alert threshold above.
+REPUBLISH_AFTER_H = {True: 2, False: 6}
 # Best-track data lags real time by up to ~12 h; past this with an active
 # storm in the basin, the data feed itself is stuck.
 MAX_DATA_AGE_H = 18
@@ -60,6 +65,10 @@ def problems(season, now, active_bins, conclusions):
     return found
 
 
+def needs_publish(season, now):
+    return season is not None and _hours(now, season['generated_at']) > REPUBLISH_AFTER_H[in_season(now)]
+
+
 def _get_json(url, tries=3):
     for attempt in range(tries):
         try:
@@ -79,7 +88,11 @@ def main():
     nhc = _get_json(CURRENT_STORMS)
     active = ([s['binNumber'] for s in nhc.get('activeStorms', []) if s.get('classification') not in NOT_ACTIVE]
               if nhc else None)
-    found = problems(_get_json(SEASON_JSON), now, active, conclusions)
+    season = _get_json(SEASON_JSON)
+    found = problems(season, now, active, conclusions)
+    if os.environ.get('GITHUB_OUTPUT'):
+        with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+            f.write(f"publish={'true' if needs_publish(season, now) else 'false'}\n")
 
     if not found:
         print('Site is fresh.')
