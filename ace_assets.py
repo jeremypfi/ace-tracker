@@ -390,6 +390,10 @@ ACTIVE_MAP_CSS = """  .active-map { background:var(--card); border-radius:12px; 
   .prox-disclaimer a { color:var(--accent); }
   .leaflet-tooltip.dist-tip { background:var(--card); color:var(--text-strong); border:1px solid var(--border); font-weight:bold; font-size:12px; box-shadow:none; padding:1px 6px; }
   .leaflet-tooltip.dist-tip::before { display:none; }
+  .near-badge { display:flex; flex-wrap:wrap; justify-content:center; align-items:center; gap:4px 10px; width:fit-content; max-width:100%; margin:0 auto 12px; background:var(--card); border:1px solid var(--border); border-radius:20px; padding:6px 14px; font-size:0.9em; }
+  .near-badge[hidden] { display:none; }
+  .near-badge a { color:var(--accent); font-weight:bold; text-decoration:none; }
+  .near-badge a:hover, .near-badge a:focus-visible { text-decoration:underline; }
   .loc-pin span { display:block; width:18px; height:18px; border-radius:50% 50% 50% 0; background:#00e676; border:2px solid #fff; transform:rotate(-45deg); box-shadow:0 2px 6px rgba(0,0,0,0.5); }"""
 
 ACTIVE_MAP_JS = """function _buildActiveMap(){
@@ -531,6 +535,7 @@ function _locSet(p){
   _locMsg('Showing '+p.label+'.');
   _el('loc-clear').hidden=false;
   if(_el('loc-remember').checked)_locSave();
+  _nearBadge();
   var map=_trMapObjs.active;
   if(!map)return;  // drawn when the map builds
   var ll=[p.lat,p.lon>90?p.lon-360:p.lon];  // the storms' frame
@@ -546,6 +551,7 @@ function _locClear(){
   _locMsg('');_locPicks([]);
   _el('loc-clear').hidden=true;
   try{localStorage.removeItem(_LOC_KEY);}catch(e){}
+  _nearBadge();
   _locFit();
   _locRender();
 }
@@ -553,6 +559,7 @@ function _locSave(){try{localStorage.setItem(_LOC_KEY,JSON.stringify(_aceLoc));}
 function _locRemember(){
   if(_el('loc-remember').checked){if(_aceLoc)_locSave();}
   else{try{localStorage.removeItem(_LOC_KEY);}catch(e){}}
+  _nearBadge();
 }
 function _locLoad(){
   try{
@@ -698,9 +705,28 @@ function _locRender(){
     +'<p class="prox-disclaimer">Not for safety decisions. Follow the <a href="https://www.nhc.noaa.gov/" target="_blank" rel="noopener">National Hurricane Center</a> and your local officials.</p>';
   box.hidden=false;
 }
+// Nearest-storm badge (#181): only for a remembered location, and computed from
+// ACE_TRACKS alone so it shows before (or without) the map.
+function _nearBadge(){
+  var box=_el('near-badge');
+  if(!box)return;
+  var best=null;
+  if(_aceLoc&&_el('loc-remember').checked)ACE_ACTIVE.forEach(function(s){
+    var d=ACE_TRACKS[s.slug],p=d&&d.points&&d.points[d.points.length-1];
+    if(!p)return;
+    var km=_kmBetween(_aceLoc.lat,_aceLoc.lon,p.lat,p.lon);
+    if(!best||km<best.km)best={slug:s.slug,name:d.name,km:km,dir:_compass(_bearing(_aceLoc.lat,_aceLoc.lon,p.lat,p.lon))};
+  });
+  box.hidden=!best;
+  if(!best){box.innerHTML='';return;}
+  box.innerHTML='<span>&#128205; Nearest storm: <a href="#active-storms">'+_esc(best.name)+', '+_distHtml(best.km)+' '+best.dir+'</a></span>'
+    +'<button type="button" class="loc-link" onclick="_locClear()">Forget location</button>';
+}
 document.addEventListener('DOMContentLoaded',function(){
   var geo=_el('loc-geo');
   if(geo&&navigator.geolocation&&window.isSecureContext)geo.hidden=false;
+  var saved=_locLoad();
+  if(saved)_locSet(saved);
 });
 """
 ACTIVE_MAP_JS = ACTIVE_MAP_JS.replace('%(nominatim)s', NOMINATIM_SEARCH)

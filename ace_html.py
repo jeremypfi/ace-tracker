@@ -973,6 +973,7 @@ def render_dashboard_html(payloads, share_image=None, share_alt=None):
   </div>
 </div>
 <div class="nav-link"><a href="history.html">📊 Season History ({START_YEAR}–present)</a><a href="records.html">🏆 Records</a><a href="what-is-ace.html">❓ What is ACE?</a></div>
+{'<p class="near-badge" id="near-badge" aria-live="polite" hidden></p>' if active else ''}
 <details class="ace-explain">
   <summary>What is ACE? <span class="ace-explain-hint">(tap to expand)</span></summary>
   <p>Accumulated Cyclone Energy (ACE) measures total hurricane season activity by combining storm intensity and duration. A major hurricane that lasts two weeks contributes far more than a brief tropical storm. NOAA uses seasonal ACE totals to classify years as <b>Below Normal</b> (&lt;73), <b>Near Normal</b> (73–126), <b>Above Normal</b> (126–159), or <b>Extremely Active</b> (159+). <a href="what-is-ace.html">More on ACE, plus a calculator →</a></p>

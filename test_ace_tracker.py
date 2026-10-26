@@ -1929,6 +1929,9 @@ class TestActiveStormsMap(unittest.TestCase):
         self.assertIn('var ACE_ACTIVE=[{"slug": "bertha", "name": "Bertha", "basin": "atlantic"}];', html)
         self.assertIn('href="#storm-row-bertha"', html)
         self.assertLess(html.index('id="active-storms"'), html.index('class="toggle"'))
+        # #181: hidden until JS finds a remembered location; above the fold.
+        self.assertIn('<p class="near-badge" id="near-badge" aria-live="polite" hidden></p>', html)
+        self.assertLess(html.index('id="near-badge"'), html.index('class="ace-explain"'))
 
         def calm(bd):
             track(bd)
@@ -1936,6 +1939,7 @@ class TestActiveStormsMap(unittest.TestCase):
         payload, _ = TestBuildSeasonPayload()._payload(calm)
         html = render_dashboard_html([payload])
         self.assertNotIn('id="active-storms"', html)
+        self.assertNotIn('id="near-badge"', html)
         self.assertIn('var ACE_ACTIVE=[];', html)
 
     def test_location_form_is_labeled_and_says_where_the_text_goes(self):
