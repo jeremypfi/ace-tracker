@@ -2273,6 +2273,17 @@ class TestStormPages(unittest.TestCase):
         self.assertIn('if(!glMap)', body)
         self.assertIn("'styleimagemissing'", body)
 
+    def test_map_tooltips_escape_feed_strings(self):
+        # Leaflet tooltips take HTML; storm names and times come from NOAA.
+        # _esc must live in TRACK_MAP_JS: storm pages load it without ACTIVE_MAP_JS.
+        import re
+        from ace_assets import TRACK_MAP_JS, ACTIVE_MAP_JS
+        self.assertIn('function _esc(', TRACK_MAP_JS)
+        self.assertNotIn('function _esc(', ACTIVE_MAP_JS)
+        js = TRACK_MAP_JS + ACTIVE_MAP_JS
+        self.assertEqual(re.findall(r"'\+(?:d\.name|p\.time|p\.status)\b", js), [])
+        self.assertIn("_esc(label)+(cyc?' <span class=\"sp-cycle\">'+_esc(cyc)", TRACK_MAP_JS)
+
     def test_vendored_maplibre_matches_its_integrity_hashes(self):
         import base64
         import hashlib

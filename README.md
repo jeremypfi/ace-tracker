@@ -220,8 +220,8 @@ The `landfall_cache.json` is built on the first run and cached by GitHub Actions
 **"Dropped N malformed row(s) … from HURDAT2 file" warning**
 NOAA's HURDAT2 file sometimes ships rows with unparseable lat/lon fields, which would crash Tropycal's parser for the whole basin. The tracker drops those rows and names the storms they belong to, and says whether any is from 1991 onward. As of Sept 2026 they are AL211969 and AL231975: "all before 1991, so no effect on this site's data."
 
-**`pkg_resources` deprecation warning**
-Tropycal uses `pkg_resources` which is deprecated in setuptools 81+ and removed in setuptools 82+. `requirements.txt` pins `setuptools<85` as a workaround, and CI excludes Python 3.13+ for the same reason. Monitor [Tropycal releases](https://github.com/tropycal/tropycal/releases) for a fix.
+**setuptools pin**
+`requirements.txt` pins `setuptools>=84.1.0,<85`. The floor is a security fix (GHSA-xmj3-9gf7-h52w). The cap and the Python 3.13+ exclusion in CI date from when Tropycal imported `pkg_resources`. Tropycal 1.5.2 no longer does, so both are due for a retest.
 
 ---
 

@@ -36,4 +36,4 @@ uv pip install -r requirements-dev.txt && uv run python -m playwright install ch
 
 ## Known Issue
 
-Tropycal's `_version.py` imports `pkg_resources`, which setuptools has deprecated and plans to remove. `requirements.txt` pins `setuptools<85`. `pkg_resources` still imports at setuptools 84.0.0 (checked 2026-10-03). Revisit when tropycal ships a fix.
+`requirements.txt` pins `setuptools>=84.1.0,<85`: the floor is for GHSA-xmj3-9gf7-h52w, and the cap dates from when tropycal imported `pkg_resources`. Tropycal 1.5.2 no longer does (it uses `importlib.metadata`), and it imports cleanly on setuptools 84.2.1, which has no `pkg_resources` (checked 2026-10-26). The cap and the 3.13+ exclusion can probably go, but test before removing them.

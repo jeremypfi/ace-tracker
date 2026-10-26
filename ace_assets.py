@@ -133,6 +133,8 @@ LIB_MISSING_JS = """function _libMissing(box,msg){
 }"""
 
 TRACK_MAP_JS = """var _trMaps={};
+// Leaflet tooltips and popups take HTML; storm names and times come from NOAA feeds.
+function _esc(t){var d=document.createElement('div');d.textContent=t;return d.innerHTML;}
 var _trSpagLayers={};
 var _trMapObjs={};
 var _SC={TD:'#9e9e9e',TS:'#81d4fa',SS:'#81d4fa'};
@@ -306,8 +308,8 @@ function _buildMap(slug){
   pts.forEach(function(p,i){
     var c=_tc(p.status,p.wind),last=(i===pts.length-1);
     var mk=L.circleMarker([p.lat,p.lon],{radius:last?7:4,fillColor:c,color:last?'#fff':c,weight:last?2:1,fillOpacity:1,opacity:1}).addTo(map);
-    mk.bindTooltip('<b>'+d.name+'</b><br>'+p.time+'<br>'+p.status+' \xb7 '+_fmtWind(p.wind),{direction:'top',offset:[0,-6]});
-    if(last&&d.active)mk.bindPopup('<b>Current Position</b><br>'+p.time+'<br>'+p.status+' \xb7 '+_fmtWind(p.wind),{maxWidth:160}).openPopup();
+    mk.bindTooltip('<b>'+_esc(d.name)+'</b><br>'+_esc(p.time)+'<br>'+_esc(p.status)+' \xb7 '+_fmtWind(p.wind),{direction:'top',offset:[0,-6]});
+    if(last&&d.active)mk.bindPopup('<b>Current Position</b><br>'+_esc(p.time)+'<br>'+_esc(p.status)+' \xb7 '+_fmtWind(p.wind),{maxWidth:160}).openPopup();
   });
   if(d.active&&d.nhc_layers)_addNhcLayers(map,d,lls[lls.length-1][1],
     {legend:'nhclegend-'+slug,drawn:{},skipTrack:!!(d.spaghetti&&d.spaghetti.OFCL)});
@@ -326,10 +328,10 @@ function _buildMap(slug){
       var color=_SPAG_COLORS[model]||'#ffffff',label=_SPAG_LABELS[model]||model;
       var cyc=(d.spaghetti_cycles||{})[model];
       L.polyline(mlls,{color:color,weight:model==='OFCL'?3:2,opacity:0.85,dashArray:model==='OFCL'?null:'4,4'})
-        .bindTooltip(label+(cyc?' \xb7 '+cyc:''),{sticky:true}).addTo(spagGroup);
+        .bindTooltip(_esc(label+(cyc?' \xb7 '+cyc:'')),{sticky:true}).addTo(spagGroup);
       L.circleMarker(mlls[mlls.length-1],{radius:3,color:color,fillColor:color,fillOpacity:1,weight:1}).addTo(spagGroup);
       boundsPts=boundsPts.concat(mlls);
-      legendHtml+='<div class="legend-item"><div class="legend-dot" style="background:'+color+'"></div>'+label+(cyc?' <span class="sp-cycle">'+cyc+'</span>':'')+'</div>';
+      legendHtml+='<div class="legend-item"><div class="legend-dot" style="background:'+color+'"></div>'+_esc(label)+(cyc?' <span class="sp-cycle">'+_esc(cyc)+'</span>':'')+'</div>';
     });
   }
   spagGroup.addTo(map);
@@ -409,7 +411,7 @@ ACTIVE_MAP_JS = """function _buildActiveMap(){
     _proxStorms.push({slug:s.slug,name:d.name,lat:ll[0],lon:ll[1],status:p.status,wind:p.wind,time:p.time,nhc:!!d.nhc_layers});
     var c=_tc(p.status,p.wind);
     L.circleMarker(ll,{radius:8,fillColor:c,color:'#fff',weight:2,fillOpacity:1,opacity:1}).addTo(map)
-      .bindTooltip('<b>'+d.name+'</b><br>'+p.status+' \xb7 '+_fmtWind(p.wind),{direction:'top',offset:[0,-8]})
+      .bindTooltip('<b>'+_esc(d.name)+'</b><br>'+_esc(p.status)+' \xb7 '+_fmtWind(p.wind),{direction:'top',offset:[0,-8]})
       .on('click',function(e){L.DomEvent.stopPropagation(e);_openStormRow('storm-row-'+s.slug);});  // not a pin drop
     boundsPts.push(ll);
     var ofcl=d.spaghetti&&d.spaghetti.OFCL;
@@ -565,7 +567,6 @@ function _locLoad(){
 // Proximity readout (#180): how far each active storm is from the pin, and,
 // from NHC's layers when they loaded, the cone, closest approach and wind field.
 var _proxStorms=[],_nhcData={},_locLines=null;
-function _esc(t){var d=document.createElement('div');d.textContent=t;return d.innerHTML;}
 function _bearing(lat1,lon1,lat2,lon2){
   var r=Math.PI/180,dl=(lon2-lon1)*r;
   var y=Math.sin(dl)*Math.cos(lat2*r),x=Math.cos(lat1*r)*Math.sin(lat2*r)-Math.sin(lat1*r)*Math.cos(lat2*r)*Math.cos(dl);

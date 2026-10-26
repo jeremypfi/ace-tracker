@@ -23,9 +23,8 @@ jobs:
     strategy:
       matrix:
         # 3.10 excluded: cartopy>=0.26 requires Python 3.11+ (publish.yml runs 3.11).
-        # 3.13+ excluded: tropycal>=1.4 _version.py uses pkg_resources, which
-        # was removed from setuptools 82+. We pin setuptools<85 in
-        # requirements.txt as a workaround. Re-evaluate when tropycal ships a fix.
+        # 3.13+ excluded since tropycal 1.4 imported pkg_resources. Tropycal
+        # 1.5.2 no longer does; retest 3.13 before adding it.
         python-version: ['3.11', '3.12']
 
     steps:
