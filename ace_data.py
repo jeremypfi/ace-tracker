@@ -70,7 +70,7 @@ START_YEAR = 1991
 SITE_URL = 'https://aceofcanes.com'
 # First season with storm pages. Finished seasons from here on keep their
 # pages after the dashboard moves to a new season (#158).
-STORM_PAGES_FIRST_YEAR = 2026
+STORM_PAGES_FIRST_YEAR = START_YEAR
 
 # ACE Calculation Constants
 
@@ -692,6 +692,24 @@ def _extract_synoptic_winds(storm_obj):
 
 
 
+def _get_storm(dataset, storm_id):
+    """dataset.get_storm(), once per storm per dataset. Tropycal builds a new
+    Storm on every call, and each build makes a network request for ARCHER
+    center fixes, so parse_hurdat2, the current season and the finished
+    seasons' storm pages share the objects instead of fetching ~1,100
+    storms twice."""
+    cache = getattr(dataset, '_ace_storms', None)
+    if cache is None:
+        cache = {}
+        try:
+            dataset._ace_storms = cache
+        except AttributeError:
+            return dataset.get_storm(storm_id)
+    if storm_id not in cache:
+        cache[storm_id] = dataset.get_storm(storm_id)
+    return cache[storm_id]
+
+
 def parse_hurdat2(basin_key, dataset=None):
     """Fetch historical storm data using Tropycal TrackDataset.
 
@@ -723,7 +741,7 @@ def parse_hurdat2(basin_key, dataset=None):
                 # Process each storm in the season
                 for storm_id in season.dict.keys():
                     try:
-                        storm_obj = dataset.get_storm(storm_id)
+                        storm_obj = _get_storm(dataset, storm_id)
 
                         # Extract storm attributes
                         storm_name = storm_obj.name.title() if storm_obj.name else 'UNNAMED'
@@ -888,7 +906,7 @@ def _extract_spaghetti_tracks(storm_obj):
     return tracks_by_model, cycles_by_model
 
 
-def _season_storm_details(dataset, year, lf_cache):
+def _season_storm_details(dataset, year, lf_cache, reanalyzed=False):
     """Named storms of one season, as the dashboard and storm pages show them.
 
     Returns (storms {name: ACE}, storm_details {name: {...}}, Tropycal storm
@@ -896,6 +914,12 @@ def _season_storm_details(dataset, year, lf_cache):
     best track) fall back to geographic detection, cached in `lf_cache`;
     lf_dirty says whether the cache needs saving. Raises if the dataset has
     no such season, like Tropycal's get_season.
+
+    `reanalyzed` is for seasons NHC has already reanalyzed into HURDAT2:
+    there a missing 'L' marker means no landfall, so there is no geographic
+    guess, landfalls come from the bare-id cache entries parse_hurdat2 fills
+    (so storm pages match the History page), and unnamed tropical storms
+    are kept as 'Unnamed AL13'.
     """
     season = dataset.get_season(year)
 
@@ -909,15 +933,18 @@ def _season_storm_details(dataset, year, lf_cache):
     # Process each storm in the season
     for storm_id in season.dict.keys():
         try:
-            storm_obj = dataset.get_storm(storm_id)
+            storm_obj = _get_storm(dataset, storm_id)
             season_storm_objs.append(storm_obj)
 
             # Get storm name
             storm_name = storm_obj.name.title() if storm_obj.name else 'UNNAMED'
 
-            # Skip unnamed storms and numbered systems
+            # Skip unnamed storms and numbered systems, except in reanalyzed
+            # seasons, where UNNAMED is a real storm NHC found after the fact.
             if storm_name.upper() == 'UNNAMED':
-                continue
+                if not reanalyzed:
+                    continue
+                storm_name = f"Unnamed {str(storm_id)[:4].upper()}"
 
             # ACE via our own synoptic-time method (same as the
             # historical path) so the dashboard and history page
@@ -925,7 +952,9 @@ def _season_storm_details(dataset, year, lf_cache):
             storm_ace = ace_from_winds(_extract_synoptic_winds(storm_obj))
             tropycal_ace = storm_obj.ace if hasattr(storm_obj, 'ace') and storm_obj.ace else 0.0
             if tropycal_ace and abs(storm_ace - tropycal_ace) > 0.25:
-                logger.warning(
+                # Expected for reanalyzed storms (Tropycal also counts
+                # off-synoptic landfall points), so only the live season warns.
+                (logger.debug if reanalyzed else logger.warning)(
                     f"ACE cross-check mismatch for {storm_id}: "
                     f"computed {storm_ace:.2f} vs Tropycal {tropycal_ace:.2f}")
 
@@ -991,9 +1020,18 @@ def _season_storm_details(dataset, year, lf_cache):
             # track analysis. Cache geo results keyed by storm_id +
             # last track timestamp so stale entries auto-invalidate
             # when new track data arrives for an active storm.
-            landfall = get_landfall_locations(storm_obj)
-            landfall_estimated = not landfall
-            if not landfall:
+            if reanalyzed:
+                if str(storm_id) in lf_cache:
+                    landfall = lf_cache[str(storm_id)]
+                else:
+                    landfall = get_landfall_locations(storm_obj)
+                    lf_cache[str(storm_id)] = landfall
+                    lf_dirty = True
+                landfall_estimated = False
+            else:
+                landfall = get_landfall_locations(storm_obj)
+                landfall_estimated = not landfall
+            if not landfall and not reanalyzed:
                 geo_key = f"geo:{storm_id}:{_last_track_stamp(storm_obj)}"
                 if _drop_stale_storm_keys(lf_cache, storm_id, geo_key, 'geo'):
                     lf_dirty = True
@@ -1111,21 +1149,45 @@ def get_current_season(basin_key, dataset=None):
         return _backup_current(basin_key)
 
 
+def get_completed_seasons(dataset, years):
+    """get_completed_season() for each year, sharing one landfall-cache load
+    and save. Seasons with no named storms are left out."""
+    lf_cache = _load_landfall_cache()
+    seasons = []
+    dirty = False
+    for year in years:
+        season, lf_dirty = _completed_season(dataset, year, lf_cache)
+        dirty = dirty or lf_dirty
+        if season:
+            seasons.append(season)
+    if dirty:
+        _save_landfall_cache(lf_cache)
+    return seasons
+
+
 def get_completed_season(dataset, year):
     """A finished season's named storms, in get_current_season()'s shape, so
     its storm pages outlive the dashboard moving on (#158). Uses the same
-    per-storm extraction as the live season, so pages keep the estimated
-    landfalls until NHC's reanalysis adds official ones. None if the dataset
-    has no named storms for `year` or reading it fails."""
+    per-storm extraction as the live season. Last season keeps estimated
+    landfalls, since NHC's reanalysis lands in HURDAT2 during the following
+    year; older seasons are treated as reanalyzed. None if the dataset has
+    no named storms for `year` or reading it fails."""
+    lf_cache = _load_landfall_cache()
+    season, lf_dirty = _completed_season(dataset, year, lf_cache)
+    if lf_dirty:
+        _save_landfall_cache(lf_cache)
+    return season
+
+
+def _completed_season(dataset, year, lf_cache):
     try:
-        lf_cache = _load_landfall_cache()
-        storms, details, storm_objs, lf_dirty = _season_storm_details(dataset, year, lf_cache)
-        if lf_dirty:
-            _save_landfall_cache(lf_cache)
+        storms, details, storm_objs, lf_dirty = _season_storm_details(
+            dataset, year, lf_cache, reanalyzed=year < _utc_now().year - 1)
     except Exception as e:
         logger.warning(f"Could not load the {year} season for storm pages: {e}")
-        return None
+        return None, False
     if not storms:
+        return None, lf_dirty
         return None
     for d in details.values():
         d.update(is_active=False, spaghetti={}, spaghetti_cycles={})
@@ -1135,7 +1197,7 @@ def get_completed_season(dataset, year):
         'storm_details': details,
         'total': round(sum(storms.values()), 4),
         'data_as_of': latest_track_time(storm_objs),
-    }
+    }, lf_dirty
 
 
 def _backup_current(basin_key):

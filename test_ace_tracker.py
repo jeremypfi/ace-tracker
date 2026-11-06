@@ -2810,6 +2810,79 @@ class TestCompletedSeasonPages(unittest.TestCase):
         self.assertFalse(any(d['is_active'] for d in season['storm_details'].values()))
         self.assertAlmostEqual(season['total'], sum(season['storms'].values()), places=4)
 
+    def test_reanalyzed_season_uses_official_landfalls_and_keeps_unnamed(self):
+        storms = [
+            FakeStorm('AL132013', None, [(datetime(2013, 9, 5, 0), 'TS', 40, 30.0, -80.0),
+                                         (datetime(2013, 9, 5, 6), 'TS', 45, 31.0, -79.0)]),
+            FakeStorm('AL012013', 'ANDREA', [(datetime(2013, 6, 6, 0), 'TS', 50, 28.0, -84.0)]),
+            FakeStorm('AL022013', 'BARRY', [(datetime(2013, 6, 20, 0), 'TS', 40, 19.0, -95.0)]),
+        ]
+        cache = {'AL012013': [('Florida', 'TS')]}
+        with mock.patch.object(ace_data, '_utc_now', return_value=datetime(2026, 11, 5)), \
+             mock.patch.object(ace_data, '_load_landfall_cache', return_value=cache), \
+             mock.patch.object(ace_data, '_save_landfall_cache') as save, \
+             mock.patch.object(ace_data, 'get_landfall_locations', return_value=[]) as markers, \
+             mock.patch.object(ace_data, '_detect_landfall_from_track') as detect:
+            seasons = ace_data.get_completed_seasons(FakeDataset(storms), [2013])
+        detect.assert_not_called()  # no 'L' marker after reanalysis means no landfall
+        self.assertEqual(markers.call_count, 2)  # Andrea came from the cache
+        save.assert_called_once()
+        details = seasons[0]['storm_details']
+        self.assertEqual(set(details), {'Unnamed AL13', 'Andrea', 'Barry'})
+        self.assertEqual(details['Andrea']['landfall'], [('Florida', 'TS')])
+        self.assertFalse(details['Andrea']['landfall_estimated'])
+        p = ace_data.build_completed_season_payload('atlantic', seasons[0])
+        unnamed = next(s for s in p['storms'] if s['name'] == 'Unnamed AL13')
+        self.assertEqual((unnamed['slug'], unnamed['page_slug']), ('unnamed-al13', 'unnamed-al13-2013'))
+
+    def test_last_season_still_estimates_landfalls(self):
+        with mock.patch.object(ace_data, '_utc_now', return_value=datetime(2027, 6, 15)):
+            season = self._completed(FakeDataset([self.bertha]), 2026)
+        self.assertTrue(season['storm_details']['Bertha']['landfall_estimated'])
+
+    def test_finished_season_card_name_ignores_the_run_date(self):
+        season = self._completed(FakeDataset([self.bertha]), 2026)
+        p = ace_data.build_completed_season_payload('pacific', season)
+        s = p['storms'][0]
+        day1, day2 = datetime(2027, 6, 1, tzinfo=timezone.utc), datetime(2027, 6, 2, tzinfo=timezone.utc)
+        self.assertEqual(ace_cards.storm_card_name(p, s, day1), ace_cards.storm_card_name(p, s, day2))
+        live = dict(p, completed=False)
+        self.assertNotEqual(ace_cards.storm_card_name(live, s, day1), ace_cards.storm_card_name(live, s, day2))
+
+    def test_card_cache_copies_finished_cards_and_prunes_stale_ones(self):
+        import tempfile
+        from ace_tracker import write_storm_pages
+        season = self._completed(FakeDataset([self.bertha]), 2026)
+        p = ace_data.build_completed_season_payload('pacific', season)
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = os.path.join(tmp, 'cache')
+            os.makedirs(cache)
+            open(os.path.join(cache, 'storm-gone-2020-abc.png'), 'wb').write(b'x')
+            write_storm_pages([p], os.path.join(tmp, 'a'), card_cache=cache)
+            self.assertEqual(len(os.listdir(cache)), 1)  # Bertha's, the stale card pruned
+            with mock.patch.object(ace_cards, 'render_storm_card', side_effect=AssertionError('redrawn')):
+                write_storm_pages([p], os.path.join(tmp, 'b'), card_cache=cache)
+            self.assertEqual(os.listdir(os.path.join(tmp, 'a', 'og')), os.listdir(os.path.join(tmp, 'b', 'og')))
+
+    def test_sitemap_dates_finished_pages_by_their_data(self):
+        season = self._completed(FakeDataset([self.bertha]), 2026)
+        p = ace_data.build_completed_season_payload('pacific', season)
+        xml = ace_feeds.build_sitemap('<urlset></urlset>', [p], datetime(2027, 6, 15, tzinfo=timezone.utc))
+        self.assertIn('<lastmod>2026-07-01</lastmod>', xml)
+        self.assertIn('<changefreq>yearly</changefreq>', xml)
+
+    def test_each_storm_is_built_once_per_dataset(self):
+        # Tropycal's get_storm makes a network request per call (ARCHER fixes).
+        dataset = FakeDataset([self.bertha])
+        with mock.patch.object(dataset, 'get_storm', wraps=dataset.get_storm) as get:
+            self._completed(dataset, 2026)
+            self._completed(dataset, 2026)
+            with mock.patch.object(ace_data, '_load_landfall_cache', return_value={}), \
+                 mock.patch.object(ace_data, '_save_landfall_cache'), \
+                 mock.patch.object(ace_data, 'get_landfall_locations', return_value=[]):
+                ace_data.parse_hurdat2('pacific', dataset=dataset)
+        get.assert_called_once_with('EP022026')
+
     def test_missing_season_is_none_not_an_error(self):
         self.assertIsNone(self._completed(FakeDataset([self.bertha]), 2025))
 
@@ -2832,15 +2905,39 @@ class TestStormPageRollover(unittest.TestCase):
     PAGES_2026 = ['arthur-2026.html', 'boris-2026.html', 'fay-2026.html', 'isaias-2026.html',
                   'kyle-2026.html', 'rachel-2026.html', 'simon-2026.html']
 
+    @classmethod
+    def setUpClass(cls):
+        import tempfile
+        cls.cards = tempfile.mkdtemp()  # shared, so later builds copy the 1991-2025 cards
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.cards, ignore_errors=True)
+
     def _build(self, now, extra=None):
         import tempfile
         import ui_fixture_site
         tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
-        out = ui_fixture_site.build(os.path.join(tmp, 'site'), quiet=True, now=now, extra_storms=extra)
+        out = ui_fixture_site.build(os.path.join(tmp, 'site'), quiet=True, now=now, extra_storms=extra,
+                                    card_cache=self.cards)
         with open(os.path.join(out, 'sitemap.xml')) as f:
             sitemap = f.read()
-        return out, sorted(os.listdir(os.path.join(out, 'storm'))), sitemap
+        recent = sorted(p for p in os.listdir(os.path.join(out, 'storm')) if '-2026' in p or '-2027' in p)
+        return out, recent, sitemap
+
+    def test_backfill_has_a_page_per_named_storm_since_1991(self):
+        out, _, sitemap = self._build(datetime(2026, 10, 11, 15))
+        pages = os.listdir(os.path.join(out, 'storm'))
+        # The fixture history has 3 storms a season per basin, 1991-2025.
+        self.assertEqual(len([p for p in pages if '-2026' not in p]), 3 * 35 * 2)
+        self.assertIn('ana-1991.html', pages)
+        self.assertIn('ana-1991-pacific.html', pages)  # same name in both basins: suffix rule
+        self.assertEqual(sitemap.count('/storm/'), len(pages))
+        with open(os.path.join(out, 'storm', 'ana-1991.html')) as f:
+            ana = f.read()
+        self.assertIn('All 1991 Atlantic storms', ana)
+        self.assertIn('og/storm-ana-1991-', ana)
 
     def test_new_season_keeps_last_seasons_pages(self):
         alvin = FakeStorm('EP012027', 'ALVIN', [

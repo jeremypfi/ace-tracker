@@ -85,11 +85,12 @@ def _paste_card(img):
     img.paste(layer, (30, (HEIGHT - layer.height) // 2), layer)
 
 
-def _footer(draw, left, date):
+def _footer(draw, left, date, note='preliminary'):
     # One line, large enough to read when a chat app shrinks the card to ~400 px.
     draw.text((left, HEIGHT - 70), 'aceofcanes.com', font=_font(30, bold=True), fill=ACCENT)
     url_w = draw.textlength('aceofcanes.com', font=_font(30, bold=True))
-    draw.text((left + url_w + 16, HEIGHT - 66), f'· {date} · preliminary', font=_font(25), fill=MUTED)
+    tail = f'· {date} · {note}' if note else f'· {date}'
+    draw.text((left + url_w + 16, HEIGHT - 66), tail, font=_font(25), fill=MUTED)
 
 
 def render_share_card(payloads, generated_at=None):
@@ -138,7 +139,7 @@ def share_card_alt(payloads):
 
 def _storm_content(payload, storm, as_of):
     wind = storm['max_wind']
-    return {
+    content = {
         'name': storm['name'],
         'basin_key': payload['basin_key'],
         'year': payload['year'],
@@ -148,8 +149,15 @@ def _storm_content(payload, storm, as_of):
         'active': storm['is_active'],
         'landfall': ', '.join(loc for loc, _ in storm['landfall']) or 'No landfall',
         'points': [(t['lat'], t['lon'], t['status'], t['wind']) for t in storm['track_points']],
+        # A finished season's card carries no run date, so its name (a hash
+        # of this content) stays the same from run to run and can be cached.
         'date': as_of.strftime('%b %-d'),
     }
+    if payload.get('completed'):
+        # A finished season's card carries no run date, so its name (a hash
+        # of this content) stays the same from run to run and can be cached.
+        content.update(date=f"{payload['year']} season", note=None)
+    return content
 
 
 def storm_card_name(payload, storm, generated_at=None):
@@ -234,7 +242,7 @@ def render_storm_card(payload, storm, generated_at=None):
         lf = lf[:-2].rstrip(', ') + '…'
     draw.text((left, 490), lf, font=lf_font, fill=MUTED)
 
-    _footer(draw, left, c['date'])
+    _footer(draw, left, c['date'], c.get('note', 'preliminary'))
 
     out = io.BytesIO()
     img.save(out, 'PNG', optimize=True)

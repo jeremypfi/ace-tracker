@@ -157,10 +157,12 @@ def fake_urlopen(req, timeout=None, **_):
     raise urllib.error.URLError(f'offline fixture build: {url}')
 
 
-def build(out_dir, quiet=False, now=None, extra_storms=None):
+def build(out_dir, quiet=False, now=None, extra_storms=None, card_cache=None):
     """`now` moves the frozen clock and `extra_storms` ({basin: [FakeStorm]})
-    adds storms, for rollover tests (#158). The defaults build the site the
-    browser tests expect."""
+    adds storms, for rollover tests (#158). `card_cache` is a folder for
+    finished-season cards shared between builds (off by default, so nothing
+    is written outside OUT_DIR). The defaults build the site the browser
+    tests expect."""
     out_dir = os.path.abspath(out_dir)
     shutil.rmtree(out_dir, ignore_errors=True)
     os.makedirs(out_dir)
@@ -191,6 +193,7 @@ def build(out_dir, quiet=False, now=None, extra_storms=None):
         patch(ace_data, '_extract_spaghetti_tracks', side_effect=spaghetti)
         patch(ace_data, 'CONE_DIR', os.path.join(out_dir, 'cones'))
         patch(ace_tracker, 'OUTPUT_FOLDER', out_dir)
+        patch(ace_tracker, 'CARD_CACHE', card_cache)
         if quiet:
             stack.enter_context(redirect_stdout(io.StringIO()))
             logging.disable(logging.WARNING)
