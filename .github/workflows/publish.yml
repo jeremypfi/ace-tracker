@@ -68,6 +68,18 @@ jobs:
         key: landfall-v1-${{ github.run_id }}
         restore-keys: landfall-v1-
 
+    # Finished seasons' share cards (~1,000, #158). Restores the newest copy;
+    # ace_tracker.py copies cards from it, draws only new ones and prunes the
+    # rest. Saved after the build under a key that changes only when the
+    # cards do, so unchanged runs add no cache entries.
+    - name: Restore storm card cache
+      id: cards
+      uses: actions/cache/restore@v6
+      with:
+        path: card_cache
+        key: storm-cards-v1-
+        restore-keys: storm-cards-v1-
+
     # The landfall geocoder needs Natural Earth's 10m state/province and
     # country boundaries (~20 MB). Without this, cartopy re-downloads them on
     # every run (a DownloadWarning in the log), and a Natural Earth outage
@@ -97,6 +109,15 @@ jobs:
         # DISCORD_WEBHOOK_PACIFIC: ${{ secrets.DISCORD_WEBHOOK_PACIFIC }}
       run: |
         python ace_tracker.py
+
+    - name: Save storm card cache
+      if: >-
+        hashFiles('card_cache/*.png') != '' &&
+        steps.cards.outputs.cache-matched-key != format('storm-cards-v1-{0}', hashFiles('card_cache/*.png'))
+      uses: actions/cache/save@v6
+      with:
+        path: card_cache
+        key: storm-cards-v1-${{ hashFiles('card_cache/*.png') }}
 
     - name: Prepare for deployment
       run: |

@@ -31,7 +31,7 @@ from ace_data import (
     build_season_payload,
     build_completed_season_payload,
     ensure_unique_page_slugs,
-    get_completed_season,
+    get_completed_seasons,
     STORM_PAGES_FIRST_YEAR,
     BACKUP_DATA,
     START_YEAR,
@@ -63,6 +63,10 @@ logger = logging.getLogger(__name__)
 # ===============================================================================
 
 OUTPUT_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+# Finished seasons' share cards never change, so they are kept here between
+# runs (an Actions cache in publish.yml) instead of being redrawn: about
+# 1,000 cards at ~0.2 s each (#158). None turns the cache off.
+CARD_CACHE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "card_cache")
 
 
 
@@ -125,11 +129,8 @@ def process_basin(basin_key):
     # season gets its first storm or its start date.
     completed_seasons = []
     if shared_dataset is not None:
-        for year in range(STORM_PAGES_FIRST_YEAR, today.year):
-            if year != current['year']:
-                season = get_completed_season(shared_dataset, year)
-                if season:
-                    completed_seasons.append(season)
+        completed_seasons = get_completed_seasons(
+            shared_dataset, [y for y in range(STORM_PAGES_FIRST_YEAR, today.year) if y != current['year']])
 
     # Generate insights
     insights = generate_insights(basin_key, current, yearly_totals, historical_storms, yearly_stats)
@@ -179,7 +180,44 @@ def write_share_card(payloads, output_folder, generated_at=None):
 
 
 
-def write_storm_pages(payloads, output_folder, generated_at=None):
+def _write_storm_card(p, s, output_folder, generated_at, card_cache, used):
+    """Write one storm's share card and return its site-relative path. A
+    finished season's card is copied from `card_cache` when there, and
+    saved there when drawn."""
+    image = ace_cards.storm_card_name(p, s, generated_at)
+    full = os.path.join(output_folder, image)
+    os.makedirs(os.path.dirname(full), exist_ok=True)
+    cached = os.path.join(card_cache, os.path.basename(image)) if card_cache and p.get('completed') else None
+    if cached and os.path.isfile(cached) and os.path.getsize(cached) > 0:
+        shutil.copyfile(cached, full)
+        used[os.path.basename(image)] = True
+        return image
+    with open(full, 'wb') as f:
+        f.write(ace_cards.render_storm_card(p, s, generated_at))
+    if cached:
+        try:
+            os.makedirs(card_cache, exist_ok=True)
+            shutil.copyfile(full, cached)
+            used[os.path.basename(image)] = False
+        except OSError as e:
+            logger.warning(f"Could not cache share card {image}: {e}")
+    return image
+
+
+def _prune_card_cache(card_cache, used):
+    """Drop cached cards this run did not use (a storm whose data changed
+    gets a new name), so the cache holds exactly the current cards."""
+    if not card_cache or not os.path.isdir(card_cache):
+        return
+    for name in os.listdir(card_cache):
+        if name not in used:
+            try:
+                os.remove(os.path.join(card_cache, name))
+            except OSError:
+                pass
+
+
+def write_storm_pages(payloads, output_folder, generated_at=None, card_cache=None):
     """Write one page (and share card) per storm of each payload under
     output_folder/storm/. Each storm is isolated: a failure skips that storm,
     never the publish. Returns the payloads that actually got pages, with
@@ -188,6 +226,7 @@ def write_storm_pages(payloads, output_folder, generated_at=None):
     shutil.rmtree(storm_dir, ignore_errors=True)
     os.makedirs(storm_dir, exist_ok=True)
     published = []
+    used = {}  # cached card name -> True if copied, False if drawn this run
     for p in payloads:
         if p['preseason'] or p['is_backup']:
             continue
@@ -196,11 +235,7 @@ def write_storm_pages(payloads, output_folder, generated_at=None):
             try:
                 image = alt = None
                 try:
-                    image = ace_cards.storm_card_name(p, s, generated_at)
-                    full = os.path.join(output_folder, image)
-                    os.makedirs(os.path.dirname(full), exist_ok=True)
-                    with open(full, 'wb') as f:
-                        f.write(ace_cards.render_storm_card(p, s, generated_at))
+                    image = _write_storm_card(p, s, output_folder, generated_at, card_cache, used)
                     alt = ace_cards.storm_card_alt(p, s)
                 except Exception as e:
                     logger.error(f"Could not generate share card for {s['name']}: {e}")
@@ -213,6 +248,10 @@ def write_storm_pages(payloads, output_folder, generated_at=None):
                 logger.error(f"Failed to write storm page for {s['name']}: {e}")
         if ok:
             published.append(dict(p, storms=ok))
+    _prune_card_cache(card_cache, used)
+    if card_cache:
+        print(f"  ✓ Finished-season cards: {sum(used.values())} from cache, "
+              f"{sum(1 for hit in used.values() if not hit)} drawn")
     return published
 
 
@@ -302,7 +341,7 @@ def main():
                 print(f"  ✗ Error: Could not save {rel_path}")
 
         try:
-            published = write_storm_pages(payloads + completed, OUTPUT_FOLDER)
+            published = write_storm_pages(payloads + completed, OUTPUT_FOLDER, card_cache=CARD_CACHE)
             print(f"  ✓ {sum(len(p['storms']) for p in published)} storm pages saved to: "
                   f"{os.path.join(OUTPUT_FOLDER, 'storm')}")
             output_files.append(write_sitemap(published, OUTPUT_FOLDER))

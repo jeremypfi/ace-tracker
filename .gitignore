@@ -218,6 +218,7 @@ data/feed.xml
 docs/html/
 docs/pdf/
 landfall_cache.json
+card_cache/
 
 # OS files
 .DS_Store

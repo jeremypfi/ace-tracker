@@ -150,14 +150,19 @@ def build_sitemap(base_xml, payloads, generated_at=None):
     """The static sitemap.xml with one entry per storm page added. The base
     keeps the hand-maintained entries (dashboard, history, records, about)."""
     lastmod = _utc(generated_at).strftime('%Y-%m-%d')
-    entries = ''.join(
-        '  <url>\n'
-        f"    <loc>{escape(storm_page_url(s))}</loc>\n"
-        f'    <lastmod>{lastmod}</lastmod>\n'
-        f"    <changefreq>{'hourly' if s['is_active'] else 'weekly'}</changefreq>\n"
-        '    <priority>0.5</priority>\n'
-        '  </url>\n'
-        for p in payloads for s in p['storms'])
+
+    def entry(p, s):
+        mod, freq = lastmod, 'hourly' if s['is_active'] else 'weekly'
+        if p.get('completed'):
+            # Finished seasons change only at a reanalysis: date them by their data.
+            mod, freq = (p.get('data_as_of') or lastmod)[:10], 'yearly'
+        return ('  <url>\n'
+                f"    <loc>{escape(storm_page_url(s))}</loc>\n"
+                f'    <lastmod>{mod}</lastmod>\n'
+                f"    <changefreq>{freq}</changefreq>\n"
+                '    <priority>0.5</priority>\n'
+                '  </url>\n')
+    entries = ''.join(entry(p, s) for p in payloads for s in p['storms'])
     marker = '</urlset>'
     if marker not in base_xml:
         raise ValueError('sitemap base has no </urlset>')
