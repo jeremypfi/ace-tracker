@@ -157,18 +157,25 @@ def fake_urlopen(req, timeout=None, **_):
     raise urllib.error.URLError(f'offline fixture build: {url}')
 
 
-def build(out_dir, quiet=False):
+def build(out_dir, quiet=False, now=None, extra_storms=None):
+    """`now` moves the frozen clock and `extra_storms` ({basin: [FakeStorm]})
+    adds storms, for rollover tests (#158). The defaults build the site the
+    browser tests expect."""
     out_dir = os.path.abspath(out_dir)
     shutil.rmtree(out_dir, ignore_errors=True)
     os.makedirs(out_dir)
     current = current_storms()
-    datasets = {b: FakeDataset(historical_storms(b) + current[b]) for b in ('atlantic', 'pacific')}
     for storms in current.values():
         for s in storms:
             s.year = 2026
+    extra_storms = extra_storms or {}
+    datasets = {b: FakeDataset(historical_storms(b) + current[b] + extra_storms.get(b, []))
+                for b in ('atlantic', 'pacific')}
 
     with ExitStack() as stack:
         patch = lambda *a, **k: stack.enter_context(mock.patch.object(*a, **k))
+        if now:
+            patch(sys.modules[__name__], 'FROZEN_NOW', now)
         for module in (ace_data, ace_html, ace_cards, ace_feeds, ace_tracker):
             patch(module, 'datetime', FrozenDatetime)
         stack.enter_context(mock.patch('urllib.request.urlopen', side_effect=fake_urlopen))

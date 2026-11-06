@@ -88,9 +88,15 @@ def check(root):
     try:
         locs = [el.text for el in ET.parse(os.path.join(root, 'sitemap.xml')).iter()
                 if el.tag.endswith('loc')]
-        in_sitemap = sum(1 for loc in locs if loc and '/storm/' in loc)
-        if in_sitemap != len(storms):
-            problems.append(f'sitemap lists {in_sitemap} storm pages, season.json has {len(storms)} storms')
+        # The sitemap also lists finished seasons' pages (#158), so it holds
+        # at least the current storms, and every storm page it lists exists.
+        in_sitemap = {loc for loc in locs if loc and '/storm/' in loc}
+        for storm in storms:
+            if storm.get('url') not in in_sitemap:
+                problems.append(f"{storm.get('name')}: page missing from sitemap")
+        for loc in sorted(in_sitemap):
+            if not loc.startswith(SITE) or _read(root, loc[len(SITE):]) is None:
+                problems.append(f'sitemap lists {loc}, which was not built')
     except (OSError, ET.ParseError):
         pass  # already reported above
 

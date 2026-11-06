@@ -29,7 +29,10 @@ from datetime import datetime, timezone
 from ace_data import (
     BASINS,
     build_season_payload,
+    build_completed_season_payload,
     ensure_unique_page_slugs,
+    get_completed_season,
+    STORM_PAGES_FIRST_YEAR,
     BACKUP_DATA,
     START_YEAR,
     _tropycal_basin_name,
@@ -116,6 +119,18 @@ def process_basin(basin_key):
     # Get current season
     current = get_current_season(basin_key, dataset=shared_dataset)
 
+    # Finished seasons the dashboard no longer shows still need their storm
+    # pages, or every link shared during the season 404s (#158). Off-season
+    # the dashboard still shows last season, so this is empty until the new
+    # season gets its first storm or its start date.
+    completed_seasons = []
+    if shared_dataset is not None:
+        for year in range(STORM_PAGES_FIRST_YEAR, today.year):
+            if year != current['year']:
+                season = get_completed_season(shared_dataset, year)
+                if season:
+                    completed_seasons.append(season)
+
     # Generate insights
     insights = generate_insights(basin_key, current, yearly_totals, historical_storms, yearly_stats)
     records_in_play = calculate_records_in_play(historical_storms, basin_key, current['total'])
@@ -135,6 +150,7 @@ def process_basin(basin_key):
     return {
         'basin_key': basin_key,
         'current': current,
+        'completed_seasons': completed_seasons,
         'yearly_totals': yearly_totals,
         'yearly_stats': yearly_stats,
         'insights': insights,
@@ -164,7 +180,7 @@ def write_share_card(payloads, output_folder, generated_at=None):
 
 
 def write_storm_pages(payloads, output_folder, generated_at=None):
-    """Write one page (and share card) per current-season storm under
+    """Write one page (and share card) per storm of each payload under
     output_folder/storm/. Each storm is isolated: a failure skips that storm,
     never the publish. Returns the payloads that actually got pages, with
     the failed storms removed, for the sitemap."""
@@ -256,7 +272,9 @@ def main():
         # One payload per basin, shared by the dashboard and the feeds so the
         # NHC cone/outlook fetches happen once per run.
         payloads = [build_season_payload(r) for r in basin_results]
-        ensure_unique_page_slugs(payloads)
+        completed = [build_completed_season_payload(r['basin_key'], s)
+                     for r in basin_results for s in r.get('completed_seasons', [])]
+        ensure_unique_page_slugs(payloads + completed)
         share_image, share_alt = write_share_card(payloads, OUTPUT_FOLDER)
         if share_image:
             print(f"  ✓ Share card saved to: {os.path.join(OUTPUT_FOLDER, share_image)}")
@@ -284,7 +302,7 @@ def main():
                 print(f"  ✗ Error: Could not save {rel_path}")
 
         try:
-            published = write_storm_pages(payloads, OUTPUT_FOLDER)
+            published = write_storm_pages(payloads + completed, OUTPUT_FOLDER)
             print(f"  ✓ {sum(len(p['storms']) for p in published)} storm pages saved to: "
                   f"{os.path.join(OUTPUT_FOLDER, 'storm')}")
             output_files.append(write_sitemap(published, OUTPUT_FOLDER))

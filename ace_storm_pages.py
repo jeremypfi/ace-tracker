@@ -1,5 +1,6 @@
 """
-One static page per named storm of the current season, at
+One static page per named storm of the current season, and of each finished
+season from STORM_PAGES_FIRST_YEAR on (#158), at
 /storm/<page_slug>.html. Built from build_season_payload() results and the
 same panel/map pieces the dashboard uses (ace_html, ace_assets).
 """
@@ -63,10 +64,24 @@ def render_storm_page_html(payload, storm, share_image=None, share_alt=None):
     page_title = html_escape(f"{storm['name']} {year}: Track, ACE & Intensity ({basin}) | aceofcanes.com")
     share_title = html_escape(f"{storm['name']} {year}: {storm['ace']:.1f} ACE, {storm['category']} "
                               f"({SHARE_BASIN.get(payload['basin_key'], basin)})")
-    description = html_escape(
-        f"{storm['name']} ({basin} {year}) {_wind_phrase(storm)} and has produced {storm['ace']:.1f} ACE, "
-        f"{storm['pct_of_season']:.0f}% of the season so far. Track map, intensity timeline and landfalls, "
-        "updated hourly from NOAA data.")
+    completed = payload.get('completed', False)
+    if completed:
+        description = html_escape(
+            f"{storm['name']} ({basin} {year}) {_wind_phrase(storm)} and produced {storm['ace']:.1f} ACE, "
+            f"{storm['pct_of_season']:.0f}% of the season's total. Track map, intensity timeline and "
+            "landfalls from NOAA best-track data.")
+        data_note = ('Values come from NOAA best track. NHC revises each season in its post-season '
+                     'reanalysis (HURDAT2), and this page picks up the revision when it is published.')
+        season_link = (f'<a href="../history.html#{html_escape(payload["basin_key"])}" style="color:var(--accent)">'
+                       f'See the {year} season in Season History</a>')
+    else:
+        description = html_escape(
+            f"{storm['name']} ({basin} {year}) {_wind_phrase(storm)} and has produced {storm['ace']:.1f} ACE, "
+            f"{storm['pct_of_season']:.0f}% of the season so far. Track map, intensity timeline and landfalls, "
+            "updated hourly from NOAA data.")
+        data_note = ('Current-season values are preliminary (NHC real-time best track) and are revised in '
+                     'the post-season HURDAT2 release.')
+        season_link = None
     image = share_image or 'ace_preview.png'
     alt = share_alt or SHARE_IMAGE_ALT
     status = 'Active now' if storm['is_active'] else 'No longer active'
@@ -134,7 +149,7 @@ def render_storm_page_html(payload, storm, share_image=None, share_alt=None):
     <button type="button" id="copyBtn" onclick="copyPageLink()">🔗 Copy link</button>
   </div>
   {as_of_html}
-  <p class="page-note">Current-season values are preliminary (NHC real-time best track) and are revised in the post-season HURDAT2 release.</p>
+  <p class="page-note">{data_note}</p>
 </div>
 <div class="storm-card">
   <h3 style="margin-top:0">Landfall</h3>
@@ -143,7 +158,7 @@ def render_storm_page_html(payload, storm, share_image=None, share_alt=None):
 <div class="storm-card">
   <h3 style="margin-top:0">All {year} {html_escape(basin)} storms</h3>
   <ul class="sibling-list">{_siblings_html(payload, storm)}</ul>
-  <p class="page-note"><a href="/#storm-row-{html_escape(slug)}" style="color:var(--accent)">See {name} in the {year} season table</a></p>
+  <p class="page-note">{season_link or f'<a href="/#storm-row-{html_escape(slug)}" style="color:var(--accent)">See {name} in the {year} season table</a>'}</p>
 </div>
 </main>
 <div class="sources">
