@@ -68,6 +68,9 @@ BASINS = {
 
 START_YEAR = 1991
 SITE_URL = 'https://aceofcanes.com'
+# First season with storm pages. Finished seasons from here on keep their
+# pages after the dashboard moves to a new season (#158).
+STORM_PAGES_FIRST_YEAR = 2026
 
 # ACE Calculation Constants
 
@@ -885,6 +888,150 @@ def _extract_spaghetti_tracks(storm_obj):
     return tracks_by_model, cycles_by_model
 
 
+def _season_storm_details(dataset, year, lf_cache):
+    """Named storms of one season, as the dashboard and storm pages show them.
+
+    Returns (storms {name: ACE}, storm_details {name: {...}}, Tropycal storm
+    objects, lf_dirty). Landfalls missing HURDAT2 'L' markers (preliminary
+    best track) fall back to geographic detection, cached in `lf_cache`;
+    lf_dirty says whether the cache needs saving. Raises if the dataset has
+    no such season, like Tropycal's get_season.
+    """
+    season = dataset.get_season(year)
+
+    storms = {}
+    storm_details = {}
+    season_storm_objs = []
+    lf_dirty = False
+    if not season.dict:
+        return storms, storm_details, season_storm_objs, lf_dirty
+
+    # Process each storm in the season
+    for storm_id in season.dict.keys():
+        try:
+            storm_obj = dataset.get_storm(storm_id)
+            season_storm_objs.append(storm_obj)
+
+            # Get storm name
+            storm_name = storm_obj.name.title() if storm_obj.name else 'UNNAMED'
+
+            # Skip unnamed storms and numbered systems
+            if storm_name.upper() == 'UNNAMED':
+                continue
+
+            # ACE via our own synoptic-time method (same as the
+            # historical path) so the dashboard and history page
+            # always agree. Tropycal's value is a cross-check only.
+            storm_ace = ace_from_winds(_extract_synoptic_winds(storm_obj))
+            tropycal_ace = storm_obj.ace if hasattr(storm_obj, 'ace') and storm_obj.ace else 0.0
+            if tropycal_ace and abs(storm_ace - tropycal_ace) > 0.25:
+                logger.warning(
+                    f"ACE cross-check mismatch for {storm_id}: "
+                    f"computed {storm_ace:.2f} vs Tropycal {tropycal_ace:.2f}")
+
+            # Max wind while tropical/subtropical only (same logic as primary path)
+            tropical_types = {'TD', 'TS', 'HU', 'SS', 'SD'}
+            if hasattr(storm_obj, 'type') and len(storm_obj.type) > 0:
+                trop_winds = [v for v, t in zip(storm_obj.vmax, storm_obj.type)
+                              if str(t) in tropical_types]
+                max_wind = int(max(trop_winds)) if trop_winds else (
+                    int(max(storm_obj.vmax)) if len(storm_obj.vmax) > 0 else 0)
+            else:
+                max_wind = int(max(storm_obj.vmax)) if len(storm_obj.vmax) > 0 else 0
+
+            # Skip TDs that never reached named-storm strength (e.g. Tropycal "One", "Two")
+            if max_wind < MIN_NAMED_STORM_WIND:
+                continue
+
+            # Extract synoptic-time track points for map visualization
+            track_points = []
+            try:
+                t_times = storm_obj.time
+                t_lats = storm_obj.lat
+                t_lons = storm_obj.lon
+                t_winds = storm_obj.vmax
+                t_types = storm_obj.type if hasattr(storm_obj, 'type') and len(storm_obj.type) > 0 else []
+                for ti in range(len(t_times)):
+                    t = t_times[ti]
+                    if hasattr(t, 'hour') and t.hour in [0, 6, 12, 18]:
+                        track_points.append({
+                            'lat': round(float(t_lats[ti]), 1),
+                            'lon': round(float(t_lons[ti]), 1),
+                            'wind': int(t_winds[ti]),
+                            'status': str(t_types[ti]) if ti < len(t_types) else 'TS',
+                            'time': _portable_strftime(t, '%-m/%-d %HZ') if hasattr(t, 'strftime') else str(t),
+                        })
+            except Exception as _te:
+                logger.warning(f"Could not extract track for {storm_name}: {_te}")
+
+            # Detect if storm is currently active (last point within 48h)
+            is_active = False
+            try:
+                last_t = storm_obj.time[-1]
+                if hasattr(last_t, 'to_pydatetime'):
+                    last_t = last_t.to_pydatetime()
+                if last_t.tzinfo is None:
+                    last_t = last_t.replace(tzinfo=timezone.utc)
+                is_active = (datetime.now(timezone.utc) - last_t).total_seconds() < 48 * 3600
+            except Exception:
+                pass
+
+            # Start date string
+            start_date_str = '—'
+            try:
+                st = storm_obj.time[0]
+                if hasattr(st, 'to_pydatetime'):
+                    st = st.to_pydatetime()
+                start_date_str = _portable_strftime(st, '%-m/%-d')
+            except Exception:
+                pass
+
+            # Landfall detection: try HURDAT2 'L' markers first.
+            # BTK data often lacks them, so fall back to geographic
+            # track analysis. Cache geo results keyed by storm_id +
+            # last track timestamp so stale entries auto-invalidate
+            # when new track data arrives for an active storm.
+            landfall = get_landfall_locations(storm_obj)
+            landfall_estimated = not landfall
+            if not landfall:
+                geo_key = f"geo:{storm_id}:{_last_track_stamp(storm_obj)}"
+                if _drop_stale_storm_keys(lf_cache, storm_id, geo_key, 'geo'):
+                    lf_dirty = True
+                if geo_key in lf_cache:
+                    landfall = lf_cache[geo_key]
+                else:
+                    landfall = _detect_landfall_from_track(storm_obj)
+                    lf_cache[geo_key] = landfall
+                    lf_dirty = True
+            landfall = _clean_landfalls(landfall)
+
+            # Spaghetti model tracks only matter (and are only
+            # worth the extra Tropycal call) while a storm is active.
+            spaghetti, spaghetti_cycles = (
+                _extract_spaghetti_tracks(storm_obj) if is_active else ({}, {}))
+
+            # Store storm data
+            storms[storm_name] = storm_ace
+            storm_details[storm_name] = {
+                'ace': storm_ace,
+                'max_wind': max_wind,
+                'track_points': track_points,
+                'is_active': is_active,
+                'start_date': start_date_str,
+                'landfall': landfall,
+                'landfall_estimated': landfall_estimated and bool(landfall),
+                'spaghetti': spaghetti,
+                'spaghetti_cycles': spaghetti_cycles,
+            }
+
+        except Exception as e:
+            logger.warning(f"Error processing storm {storm_id}: {e}")
+            continue
+
+    return storms, storm_details, season_storm_objs, lf_dirty
+
+
+
 def get_current_season(basin_key, dataset=None):
     """Fetch current season data using Tropycal.
 
@@ -920,136 +1067,9 @@ def get_current_season(basin_key, dataset=None):
         # During active season only try current year; off-season also checks prior year
         for year in years_to_try:
             try:
-                season = dataset.get_season(year)
-
-                if not season.dict or len(season.dict) == 0:
-                    continue
-
-                storms = {}
-                storm_details = {}
-                season_storm_objs = []
-
-                # Process each storm in the season
-                for storm_id in season.dict.keys():
-                    try:
-                        storm_obj = dataset.get_storm(storm_id)
-                        season_storm_objs.append(storm_obj)
-
-                        # Get storm name
-                        storm_name = storm_obj.name.title() if storm_obj.name else 'UNNAMED'
-
-                        # Skip unnamed storms and numbered systems
-                        if storm_name.upper() == 'UNNAMED':
-                            continue
-
-                        # ACE via our own synoptic-time method (same as the
-                        # historical path) so the dashboard and history page
-                        # always agree. Tropycal's value is a cross-check only.
-                        storm_ace = ace_from_winds(_extract_synoptic_winds(storm_obj))
-                        tropycal_ace = storm_obj.ace if hasattr(storm_obj, 'ace') and storm_obj.ace else 0.0
-                        if tropycal_ace and abs(storm_ace - tropycal_ace) > 0.25:
-                            logger.warning(
-                                f"ACE cross-check mismatch for {storm_id}: "
-                                f"computed {storm_ace:.2f} vs Tropycal {tropycal_ace:.2f}")
-
-                        # Max wind while tropical/subtropical only (same logic as primary path)
-                        tropical_types = {'TD', 'TS', 'HU', 'SS', 'SD'}
-                        if hasattr(storm_obj, 'type') and len(storm_obj.type) > 0:
-                            trop_winds = [v for v, t in zip(storm_obj.vmax, storm_obj.type)
-                                          if str(t) in tropical_types]
-                            max_wind = int(max(trop_winds)) if trop_winds else (
-                                int(max(storm_obj.vmax)) if len(storm_obj.vmax) > 0 else 0)
-                        else:
-                            max_wind = int(max(storm_obj.vmax)) if len(storm_obj.vmax) > 0 else 0
-
-                        # Skip TDs that never reached named-storm strength (e.g. Tropycal "One", "Two")
-                        if max_wind < MIN_NAMED_STORM_WIND:
-                            continue
-
-                        # Extract synoptic-time track points for map visualization
-                        track_points = []
-                        try:
-                            t_times = storm_obj.time
-                            t_lats = storm_obj.lat
-                            t_lons = storm_obj.lon
-                            t_winds = storm_obj.vmax
-                            t_types = storm_obj.type if hasattr(storm_obj, 'type') and len(storm_obj.type) > 0 else []
-                            for ti in range(len(t_times)):
-                                t = t_times[ti]
-                                if hasattr(t, 'hour') and t.hour in [0, 6, 12, 18]:
-                                    track_points.append({
-                                        'lat': round(float(t_lats[ti]), 1),
-                                        'lon': round(float(t_lons[ti]), 1),
-                                        'wind': int(t_winds[ti]),
-                                        'status': str(t_types[ti]) if ti < len(t_types) else 'TS',
-                                        'time': _portable_strftime(t, '%-m/%-d %HZ') if hasattr(t, 'strftime') else str(t),
-                                    })
-                        except Exception as _te:
-                            logger.warning(f"Could not extract track for {storm_name}: {_te}")
-
-                        # Detect if storm is currently active (last point within 48h)
-                        is_active = False
-                        try:
-                            last_t = storm_obj.time[-1]
-                            if hasattr(last_t, 'to_pydatetime'):
-                                last_t = last_t.to_pydatetime()
-                            if last_t.tzinfo is None:
-                                last_t = last_t.replace(tzinfo=timezone.utc)
-                            is_active = (datetime.now(timezone.utc) - last_t).total_seconds() < 48 * 3600
-                        except Exception:
-                            pass
-
-                        # Start date string
-                        start_date_str = '—'
-                        try:
-                            st = storm_obj.time[0]
-                            if hasattr(st, 'to_pydatetime'):
-                                st = st.to_pydatetime()
-                            start_date_str = _portable_strftime(st, '%-m/%-d')
-                        except Exception:
-                            pass
-
-                        # Landfall detection: try HURDAT2 'L' markers first.
-                        # BTK data often lacks them, so fall back to geographic
-                        # track analysis. Cache geo results keyed by storm_id +
-                        # last track timestamp so stale entries auto-invalidate
-                        # when new track data arrives for an active storm.
-                        landfall = get_landfall_locations(storm_obj)
-                        landfall_estimated = not landfall
-                        if not landfall:
-                            geo_key = f"geo:{storm_id}:{_last_track_stamp(storm_obj)}"
-                            if _drop_stale_storm_keys(cs_lf_cache, storm_id, geo_key, 'geo'):
-                                cs_lf_dirty = True
-                            if geo_key in cs_lf_cache:
-                                landfall = cs_lf_cache[geo_key]
-                            else:
-                                landfall = _detect_landfall_from_track(storm_obj)
-                                cs_lf_cache[geo_key] = landfall
-                                cs_lf_dirty = True
-                        landfall = _clean_landfalls(landfall)
-
-                        # Spaghetti model tracks only matter (and are only
-                        # worth the extra Tropycal call) while a storm is active.
-                        spaghetti, spaghetti_cycles = (
-                            _extract_spaghetti_tracks(storm_obj) if is_active else ({}, {}))
-
-                        # Store storm data
-                        storms[storm_name] = storm_ace
-                        storm_details[storm_name] = {
-                            'ace': storm_ace,
-                            'max_wind': max_wind,
-                            'track_points': track_points,
-                            'is_active': is_active,
-                            'start_date': start_date_str,
-                            'landfall': landfall,
-                            'landfall_estimated': landfall_estimated and bool(landfall),
-                            'spaghetti': spaghetti,
-                            'spaghetti_cycles': spaghetti_cycles,
-                        }
-
-                    except Exception as e:
-                        logger.warning(f"Error processing storm {storm_id}: {e}")
-                        continue
+                storms, storm_details, season_storm_objs, dirty = _season_storm_details(
+                    dataset, year, cs_lf_cache)
+                cs_lf_dirty = cs_lf_dirty or dirty
 
                 if storms:
                     total = round(sum(storms.values()), 4)
@@ -1090,6 +1110,32 @@ def get_current_season(basin_key, dataset=None):
         print(f"  → Using backup data...")
         return _backup_current(basin_key)
 
+
+def get_completed_season(dataset, year):
+    """A finished season's named storms, in get_current_season()'s shape, so
+    its storm pages outlive the dashboard moving on (#158). Uses the same
+    per-storm extraction as the live season, so pages keep the estimated
+    landfalls until NHC's reanalysis adds official ones. None if the dataset
+    has no named storms for `year` or reading it fails."""
+    try:
+        lf_cache = _load_landfall_cache()
+        storms, details, storm_objs, lf_dirty = _season_storm_details(dataset, year, lf_cache)
+        if lf_dirty:
+            _save_landfall_cache(lf_cache)
+    except Exception as e:
+        logger.warning(f"Could not load the {year} season for storm pages: {e}")
+        return None
+    if not storms:
+        return None
+    for d in details.values():
+        d.update(is_active=False, spaghetti={}, spaghetti_cycles={})
+    return {
+        'year': year,
+        'storms': storms,
+        'storm_details': details,
+        'total': round(sum(storms.values()), 4),
+        'data_as_of': latest_track_time(storm_objs),
+    }
 
 
 def _backup_current(basin_key):
@@ -2559,33 +2605,13 @@ def fetch_active_storm_cones(basin_key, storm_details):
 # SEASON PAYLOAD
 # ===============================================================================
 
-def build_season_payload(basin_data):
-    """Everything a page, feed or API needs to describe one basin's current
-    season, as plain data with no HTML in it.
-
-    `basin_data` is one process_basin() result. This is the only place that
-    does the render-time network fetches (cones, NHC outlook), so renderers
-    stay pure and a second consumer can reuse the payload without refetching.
-    The cone fetch must run before the storm list is read: it corrects
-    `is_active` and sets `cone_issued` on storm_details in place.
-    """
-    basin_key = basin_data['basin_key']
-    basin = BASINS[basin_key]
-    current = basin_data['current']
-    yearly_totals = basin_data['yearly_totals']
-    year = current['year']
-    total = current['total']
-    details = current.get('storm_details', {})
-
-    cone_images = fetch_active_storm_cones(basin_key, details)
-
-    preseason = not current['storms'] and year == _utc_now().year
-    rank = total_seasons = None
-    if not preseason:
-        rank, total_seasons = rank_current_season(yearly_totals, year, total)
-
+def _payload_storms(season, cone_images):
+    """Per-storm payload entries for one season, highest ACE first."""
+    year = season['year']
+    total = season['total']
+    details = season.get('storm_details', {})
     storms = []
-    for name, ace in sorted(current['storms'].items(), key=lambda x: x[1], reverse=True):
+    for name, ace in sorted(season['storms'].items(), key=lambda x: x[1], reverse=True):
         d = details.get(name, {})
         wind = d.get('max_wind', 0)
         is_active = d.get('is_active', False)
@@ -2613,6 +2639,53 @@ def build_season_payload(basin_data):
             'cone_issued': d.get('cone_issued'),
             'nhc_bin': d.get('nhc_bin') if is_active else None,
         })
+    return storms
+
+
+def build_completed_season_payload(basin_key, season):
+    """Storm-page payload for a finished season (#158): the same storm entries
+    as build_season_payload(), with 'completed' set so pages drop live-season
+    wording. No NHC fetches: nothing about a finished season is live."""
+    basin = BASINS[basin_key]
+    return {
+        'basin_key': basin_key,
+        'basin_name': basin['name'],
+        'year': season['year'],
+        'completed': True,
+        'preseason': False,
+        'is_backup': False,
+        'data_as_of': season.get('data_as_of'),
+        'ace_total': season['total'],
+        'storms': _payload_storms(season, {}),
+    }
+
+
+def build_season_payload(basin_data):
+    """Everything a page, feed or API needs to describe one basin's current
+    season, as plain data with no HTML in it.
+
+    `basin_data` is one process_basin() result. This is the only place that
+    does the render-time network fetches (cones, NHC outlook), so renderers
+    stay pure and a second consumer can reuse the payload without refetching.
+    The cone fetch must run before the storm list is read: it corrects
+    `is_active` and sets `cone_issued` on storm_details in place.
+    """
+    basin_key = basin_data['basin_key']
+    basin = BASINS[basin_key]
+    current = basin_data['current']
+    yearly_totals = basin_data['yearly_totals']
+    year = current['year']
+    total = current['total']
+    details = current.get('storm_details', {})
+
+    cone_images = fetch_active_storm_cones(basin_key, details)
+
+    preseason = not current['storms'] and year == _utc_now().year
+    rank = total_seasons = None
+    if not preseason:
+        rank, total_seasons = rank_current_season(yearly_totals, year, total)
+
+    storms = _payload_storms(current, cone_images)
 
     return {
         'basin_key': basin_key,

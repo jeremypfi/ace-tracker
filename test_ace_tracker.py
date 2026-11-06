@@ -13,6 +13,7 @@ Usage:
 import io
 import json
 import os
+import shutil
 import unittest
 from datetime import datetime, timedelta, timezone
 from unittest import mock
@@ -2776,6 +2777,93 @@ class TestGetCurrentSeasonFixtures(unittest.TestCase):
         self.assertNotIn('is_backup', result)
 
 
+class TestCompletedSeasonPages(unittest.TestCase):
+    """Storm pages for finished seasons survive the dashboard moving to a new season (#158)."""
+
+    def setUp(self):
+        now = datetime.now(timezone.utc).replace(tzinfo=None, minute=0, second=0, microsecond=0)
+        self.bertha = FakeStorm('EP022026', 'BERTHA', [
+            (datetime(2026, 7, 1, 0), 'TS', 40, 15.0, -100.0),
+            (datetime(2026, 7, 1, 6), 'HU', 70, 15.5, -101.0),
+        ])
+        # Last point within 48 h, so the live path would call it active.
+        self.recent = FakeStorm('EP202026', 'RECENT', [(now - timedelta(hours=6), 'TS', 45, 14.0, -104.0)])
+        self.recent.year = 2026
+
+    def _completed(self, dataset, year):
+        with mock.patch.object(ace_data, '_load_landfall_cache', return_value={}), \
+             mock.patch.object(ace_data, '_save_landfall_cache'), \
+             mock.patch.object(ace_data, 'get_landfall_locations', return_value=[]), \
+             mock.patch.object(ace_data, '_detect_landfall_from_track',
+                               return_value=[('Guerrero, Mexico', 'Cat 1')]), \
+             mock.patch.object(ace_data, '_extract_spaghetti_tracks', return_value=({}, {})):
+            return ace_data.get_completed_season(dataset, year)
+
+    def test_uses_live_extraction_and_nothing_is_active(self):
+        season = self._completed(FakeDataset([self.bertha, self.recent]), 2026)
+        self.assertEqual(season['year'], 2026)
+        self.assertEqual(set(season['storms']), {'Bertha', 'Recent'})
+        bertha = season['storm_details']['Bertha']
+        self.assertEqual(len(bertha['track_points']), 2)
+        self.assertEqual(bertha['landfall'], [('Guerrero, Mexico', 'Cat 1')])
+        self.assertTrue(bertha['landfall_estimated'])  # no HURDAT2 'L' markers yet
+        self.assertFalse(any(d['is_active'] for d in season['storm_details'].values()))
+        self.assertAlmostEqual(season['total'], sum(season['storms'].values()), places=4)
+
+    def test_missing_season_is_none_not_an_error(self):
+        self.assertIsNone(self._completed(FakeDataset([self.bertha]), 2025))
+
+    def test_page_drops_live_season_wording(self):
+        season = self._completed(FakeDataset([self.bertha]), 2026)
+        p = ace_data.build_completed_season_payload('pacific', season)
+        self.assertTrue(p['completed'])
+        self.assertEqual(p['storms'][0]['page_slug'], 'bertha-2026')
+        html = render_storm_page_html(p, p['storms'][0])
+        self.assertIn("and produced", html)
+        self.assertIn("of the season&#x27;s total", html)
+        self.assertIn('href="../history.html#pacific"', html)
+        for live in ('of the season so far', 'updated hourly', 'Active now', 'season table', 'Current-season values'):
+            self.assertNotIn(live, html)
+
+
+class TestStormPageRollover(unittest.TestCase):
+    """The whole site, built offline across the season boundary (#158)."""
+
+    PAGES_2026 = ['arthur-2026.html', 'boris-2026.html', 'fay-2026.html', 'isaias-2026.html',
+                  'kyle-2026.html', 'rachel-2026.html', 'simon-2026.html']
+
+    def _build(self, now, extra=None):
+        import tempfile
+        import ui_fixture_site
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        out = ui_fixture_site.build(os.path.join(tmp, 'site'), quiet=True, now=now, extra_storms=extra)
+        with open(os.path.join(out, 'sitemap.xml')) as f:
+            sitemap = f.read()
+        return out, sorted(os.listdir(os.path.join(out, 'storm'))), sitemap
+
+    def test_new_season_keeps_last_seasons_pages(self):
+        alvin = FakeStorm('EP012027', 'ALVIN', [
+            (datetime(2027, 6, 1, 0), 'TS', 40, 13.0, -100.0),
+            (datetime(2027, 6, 1, 6), 'TS', 50, 13.5, -101.0),
+        ])
+        out, pages, sitemap = self._build(datetime(2027, 6, 15, 12), {'pacific': [alvin]})
+        self.assertEqual(pages, sorted(self.PAGES_2026 + ['alvin-2027.html']))
+        for page in ('fay-2026', 'simon-2026', 'alvin-2027'):
+            self.assertIn(f'https://aceofcanes.com/storm/{page}.html', sitemap)
+        with open(os.path.join(out, 'storm', 'fay-2026.html')) as f:
+            fay = f.read()
+        self.assertIn('of the season&#x27;s total', fay)
+        self.assertIn('All 2026 Atlantic storms', fay)
+        with open(os.path.join(out, 'storm', 'alvin-2027.html')) as f:
+            self.assertIn('of the season so far', f.read())
+
+    def test_off_season_shows_last_season_once(self):
+        _, pages, sitemap = self._build(datetime(2027, 1, 15, 12))
+        self.assertEqual(pages, self.PAGES_2026)
+        self.assertEqual(sitemap.count('/storm/fay-2026.html'), 1)
+
+
 class TestHurdatDownloadFixtures(unittest.TestCase):
     """The HURDAT2 download is sanitized before Tropycal parses it."""
 
@@ -3196,7 +3284,22 @@ class TestSmokeTest(unittest.TestCase):
         self.assertIn('Amy: share card missing', problems)
         self.assertIn('vendor/leaflet-1.9.4/leaflet.js', problems)
         self.assertIn('feed.xml not well-formed', problems)
-        self.assertIn('sitemap lists 0 storm pages, season.json has 1', problems)
+        self.assertIn('Amy: page missing from sitemap', problems)
+
+    def test_finished_season_pages_in_sitemap_pass_only_if_built(self):
+        import tempfile
+        import smoke_test
+        site = 'https://aceofcanes.com/'
+        with tempfile.TemporaryDirectory() as tmp:
+            self._site(tmp)
+            with open(os.path.join(tmp, 'sitemap.xml'), 'w') as f:
+                f.write('<urlset>' + ''.join(f'<url><loc>{site}storm/{p}.html</loc></url>'
+                                             for p in ('amy-2026', 'bob-2025', 'cal-2025')) + '</urlset>')
+            os.makedirs(os.path.join(tmp, 'storm'), exist_ok=True)
+            with open(os.path.join(tmp, 'storm', 'bob-2025.html'), 'w') as f:
+                f.write('x')
+            self.assertEqual(smoke_test.check(tmp),
+                             [f'sitemap lists {site}storm/cal-2025.html, which was not built'])
 
     def test_unparseable_season_json_fails(self):
         import tempfile
