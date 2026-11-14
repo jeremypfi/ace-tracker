@@ -16,6 +16,8 @@ from ace_storm_pages import storm_page_url
 
 API_V1_PATH = 'api/v1/season.json'
 FEED_PATH = 'feed.xml'
+STORM_INDEX_PATH = 'storm-index.json'
+STORM_INDEX_FIELDS = ['name', 'year', 'basin', 'ace', 'category', 'slug']
 FEED_ITEM_LIMIT = 50
 
 API_NOTE = ('Current-season values are preliminary (NHC real-time best track) and are '
@@ -167,3 +169,15 @@ def build_sitemap(base_xml, payloads, generated_at=None):
     if marker not in base_xml:
         raise ValueError('sitemap base has no </urlset>')
     return base_xml.replace(marker, entries + marker)
+
+
+def build_storm_index(payloads):
+    """Compact JSON for the storm-name search (#62): one row per storm page,
+    newest season first. Rows are arrays (field names once, in 'fields') to
+    keep ~1,100 storms small; 'slug' is the page at /storm/<slug>.html.
+    Takes write_storm_pages()'s result, so every row has a built page."""
+    rows = [[s['name'], p['year'], p['basin_key'], round(s['ace'], 1), s['category'], s['page_slug']]
+            for p in payloads for s in p['storms']]
+    rows.sort(key=lambda r: (-r[1], r[0], r[2]))
+    return json.dumps({'version': 1, 'fields': STORM_INDEX_FIELDS, 'storms': rows},
+                      ensure_ascii=False, separators=(',', ':')) + '\n'

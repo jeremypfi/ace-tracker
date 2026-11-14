@@ -50,7 +50,8 @@ from ace_data import (
 )
 from ace_html import (render_dashboard_html, generate_history_html, generate_records_html, generate_about_html,
                       generate_api_docs_html)
-from ace_feeds import api_v1_json, build_rss, build_sitemap, API_V1_PATH, FEED_PATH
+from ace_feeds import (api_v1_json, build_rss, build_sitemap, build_storm_index,
+                       API_V1_PATH, FEED_PATH, STORM_INDEX_PATH)
 from ace_storm_pages import render_storm_page_html, storm_page_path
 import ace_cards
 
@@ -272,6 +273,20 @@ def write_sitemap(published, output_folder, base_path=None, generated_at=None):
     return out_path
 
 
+def write_storm_index(published, output_folder):
+    """data/storm-index.json for the storm search (#62). A failure only
+    turns storm search off; the publish goes on. Returns the path or None."""
+    out_path = os.path.join(output_folder, STORM_INDEX_PATH)
+    try:
+        content = build_storm_index(published)
+        with open(out_path, 'w', encoding='utf-8') as f:
+            f.write(content)
+    except Exception as e:
+        logger.error(f"Could not write the storm search index: {e}")
+        return None
+    return out_path
+
+
 
 # ===============================================================================
 # MAIN
@@ -345,6 +360,11 @@ def main():
             print(f"  ✓ {sum(len(p['storms']) for p in published)} storm pages saved to: "
                   f"{os.path.join(OUTPUT_FOLDER, 'storm')}")
             output_files.append(write_sitemap(published, OUTPUT_FOLDER))
+            index_path = write_storm_index(published, OUTPUT_FOLDER)
+            if index_path:
+                output_files.append(index_path)
+                print(f"  ✓ Storm search index saved to: {index_path} "
+                      f"({os.path.getsize(index_path) / 1024:.0f} KB)")
         except (OSError, PermissionError) as e:
             logger.error(f"Failed to save storm pages / sitemap: {e}")
             print("  ✗ Error: Could not save storm pages / sitemap")

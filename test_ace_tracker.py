@@ -2373,6 +2373,32 @@ class TestStormPages(unittest.TestCase):
             with open(path) as f:
                 self.assertIn('https://aceofcanes.com/history.html', f.read())
 
+    def test_storm_index_lists_every_page_newest_first(self):
+        old = dict(self._payload(), year=1999)
+        old['storms'] = [dict(s, page_slug=s['page_slug'].replace('2026', '1999')) for s in old['storms']]
+        index = json.loads(ace_feeds.build_storm_index([old, self._payload()]))
+        self.assertEqual(index['version'], 1)
+        self.assertEqual(index['fields'], ['name', 'year', 'basin', 'ace', 'category', 'slug'])
+        self.assertEqual([r[5] for r in index['storms']],
+                         ['arthur-2026', 'bertha-2026', 'arthur-1999', 'bertha-1999'])
+        bertha = index['storms'][1]
+        self.assertEqual(bertha[:3], ['Bertha', 2026, 'atlantic'])
+        self.assertEqual(bertha[3], 3.0)
+
+    def test_storm_index_is_compact(self):
+        text = ace_feeds.build_storm_index([self._payload()])
+        self.assertNotIn(': ', text)
+        self.assertTrue(text.endswith('\n'))
+
+    def test_write_storm_index_failure_does_not_raise(self):
+        import tempfile
+        from ace_tracker import write_storm_index, write_storm_pages
+        with tempfile.TemporaryDirectory() as tmp:
+            published = write_storm_pages([self._payload()], tmp, self.NOW)
+            self.assertTrue(write_storm_index(published, tmp).endswith('storm-index.json'))
+            with mock.patch('ace_tracker.build_storm_index', side_effect=KeyError('page_slug')):
+                self.assertIsNone(write_storm_index([], tmp))
+
     def test_storm_card_renders_and_name_tracks_content(self):
         from PIL import Image
         p = self._payload()
@@ -3359,6 +3385,8 @@ class TestSmokeTest(unittest.TestCase):
         write('api/v1/season.json', json.dumps({'version': 1, 'basins': {
             'atlantic': {'storms': [{'name': 'Amy', 'url': site + 'storm/amy-2026.html'}]},
             'pacific': {'storms': []}}}))
+        write('storm-index.json', json.dumps({'version': 1, 'fields': ['name', 'year', 'basin', 'ace', 'category', 'slug'],
+                                              'storms': [['Amy', 2026, 'atlantic', 1.2, 'TS', 'amy-2026']]}))
 
     def test_complete_site_passes(self):
         import tempfile
@@ -3397,6 +3425,21 @@ class TestSmokeTest(unittest.TestCase):
                 f.write('x')
             self.assertEqual(smoke_test.check(tmp),
                              [f'sitemap lists {site}storm/cal-2025.html, which was not built'])
+
+    def test_storm_index_is_optional_but_must_point_at_built_pages(self):
+        import tempfile
+        import smoke_test
+        path = lambda tmp: os.path.join(tmp, 'storm-index.json')
+        with tempfile.TemporaryDirectory() as tmp:
+            self._site(tmp)
+            os.remove(path(tmp))
+            self.assertEqual(smoke_test.check(tmp), [])
+            with open(path(tmp), 'w') as f:
+                f.write(json.dumps({'fields': ['slug'], 'storms': [['amy-2026'], ['zed-2026']]}))
+            self.assertEqual(smoke_test.check(tmp), ['storm-index.json lists zed-2026, which was not built'])
+            with open(path(tmp), 'w') as f:
+                f.write('{oops')
+            self.assertTrue(any('storm-index.json malformed' in p for p in smoke_test.check(tmp)))
 
     def test_unparseable_season_json_fails(self):
         import tempfile
