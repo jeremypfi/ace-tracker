@@ -100,6 +100,19 @@ def check(root):
     except (OSError, ET.ParseError):
         pass  # already reported above
 
+    # Storm search index (#62). Optional: a failed index write only turns
+    # search off, so its absence never blocks a publish. If it exists, it
+    # must parse and every row must point at a built page.
+    if os.path.isfile(os.path.join(root, 'storm-index.json')):
+        try:
+            index = json.loads(_read(root, 'storm-index.json') or '')
+            slug_at = index['fields'].index('slug')
+            for row in index['storms']:
+                if _read(root, f'storm/{row[slug_at]}.html') is None:
+                    problems.append(f'storm-index.json lists {row[slug_at]}, which was not built')
+        except (ValueError, KeyError, TypeError, IndexError) as e:
+            problems.append(f'storm-index.json malformed: {e!r}')
+
     return problems
 
 

@@ -215,6 +215,7 @@ data/storm/
 data/sitemap.xml
 data/og/
 data/feed.xml
+data/storm-index.json
 docs/html/
 docs/pdf/
 landfall_cache.json
