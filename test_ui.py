@@ -598,6 +598,91 @@ class TestNearestStormBadge(UITestCase):
         expect(self.badge).to_be_hidden()
 
 
+class TestStormSearch(UITestCase):
+    """Storm name search on the history page (#62), over the fixture index."""
+
+    def search(self, text, **open_args):
+        page = self.open('history.html', **open_args)
+        page.locator('#ss-q').fill(text)
+        return page
+
+    def names(self):
+        return self.page.locator('#ss-results .ss-name').all_inner_texts()
+
+    def test_index_loads_only_once_the_box_is_used(self):
+        fetched = []
+        page = self.open('history.html')
+        page.on('request', lambda r: fetched.append(r.url) if r.url.endswith('storm-index.json') else None)
+        page.wait_for_load_state('networkidle')
+        self.assertEqual(fetched, [])
+        page.locator('#ss-q').fill('isa')
+        expect(page.locator('#ss-results a')).to_have_count(1)
+        page.locator('#ss-q').fill('isaias')
+        expect(page.locator('#ss-msg')).to_have_text('1 storm matches.')
+        self.assertEqual(len(fetched), 1)
+
+    def test_result_opens_the_storm_page(self):
+        page = self.search('Isaias')
+        link = page.locator('#ss-results a')
+        expect(link).to_contain_text('2026 · Atlantic · Cat 3 · 7.4 ACE')
+        link.click()
+        page.wait_for_url('**/storm/isaias-2026.html')
+        self.assertIn('Isaias', page.locator('h1').inner_text())
+
+    def test_year_and_basin_words_narrow_the_list(self):
+        page = self.search('henri')
+        expect(page.locator('#ss-msg')).to_contain_text('storms match. Showing the newest 8')
+        self.assertEqual(len(self.names()), 8)
+        page.locator('#ss-q').fill('Henri 2022 pac')
+        expect(page.locator('#ss-results a')).to_have_count(1)
+        expect(page.locator('#ss-results a')).to_have_attribute('href', 'storm/henri-2022-pacific.html')
+
+    def test_prefix_matches_rank_above_substrings_and_accents_fold(self):
+        rows = [['Jarob', 2001, 'atlantic', 1.0, 'TS', 'jarob-2001'],
+                ['Rob', 1995, 'atlantic', 1.0, 'TS', 'rob-1995'],
+                ['Ingrid', 2013, 'pacific', 1.0, 'TS', 'ingrid-2013'],
+                ['Íngrid', 1993, 'pacific', 1.0, 'TS', 'ingrid-1993']]
+        body = json.dumps({'version': 1, 'fields': ['name', 'year', 'basin', 'ace', 'category', 'slug'], 'storms': rows})
+        route = ('**/storm-index.json', lambda r: r.fulfill(status=200, content_type='application/json', body=body))
+        self.search('rob', routes=[route])
+        expect(self.page.locator('#ss-results a')).to_have_count(2)
+        self.assertEqual(self.names(), ['Rob', 'Jarob'])
+        self.page.locator('#ss-q').fill('ingrid')
+        expect(self.page.locator('#ss-results a')).to_have_count(2)
+
+    def test_keyboard_arrows_and_enter(self):
+        page = self.search('Simon')
+        expect(page.locator('#ss-results a')).to_have_count(1)
+        page.keyboard.press('ArrowDown')
+        expect(page.locator('#ss-results a')).to_be_focused()
+        page.keyboard.press('ArrowUp')
+        expect(page.locator('#ss-q')).to_be_focused()
+        page.keyboard.press('Enter')
+        page.wait_for_url('**/storm/simon-2026.html')
+
+    def test_no_match_and_index_down(self):
+        self.search('Zzyzx')
+        expect(self.page.locator('#ss-msg')).to_contain_text('No storm matches "Zzyzx"')
+        self.allow_failed_loads = True
+        self.search('Isaias', routes=[('**/storm-index.json', lambda r: r.fulfill(status=503, body=''))])
+        expect(self.page.locator('#ss-msg')).to_have_text('Storm search is not available right now. Browse by season below.')
+        expect(self.page.locator('#ss-results a')).to_have_count(0)
+
+    def test_storm_name_markup_shows_as_text(self):
+        body = json.dumps({'version': 1, 'fields': ['name', 'year', 'basin', 'ace', 'category', 'slug'],
+                           'storms': [['<img src=x onerror="window.pwned=1">Evil', 2001, 'atlantic', 1.0, 'TS', 'evil-2001']]})
+        self.search('evil', routes=[('**/storm-index.json',
+                                     lambda r: r.fulfill(status=200, content_type='application/json', body=body))])
+        expect(self.page.locator('#ss-results .ss-name')).to_contain_text('<img src=x')
+        self.assertEqual(self.page.locator('#ss-results img').count(), 0)
+        self.assertIsNone(self.page.evaluate('window.pwned'))
+
+    def test_phone_width(self):
+        self.search('henri', viewport=PHONE)
+        expect(self.page.locator('#ss-results a')).to_have_count(8)
+        self.assertTrue(self.no_horizontal_scroll())
+
+
 class TestShareButtons(UITestCase):
 
     def test_storm_link_copies_to_clipboard(self):

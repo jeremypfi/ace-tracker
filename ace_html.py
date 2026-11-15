@@ -35,6 +35,7 @@ from ace_data import (
 from ace_assets import (
     BASE_CSS, NAV_CSS, HEADINGS_CSS, STORM_PANEL_CSS, CONE_CSS,
     WIND_JS, LIB_MISSING_JS, TRACK_MAP_JS, THEME_INIT_JS, ACTIVE_MAP_CSS, ACTIVE_MAP_JS,
+    STORM_SEARCH_CSS, STORM_SEARCH_HTML, STORM_SEARCH_JS,
 )
 
 logger = logging.getLogger(__name__)
@@ -1603,7 +1604,7 @@ def generate_history_html(basin_data):
   .decade-filter button.active {{ background:var(--accent); border-color:var(--accent); color:var(--bg); font-weight:bold; }}
   .decade-filter button:focus-visible, .yr-tcr a:focus-visible {{ outline:2px solid var(--accent); outline-offset:2px; }}
   .decade-count {{ color:var(--accent); font-weight:600; }}
-</style>
+{STORM_SEARCH_CSS}</style>
 </head>
 <body>
 <div class="header">
@@ -1612,6 +1613,7 @@ def generate_history_html(basin_data):
 </div>
 <div class="updated">Updated: {now.strftime('%B %d, %Y at %H:%M UTC')}</div>
 <div class="nav-link"><a href="/">← Current Season</a><a href="records.html">🏆 Records</a><a href="what-is-ace.html">❓ What is ACE?</a></div>
+{STORM_SEARCH_HTML}
 <details class="ace-explain">
   <summary>What is ACE? <span class="ace-explain-hint">(tap to expand)</span></summary>
   <p>Accumulated Cyclone Energy (ACE) measures total hurricane season activity by combining storm intensity and duration. A major hurricane that lasts two weeks contributes far more than a brief tropical storm. NOAA uses seasonal ACE totals to classify years as <b>Below Normal</b> (&lt;73), <b>Near Normal</b> (73–126), <b>Above Normal</b> (126–159), or <b>Extremely Active</b> (159+). <a href="what-is-ace.html">More on ACE, plus a calculator →</a></p>
@@ -1756,6 +1758,7 @@ function toggleYear(key){{
   }});
 }})();
 </script>
+{STORM_SEARCH_JS}
 <!-- Cloudflare Web Analytics --><script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{{"token": "775dfcf117b94ff59e3c118c330d02aa"}}'></script><!-- End Cloudflare Web Analytics -->
 </body>
 </html>'''

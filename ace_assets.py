@@ -775,3 +775,112 @@ STORM_PAGE_CSS = """
   .sources a { color:var(--accent); }
   .page-note { color:var(--muted); font-size:0.78em; margin:10px 2px 0; }
 """
+
+
+# Storm name search on the history page (#62). Reads storm-index.json (written
+# by ace_feeds.build_storm_index) the first time the box is used, so the page
+# load is unchanged. Results are plain links, built with textContent.
+STORM_SEARCH_CSS = """  .storm-search { background:var(--card); border-radius:12px; padding:12px 14px; margin-bottom:14px; }
+  .storm-search label { display:block; font-size:0.9em; color:var(--text); margin-bottom:6px; }
+  .storm-search input[type=search] { width:100%; box-sizing:border-box; font:inherit; font-size:16px; color:var(--text); background:var(--box); border:1px solid var(--border); border-radius:8px; padding:9px 12px; }
+  .storm-search input:focus-visible, .ss-results a:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  .ss-msg { margin:6px 0 0; font-size:0.85em; color:var(--muted); }
+  .ss-msg:empty { display:none; }
+  .ss-results { list-style:none; margin:6px 0 0; padding:0; }
+  .ss-results:empty { display:none; }
+  .ss-results a { display:flex; flex-wrap:wrap; gap:4px 10px; align-items:baseline; padding:8px 10px; border-radius:8px; color:var(--text); text-decoration:none; }
+  .ss-results a:hover, .ss-results a:focus { background:var(--box); }
+  .ss-name { color:var(--accent); font-weight:bold; }
+  .ss-meta { color:var(--muted); font-size:0.85em; }
+"""
+
+STORM_SEARCH_HTML = """<form class="storm-search" id="storm-search" role="search" onsubmit="return _ssGo(event)">
+  <noscript><style>#storm-search { display:none; }</style></noscript>
+  <label for="ss-q">Find a storm (1991&#8211;present)</label>
+  <input id="ss-q" type="search" autocomplete="off" maxlength="60" enterkeyhint="go" placeholder="Name, e.g. Katrina or Ian 2022" aria-controls="ss-results" aria-describedby="ss-msg">
+  <p class="ss-msg" id="ss-msg" role="status" aria-live="polite"></p>
+  <ul class="ss-results" id="ss-results" aria-label="Matching storms"></ul>
+</form>"""
+
+STORM_SEARCH_JS = """<script>
+var _ssRows=null,_ssLoading=false,_SS_MAX=8;
+function _ssEl(id){return document.getElementById(id);}
+function _ssNorm(s){return String(s).toLowerCase().normalize('NFD').replace(/[\\u0300-\\u036f]/g,'');}
+function _ssLoad(){
+  if(_ssRows||_ssLoading||!window.fetch)return;
+  _ssLoading=true;
+  fetch('storm-index.json').then(function(r){if(!r.ok)throw new Error(r.status);return r.json();}).then(function(d){
+    var f=d.fields;
+    _ssRows=d.storms.map(function(r){
+      var o={};f.forEach(function(k,i){o[k]=r[i];});o.key=_ssNorm(o.name);return o;
+    });
+    _ssLoading=false;_ssRun();
+  }).catch(function(){
+    _ssLoading=false;
+    _ssEl('ss-msg').textContent='Storm search is not available right now. Browse by season below.';
+  });
+}
+// Words: a 4-digit year narrows to that season, 'atlantic'/'pacific' to a
+// basin, the rest is the name. Name prefix matches rank above substrings;
+// within each, the index is already newest season first.
+function _ssMatch(q){
+  var year=null,basin=null,name=[];
+  _ssNorm(q).split(/\\s+/).forEach(function(w){
+    if(!w)return;
+    if(/^(19|20)[0-9][0-9]$/.test(w))year=+w;
+    else if('atlantic'.indexOf(w)===0&&w.length>2)basin='atlantic';
+    else if('pacific'.indexOf(w)===0&&w.length>2)basin='pacific';
+    else name.push(w);
+  });
+  name=name.join(' ');
+  if(!name&&!year)return [];
+  var pre=[],sub=[];
+  _ssRows.forEach(function(r){
+    if(year&&r.year!==year)return;
+    if(basin&&r.basin!==basin)return;
+    if(!name||r.key.indexOf(name)===0)pre.push(r);
+    else if(r.key.indexOf(name)>0)sub.push(r);
+  });
+  return pre.concat(sub);
+}
+function _ssRun(){
+  var q=_ssEl('ss-q').value.trim(),list=_ssEl('ss-results'),msg=_ssEl('ss-msg');
+  list.textContent='';
+  if(!q){msg.textContent='';return;}
+  if(!_ssRows){msg.textContent=_ssLoading?'Loading storm list...':msg.textContent;return;}
+  var hits=_ssMatch(q);
+  if(!hits.length){msg.textContent='No storm matches "'+q+'". Try a name like Katrina, or add a year.';return;}
+  msg.textContent=hits.length>_SS_MAX
+    ?hits.length+' storms match. Showing the newest '+_SS_MAX+'; add a year to narrow it.'
+    :hits.length+(hits.length===1?' storm matches.':' storms match.');
+  hits.slice(0,_SS_MAX).forEach(function(r){
+    var li=document.createElement('li'),a=document.createElement('a'),n=document.createElement('span'),m=document.createElement('span');
+    a.href='storm/'+encodeURIComponent(r.slug)+'.html';
+    n.className='ss-name';n.textContent=r.name;
+    m.className='ss-meta';
+    m.textContent=r.year+' \\u00b7 '+(r.basin==='atlantic'?'Atlantic':'E/C Pacific')+' \\u00b7 '+r.category+' \\u00b7 '+r.ace.toFixed(1)+' ACE';
+    a.appendChild(n);a.appendChild(m);li.appendChild(a);list.appendChild(li);
+  });
+}
+function _ssGo(ev){
+  if(ev)ev.preventDefault();
+  var first=_ssEl('ss-results').querySelector('a');
+  if(first)location.href=first.href;
+  return false;
+}
+function _ssKey(ev){
+  var links=[].slice.call(_ssEl('ss-results').querySelectorAll('a'));
+  if(!links.length)return;
+  var i=links.indexOf(document.activeElement);
+  if(ev.key==='ArrowDown'){ev.preventDefault();links[Math.min(i+1,links.length-1)].focus();}
+  else if(ev.key==='ArrowUp'){ev.preventDefault();if(i<=0)_ssEl('ss-q').focus();else links[i-1].focus();}
+  else if(ev.key==='Escape'){_ssEl('ss-q').value='';_ssRun();_ssEl('ss-q').focus();}
+}
+(function(){
+  var q=_ssEl('ss-q');
+  if(!q)return;
+  q.addEventListener('focus',_ssLoad);
+  q.addEventListener('input',function(){_ssLoad();_ssRun();});
+  _ssEl('storm-search').addEventListener('keydown',_ssKey);
+})();
+</script>"""
