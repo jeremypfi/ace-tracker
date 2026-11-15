@@ -30,7 +30,7 @@ This project is a hurricane tracking tool that:
 - ❌ Set cookies or use advertising trackers
 
 **What a visitor's browser sends, and to whom:**
-- **Cloudflare Web Analytics** (`static.cloudflareinsights.com`): page views and load timing, used for aggregate visitor counts. Cloudflare's analytics sets no cookies.
+- **Cloudflare Web Analytics** (`static.cloudflareinsights.com` for the script, `cloudflareinsights.com` for the report): page views and load timing, used for aggregate visitor counts. Cloudflare's analytics sets no cookies.
 - **OpenFreeMap** (`tiles.openfreemap.org`): map tiles for the area being viewed.
 - **NOAA** (`mapservices.weather.noaa.gov`): NHC advisory layers, only when an active storm's map is opened.
 - **Nominatim / OpenStreetMap** (`nominatim.openstreetmap.org`): the place text typed into "Show where you are on the map", only when the visitor searches. Their location itself never leaves the browser.
