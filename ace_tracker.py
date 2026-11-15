@@ -371,6 +371,10 @@ def main():
             print("  ✗ Error: Could not save storm pages / sitemap")
 
         history_html = generate_history_html(basin_results, history_page_slugs(published))
+        unlinked = history_html.count('<span class="ys-name">') - history_html.count('<span class="ys-name"><a class="ys-link"')
+        if unlinked:
+            # #86: a history storm whose name doesn't match a built page shows as plain text.
+            logger.warning(f"{unlinked} storms on the history page have no storm-page link")
         history_path = os.path.join(OUTPUT_FOLDER, 'history.html')
         try:
             with open(history_path, 'w', encoding='utf-8') as f:

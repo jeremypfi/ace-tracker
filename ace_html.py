@@ -102,6 +102,9 @@ def _year_storm_list_html(storms_list, report_urls=None, page_slugs=None):
     if not storms_list:
         return '<p style="color:var(--muted);font-size:0.82em;padding:4px 0 2px">No named storms on record</p>'
     max_ace = storms_list[0]['ace'] if storms_list[0]['ace'] > 0 else 1
+    # Pages are keyed by name, so two storms sharing a name in one season
+    # would both link to one page: leave those as plain text (#86).
+    names = [s['name'] for s in storms_list]
     rows = []
     for s in storms_list:
         bar_pct = round(s['ace'] / max_ace * 100)
@@ -113,7 +116,7 @@ def _year_storm_list_html(storms_list, report_urls=None, page_slugs=None):
             lf_html = '<span class="ys-lf ys-fish" data-tip="A storm that never made landfall and just pissed off fish">Fish Storm</span>'
         rows.append(
             f'<div class="ys-row">'
-            f'<span class="ys-name">{_storm_name_link_html(s["name"], _page_slug_for(s, page_slugs))}'
+            f'<span class="ys-name">{_storm_name_link_html(s["name"], _page_slug_for(s, page_slugs) if names.count(s["name"]) == 1 or s["name"].upper() == "UNNAMED" else None)}'
             f'{_storm_report_link_html(s["name"], (report_urls or {}).get(s.get("id") or s["name"]))}{lf_html}</span>'
             f'<span class="ys-cat" data-tip="Peak intensity">{s["category"]}</span>'
             f'<span class="ys-ace">{s["ace"]:.1f}</span>'
@@ -141,14 +144,9 @@ def _storm_name_link_html(name, page_slug):
 
 def history_page_slugs(published):
     """{(basin_key, year): {storm name: page_slug}} from write_storm_pages()'s
-    result, so the history page only links pages that were built (#86). A
-    name used twice in one season is left out: plain text beats a wrong link."""
-    out = {}
-    for p in published or []:
-        names = [s['name'] for s in p['storms']]
-        out[(p['basin_key'], p['year'])] = {
-            s['name']: s['page_slug'] for s in p['storms'] if names.count(s['name']) == 1}
-    return out
+    result, so the history page only links pages that were built (#86)."""
+    return {(p['basin_key'], p['year']): {s['name']: s['page_slug'] for s in p['storms']}
+            for p in published or []}
 
 
 def _landfall_share_html(storms_list):
@@ -1691,8 +1689,14 @@ function _syncHash(){{
   var card=document.querySelector('.basin-card.active');
   var id=card?card.id:'atlantic';
   var h=id+(_decade!=='all'?'&decade='+_decade:'');
-  // #86: the last season opened in this basin, so the address shares it.
-  if(_openYear&&_openYear.indexOf(id+'-yr-')===0)h+='&year='+_openYear.slice(id.length+4);
+  // #86: the last season opened in this basin, or else another one still
+  // open; never one the decade filter hides.
+  var shown=function(k){{var p=document.getElementById('yrpanel-'+k),r=document.getElementById(k);
+    return p&&p.classList.contains('open')&&r&&!r.hidden;}};
+  var key=_openYear&&_openYear.indexOf(id+'-yr-')===0&&shown(_openYear)?_openYear:null;
+  if(!key&&card)[].some.call(card.querySelectorAll('.yr-panel.open'),function(p){{
+    var k=p.id.slice(8);if(shown(k)){{key=k;return true;}}}});
+  if(key)h+='&year='+key.slice(id.length+4);
   try{{history.replaceState(null,'','#'+h);}}catch(e){{}}
 }}
 function filterDecade(dec){{
@@ -1781,8 +1785,16 @@ function _openYearFromHash(year){{
   if(!/^[0-9]{{4}}$/.test(year)||!row)return;
   if(row.hidden)filterDecade('all');
   var panel=document.getElementById('yrpanel-'+key);
-  if(panel&&!panel.classList.contains('open'))toggleYear(key);
-  row.scrollIntoView({{block:'start'}});
+  if(panel&&!panel.classList.contains('open')){{
+    // No open animation: the layout must be final before the browser
+    // restores the scroll position (Back from a storm page).
+    panel.style.transition='none';
+    toggleYear(key);
+    panel.offsetHeight;
+    panel.style.transition='';
+  }}
+  var nav=performance.getEntriesByType&&performance.getEntriesByType('navigation')[0];
+  if(!nav||nav.type!=='back_forward')row.scrollIntoView({{block:'start'}});
 }}
 </script>
 <div id="global-tip" class="global-tip"></div>

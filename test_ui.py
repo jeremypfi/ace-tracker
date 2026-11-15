@@ -708,9 +708,42 @@ class TestHistoryLinks(UITestCase):
         page.locator('#yrbtn-atlantic-yr-2023').click()
         self.assertEqual(self.hash(), '#atlantic&year=2023')
         page.locator('#yrbtn-atlantic-yr-2023').click()
+        self.assertEqual(self.hash(), '#atlantic&year=2024')  # 2024 is still open
+        page.locator('#yrbtn-atlantic-yr-2024').click()
         self.assertEqual(self.hash(), '#atlantic')
         page.locator('.toggle button', has_text='Pacific').click()
         self.assertEqual(self.hash(), '#pacific')
+
+    def test_address_keeps_a_season_that_is_still_open(self):
+        page = self.open('history.html')
+        page.locator('#yrbtn-atlantic-yr-2024').click()
+        page.locator('#yrbtn-atlantic-yr-2023').click()
+        page.locator('#yrbtn-atlantic-yr-2023').click()
+        self.assertEqual(self.hash(), '#atlantic&year=2024')
+        page.locator('.toggle button', has_text='Pacific').click()
+        page.locator('#yrbtn-pacific-yr-2022').click()
+        page.locator('#yrbtn-pacific-yr-2022').click()
+        page.locator('.toggle button', has_text='Atlantic').click()
+        self.assertEqual(self.hash(), '#atlantic&year=2024')
+
+    def test_decade_filter_drops_a_season_it_hides(self):
+        page = self.open('history.html')
+        page.locator('#yrbtn-atlantic-yr-2025').click()
+        page.locator('.decade-filter button[data-decade="2010s"]').click()
+        self.assertEqual(self.hash(), '#atlantic&decade=2010s')
+
+    def test_back_from_a_storm_page_keeps_the_scroll_position(self):
+        page = self.open('history.html#atlantic&year=2025')
+        link = page.locator('#yrpanel-atlantic-yr-2025 a.ys-link').last
+        link.evaluate('a => a.scrollIntoView({block: "center"})')
+        before = page.evaluate('scrollY')
+        self.assertGreater(before, 0)
+        link.evaluate('a => a.click()')  # Playwright's click() would scroll first
+        page.wait_for_url('**/storm/**')
+        page.go_back()
+        page.wait_for_function('document.readyState === "complete"')
+        page.wait_for_timeout(200)
+        self.assertAlmostEqual(page.evaluate('scrollY'), before, delta=5)
 
     def test_season_hidden_by_the_decade_filter_still_opens(self):
         page = self.open('history.html#atlantic&decade=2010s&year=2025')

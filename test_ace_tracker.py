@@ -820,11 +820,10 @@ class TestHistoryStormLinks(unittest.TestCase):
               {'id': 'AL212005', 'name': 'Unnamed', 'ace': 1.0, 'category': 'TS', 'max_wind': 45, 'landfall': []},
               {'id': 'AL991005', 'name': 'O\'Neil <b>', 'ace': 0.5, 'category': 'TS', 'max_wind': 40, 'landfall': []}]
 
-    def test_page_slugs_come_from_built_pages_and_skip_repeated_names(self):
+    def test_page_slugs_come_from_built_pages(self):
         published = [{'basin_key': 'atlantic', 'year': 2005, 'storms': [
                          {'name': 'Katrina', 'page_slug': 'katrina-2005'},
-                         {'name': 'Unnamed AL21', 'page_slug': 'unnamed-al21-2005'},
-                         {'name': 'Twin', 'page_slug': 'twin-2005'}, {'name': 'Twin', 'page_slug': 'twin-2005-b'}]},
+                         {'name': 'Unnamed AL21', 'page_slug': 'unnamed-al21-2005'}]},
                      {'basin_key': 'pacific', 'year': 2005, 'storms': [{'name': 'Katrina', 'page_slug': 'katrina-2005-pacific'}]}]
         slugs = history_page_slugs(published)
         self.assertEqual(slugs[('atlantic', 2005)], {'Katrina': 'katrina-2005', 'Unnamed AL21': 'unnamed-al21-2005'})
@@ -838,6 +837,15 @@ class TestHistoryStormLinks(unittest.TestCase):
         self.assertIn('O&#x27;Neil &lt;b&gt;', html)
         self.assertEqual(html.count('class="ys-link"'), 2)
 
+    def test_a_name_used_twice_in_a_season_stays_plain(self):
+        twins = [dict(self.STORMS[0], id='AL011999', name='Twin'), dict(self.STORMS[0], id='AL021999', name='Twin'),
+                 dict(self.STORMS[1], id='AL031999'), dict(self.STORMS[1], id='AL041999')]
+        html = _year_storm_list_html(twins, None, {'Twin': 'twin-1999', 'Unnamed AL03': 'unnamed-al03-1999',
+                                                   'Unnamed AL04': 'unnamed-al04-1999'})
+        self.assertNotIn('twin-1999', html)
+        self.assertIn('unnamed-al03-1999', html)
+        self.assertIn('unnamed-al04-1999', html)
+
     def test_no_slugs_means_plain_names(self):
         self.assertNotIn('ys-link', _year_storm_list_html(self.STORMS))
         self.assertNotIn('class="ys-link"', generate_history_html(TestHTMLGeneration()._make_basin_data()))
@@ -845,10 +853,6 @@ class TestHistoryStormLinks(unittest.TestCase):
     def test_unnamed_name_matches_the_page_builder(self):
         self.assertEqual(ace_data.unnamed_storm_name('al121991'), 'Unnamed AL12')
 
-    def test_history_hash_carries_the_open_year(self):
-        html = generate_history_html(TestHTMLGeneration()._make_basin_data())
-        self.assertIn("h+='&year='+", html)
-        self.assertIn('_openYearFromHash(year)', html)
 
 
 class TestCleanLandfalls(unittest.TestCase):
