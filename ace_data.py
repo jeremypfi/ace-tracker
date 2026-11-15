@@ -906,6 +906,12 @@ def _extract_spaghetti_tracks(storm_obj):
     return tracks_by_model, cycles_by_model
 
 
+def unnamed_storm_name(storm_id):
+    """'AL121991' -> 'Unnamed AL12': the name a reanalyzed unnamed storm gets
+    on its storm page (and so its page slug, unnamed-al12-1991)."""
+    return f"Unnamed {str(storm_id)[:4].upper()}"
+
+
 def _season_storm_details(dataset, year, lf_cache, reanalyzed=False):
     """Named storms of one season, as the dashboard and storm pages show them.
 
@@ -944,7 +950,7 @@ def _season_storm_details(dataset, year, lf_cache, reanalyzed=False):
             if storm_name.upper() == 'UNNAMED':
                 if not reanalyzed:
                     continue
-                storm_name = f"Unnamed {str(storm_id)[:4].upper()}"
+                storm_name = unnamed_storm_name(storm_id)
 
             # ACE via our own synoptic-time method (same as the
             # historical path) so the dashboard and history page

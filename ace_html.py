@@ -25,6 +25,7 @@ from ace_data import (
     find_earliest_forming_storm,
     find_latest_forming_storm,
     landfall_ace_share,
+    unnamed_storm_name,
     depression_only_landfalls,
     average_landfall_share,
     _portable_strftime,
@@ -94,10 +95,10 @@ def _storm_report_link_html(name, url):
             f'title="{label}" aria-label="{label}">&#128196;</a>')
 
 
-def _year_storm_list_html(storms_list, report_urls=None):
+def _year_storm_list_html(storms_list, report_urls=None, page_slugs=None):
     """Inline HTML list of storms for the history page accordion.
     `report_urls` maps storm id (or name, for the in-progress season) to its
-    NHC report URL."""
+    NHC report URL. `page_slugs` maps storm name to its built storm page."""
     if not storms_list:
         return '<p style="color:var(--muted);font-size:0.82em;padding:4px 0 2px">No named storms on record</p>'
     max_ace = storms_list[0]['ace'] if storms_list[0]['ace'] > 0 else 1
@@ -112,7 +113,7 @@ def _year_storm_list_html(storms_list, report_urls=None):
             lf_html = '<span class="ys-lf ys-fish" data-tip="A storm that never made landfall and just pissed off fish">Fish Storm</span>'
         rows.append(
             f'<div class="ys-row">'
-            f'<span class="ys-name">{html_escape(s["name"])}'
+            f'<span class="ys-name">{_storm_name_link_html(s["name"], _page_slug_for(s, page_slugs))}'
             f'{_storm_report_link_html(s["name"], (report_urls or {}).get(s.get("id") or s["name"]))}{lf_html}</span>'
             f'<span class="ys-cat" data-tip="Peak intensity">{s["category"]}</span>'
             f'<span class="ys-ace">{s["ace"]:.1f}</span>'
@@ -120,6 +121,34 @@ def _year_storm_list_html(storms_list, report_urls=None):
             f'</div>'
         )
     return '\n'.join(rows)
+
+
+def _page_slug_for(storm, page_slugs):
+    """History storms are 'Unnamed'; their pages use 'Unnamed AL12' (#158)."""
+    if not page_slugs:
+        return None
+    slug = page_slugs.get(storm['name'])
+    if not slug and storm['name'].upper() == 'UNNAMED' and storm.get('id'):
+        slug = page_slugs.get(unnamed_storm_name(storm['id']))
+    return slug
+
+
+def _storm_name_link_html(name, page_slug):
+    if not page_slug:
+        return html_escape(name)
+    return f'<a class="ys-link" href="storm/{html_escape(page_slug)}.html">{html_escape(name)}</a>'
+
+
+def history_page_slugs(published):
+    """{(basin_key, year): {storm name: page_slug}} from write_storm_pages()'s
+    result, so the history page only links pages that were built (#86). A
+    name used twice in one season is left out: plain text beats a wrong link."""
+    out = {}
+    for p in published or []:
+        names = [s['name'] for s in p['storms']]
+        out[(p['basin_key'], p['year'])] = {
+            s['name']: s['page_slug'] for s in p['storms'] if names.count(s['name']) == 1}
+    return out
 
 
 def _landfall_share_html(storms_list):
@@ -1248,8 +1277,10 @@ function _restylePaceCharts(){{
 # FULL HISTORY PAGE
 # ===============================================================================
 
-def generate_history_html(basin_data):
-    """Generate a historical seasons summary page (all seasons since START_YEAR)."""
+def generate_history_html(basin_data, page_slugs=None):
+    """Generate a historical seasons summary page (all seasons since START_YEAR).
+    `page_slugs` is history_page_slugs() output; without it storm names are
+    plain text."""
     now = datetime.now(timezone.utc)
 
     def _badge_class(ace_val, basin_key):
@@ -1379,7 +1410,8 @@ def generate_history_html(basin_data):
             hurr_v = d['hurricanes'] if d['hurricanes'] != '—' else 0
             major_v = d['majors'] if d['majors'] != '—' else 0
             yr_key = f'{bd["basin_key"]}-yr-{year}'
-            storm_list_html = _year_storm_list_html(d.get('storms_list', []), report_urls)
+            storm_list_html = _year_storm_list_html(d.get('storms_list', []), report_urls,
+                                                    (page_slugs or {}).get((bd['basin_key'], year)))
             tcr_html = _nhc_tcr_links_html(year, bd['basin_key'], is_active)
             decade = _decade_label(year)
             all_decades.add(decade)
@@ -1584,6 +1616,9 @@ def generate_history_html(basin_data):
   .ys-row {{ display:grid; grid-template-columns:110px 48px 46px 1fr; align-items:start; gap:6px; padding:5px 0; font-size:0.82em; border-bottom:1px solid var(--border); }}
   .ys-row:last-child {{ border-bottom:none; }}
   .ys-name {{ color:var(--text); font-weight:500; line-height:1.4; }}
+  .ys-link {{ color:var(--accent); text-decoration:none; }}
+  .ys-link:hover {{ text-decoration:underline; text-underline-offset:3px; }}
+  .ys-link:focus-visible {{ outline:2px solid var(--accent); outline-offset:2px; }}
   .ys-tcr {{ margin-left:5px; font-size:0.85em; text-decoration:none; opacity:0.75; }}
   .ys-tcr:hover, .ys-tcr:focus-visible {{ opacity:1; }}
   .ys-lf {{ display:block; font-size:0.82em; font-weight:400; color:var(--muted); font-style:italic; margin-top:1px; }}
@@ -1651,10 +1686,13 @@ function show(id,btn) {{
   btn.setAttribute('aria-pressed','true');
   _syncHash();
 }}
-var _decade='all';
+var _decade='all',_openYear=null;
 function _syncHash(){{
   var card=document.querySelector('.basin-card.active');
-  var h=(card?card.id:'atlantic')+(_decade!=='all'?'&decade='+_decade:'');
+  var id=card?card.id:'atlantic';
+  var h=id+(_decade!=='all'?'&decade='+_decade:'');
+  // #86: the last season opened in this basin, so the address shares it.
+  if(_openYear&&_openYear.indexOf(id+'-yr-')===0)h+='&year='+_openYear.slice(id.length+4);
   try{{history.replaceState(null,'','#'+h);}}catch(e){{}}
 }}
 function filterDecade(dec){{
@@ -1691,9 +1729,14 @@ document.addEventListener('DOMContentLoaded',function() {{
   document.getElementById('themeBtn').textContent=document.documentElement.getAttribute('data-theme')==='light'?'☾':'☀';document.getElementById('themeBtn').setAttribute('aria-label',document.documentElement.getAttribute('data-theme')==='light'?'Switch to dark mode':'Switch to light mode');
   var parts=location.hash.replace('#','').split('&');
   var hash=parts[0];
-  parts.slice(1).forEach(function(p){{if(p.indexOf('decade=')===0)filterDecade(p.slice(7));}});
+  var year=null;
+  parts.slice(1).forEach(function(p){{
+    if(p.indexOf('decade=')===0)filterDecade(p.slice(7));
+    else if(p.indexOf('year=')===0)year=p.slice(5);
+  }});
   var match=hash?[].slice.call(document.querySelectorAll('.toggle button')).filter(function(b){{return(b.getAttribute('onclick')||'').indexOf("'"+hash+"'")>=0;}})[0]:null;
   if(match)match.click();
+  if(year)_openYearFromHash(year);
 }});
 var _hs={{}};
 function sortHist(th,col,type){{
@@ -1727,6 +1770,19 @@ function toggleYear(key){{
   if(open){{panel.classList.remove('open');if(btn)btn.classList.remove('open');}}
   else{{panel.classList.add('open');if(btn)btn.classList.add('open');}}
   if(btn)btn.setAttribute('aria-expanded',open?'false':'true');
+  if(!open)_openYear=key;
+  else if(_openYear===key)_openYear=null;
+  _syncHash();
+}}
+function _openYearFromHash(year){{
+  var card=document.querySelector('.basin-card.active');
+  var key=(card?card.id:'atlantic')+'-yr-'+year;
+  var row=document.getElementById(key);
+  if(!/^[0-9]{{4}}$/.test(year)||!row)return;
+  if(row.hidden)filterDecade('all');
+  var panel=document.getElementById('yrpanel-'+key);
+  if(panel&&!panel.classList.contains('open'))toggleYear(key);
+  row.scrollIntoView({{block:'start'}});
 }}
 </script>
 <div id="global-tip" class="global-tip"></div>

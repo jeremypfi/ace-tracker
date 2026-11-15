@@ -65,7 +65,7 @@ from ace_html import (
     generate_dashboard_html, generate_history_html, generate_records_html, generate_about_html,
     generate_api_docs_html, API_V1_FIELDS,
     _decade_label, _nhc_tcr_links_html, _records_in_play_html, _year_storm_list_html,
-    _data_as_of_html, _intensity_bar_html,
+    _data_as_of_html, _intensity_bar_html, history_page_slugs,
 )
 
 
@@ -811,6 +811,44 @@ class TestStormReportLinks(unittest.TestCase):
         self.assertIn('aria-label="NHC report for Katrina"', html)
         self.assertIn('rel="noopener noreferrer"', html)
         self.assertNotIn('ys-tcr', _year_storm_list_html(storms_list))
+
+
+class TestHistoryStormLinks(unittest.TestCase):
+    """History panels link each storm to its built page (#86)."""
+
+    STORMS = [{'id': 'AL122005', 'name': 'Katrina', 'ace': 20.0, 'category': 'Cat 5', 'max_wind': 150, 'landfall': []},
+              {'id': 'AL212005', 'name': 'Unnamed', 'ace': 1.0, 'category': 'TS', 'max_wind': 45, 'landfall': []},
+              {'id': 'AL991005', 'name': 'O\'Neil <b>', 'ace': 0.5, 'category': 'TS', 'max_wind': 40, 'landfall': []}]
+
+    def test_page_slugs_come_from_built_pages_and_skip_repeated_names(self):
+        published = [{'basin_key': 'atlantic', 'year': 2005, 'storms': [
+                         {'name': 'Katrina', 'page_slug': 'katrina-2005'},
+                         {'name': 'Unnamed AL21', 'page_slug': 'unnamed-al21-2005'},
+                         {'name': 'Twin', 'page_slug': 'twin-2005'}, {'name': 'Twin', 'page_slug': 'twin-2005-b'}]},
+                     {'basin_key': 'pacific', 'year': 2005, 'storms': [{'name': 'Katrina', 'page_slug': 'katrina-2005-pacific'}]}]
+        slugs = history_page_slugs(published)
+        self.assertEqual(slugs[('atlantic', 2005)], {'Katrina': 'katrina-2005', 'Unnamed AL21': 'unnamed-al21-2005'})
+        self.assertEqual(slugs[('pacific', 2005)], {'Katrina': 'katrina-2005-pacific'})
+        self.assertEqual(history_page_slugs(None), {})
+
+    def test_names_link_only_when_a_page_was_built(self):
+        html = _year_storm_list_html(self.STORMS, None, {'Katrina': 'katrina-2005', 'Unnamed AL21': 'unnamed-al21-2005'})
+        self.assertIn('<a class="ys-link" href="storm/katrina-2005.html">Katrina</a>', html)
+        self.assertIn('<a class="ys-link" href="storm/unnamed-al21-2005.html">Unnamed</a>', html)
+        self.assertIn('O&#x27;Neil &lt;b&gt;', html)
+        self.assertEqual(html.count('class="ys-link"'), 2)
+
+    def test_no_slugs_means_plain_names(self):
+        self.assertNotIn('ys-link', _year_storm_list_html(self.STORMS))
+        self.assertNotIn('class="ys-link"', generate_history_html(TestHTMLGeneration()._make_basin_data()))
+
+    def test_unnamed_name_matches_the_page_builder(self):
+        self.assertEqual(ace_data.unnamed_storm_name('al121991'), 'Unnamed AL12')
+
+    def test_history_hash_carries_the_open_year(self):
+        html = generate_history_html(TestHTMLGeneration()._make_basin_data())
+        self.assertIn("h+='&year='+", html)
+        self.assertIn('_openYearFromHash(year)', html)
 
 
 class TestCleanLandfalls(unittest.TestCase):

@@ -48,7 +48,7 @@ from ace_data import (
     generate_discord_text,
     generate_console_report,
 )
-from ace_html import (render_dashboard_html, generate_history_html, generate_records_html, generate_about_html,
+from ace_html import (render_dashboard_html, generate_history_html, history_page_slugs, generate_records_html, generate_about_html,
                       generate_api_docs_html)
 from ace_feeds import (api_v1_json, build_rss, build_sitemap, build_storm_index,
                        API_V1_PATH, FEED_PATH, STORM_INDEX_PATH)
@@ -355,6 +355,7 @@ def main():
                 logger.error(f"Failed to save {feed_path}: {e}")
                 print(f"  ✗ Error: Could not save {rel_path}")
 
+        published = []
         try:
             published = write_storm_pages(payloads + completed, OUTPUT_FOLDER, card_cache=CARD_CACHE)
             print(f"  ✓ {sum(len(p['storms']) for p in published)} storm pages saved to: "
@@ -369,7 +370,7 @@ def main():
             logger.error(f"Failed to save storm pages / sitemap: {e}")
             print("  ✗ Error: Could not save storm pages / sitemap")
 
-        history_html = generate_history_html(basin_results)
+        history_html = generate_history_html(basin_results, history_page_slugs(published))
         history_path = os.path.join(OUTPUT_FOLDER, 'history.html')
         try:
             with open(history_path, 'w', encoding='utf-8') as f:
