@@ -14,6 +14,7 @@ notices excepted: they come from headless GPU emulation, not page code).
 import functools
 import http.server
 import json
+import re
 import os
 import tempfile
 import threading
@@ -681,6 +682,80 @@ class TestStormSearch(UITestCase):
         self.search('henri', viewport=PHONE)
         expect(self.page.locator('#ss-results a')).to_have_count(8)
         self.assertTrue(self.no_horizontal_scroll())
+
+
+class TestHistoryLinks(UITestCase):
+    """History panels link storms to their pages; the address carries the
+    open season (#86)."""
+
+    def hash(self):
+        return self.page.evaluate('location.hash')
+
+    def test_year_in_address_opens_that_season_and_storm_links_work(self):
+        page = self.open('history.html#pacific&year=2025')
+        expect(page.locator('#yrpanel-pacific-yr-2025')).to_have_class(re.compile(r'\bopen\b'))
+        expect(page.locator('#yrbtn-pacific-yr-2025')).to_have_attribute('aria-expanded', 'true')
+        link = page.locator('#yrpanel-pacific-yr-2025 a.ys-link', has_text='Bill')
+        expect(link).to_have_attribute('href', 'storm/bill-2025-pacific.html')
+        link.click()
+        page.wait_for_url('**/storm/bill-2025-pacific.html')
+        self.assertIn('Bill', page.locator('h1').inner_text())
+
+    def test_opening_and_closing_a_season_updates_the_address(self):
+        page = self.open('history.html')
+        page.locator('#yrbtn-atlantic-yr-2024').click()
+        self.assertEqual(self.hash(), '#atlantic&year=2024')
+        page.locator('#yrbtn-atlantic-yr-2023').click()
+        self.assertEqual(self.hash(), '#atlantic&year=2023')
+        page.locator('#yrbtn-atlantic-yr-2023').click()
+        self.assertEqual(self.hash(), '#atlantic&year=2024')  # 2024 is still open
+        page.locator('#yrbtn-atlantic-yr-2024').click()
+        self.assertEqual(self.hash(), '#atlantic')
+        page.locator('.toggle button', has_text='Pacific').click()
+        self.assertEqual(self.hash(), '#pacific')
+
+    def test_address_keeps_a_season_that_is_still_open(self):
+        page = self.open('history.html')
+        page.locator('#yrbtn-atlantic-yr-2024').click()
+        page.locator('#yrbtn-atlantic-yr-2023').click()
+        page.locator('#yrbtn-atlantic-yr-2023').click()
+        self.assertEqual(self.hash(), '#atlantic&year=2024')
+        page.locator('.toggle button', has_text='Pacific').click()
+        page.locator('#yrbtn-pacific-yr-2022').click()
+        page.locator('#yrbtn-pacific-yr-2022').click()
+        page.locator('.toggle button', has_text='Atlantic').click()
+        self.assertEqual(self.hash(), '#atlantic&year=2024')
+
+    def test_decade_filter_drops_a_season_it_hides(self):
+        page = self.open('history.html')
+        page.locator('#yrbtn-atlantic-yr-2025').click()
+        page.locator('.decade-filter button[data-decade="2010s"]').click()
+        self.assertEqual(self.hash(), '#atlantic&decade=2010s')
+
+    def test_back_from_a_storm_page_keeps_the_scroll_position(self):
+        page = self.open('history.html#atlantic&year=2025')
+        link = page.locator('#yrpanel-atlantic-yr-2025 a.ys-link').last
+        link.evaluate('a => a.scrollIntoView({block: "center"})')
+        before = page.evaluate('scrollY')
+        self.assertGreater(before, 0)
+        link.evaluate('a => a.click()')  # Playwright's click() would scroll first
+        page.wait_for_url('**/storm/**')
+        page.go_back()
+        page.wait_for_function('document.readyState === "complete"')
+        page.wait_for_timeout(200)
+        self.assertAlmostEqual(page.evaluate('scrollY'), before, delta=5)
+
+    def test_season_hidden_by_the_decade_filter_still_opens(self):
+        page = self.open('history.html#atlantic&decade=2010s&year=2025')
+        expect(page.locator('#yrpanel-atlantic-yr-2025')).to_have_class(re.compile(r'\bopen\b'))
+        expect(page.locator('#atlantic-yr-2025')).to_be_visible()
+        self.assertEqual(self.hash(), '#atlantic&year=2025')
+
+    def test_bad_year_is_ignored(self):
+        for h in ('#atlantic&year=1850', '#atlantic&year=20x5', "#atlantic&year=');alert(1)//"):
+            with self.subTest(h=h):
+                page = self.open('history.html' + h)
+                self.assertEqual(page.locator('.yr-panel.open').count(), 0)
 
 
 class TestShareButtons(UITestCase):
