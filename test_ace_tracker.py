@@ -1090,6 +1090,17 @@ class TestHTMLGeneration(unittest.TestCase):
         # Per-point intensity bar tooltip data, used to rebuild the title on toggle
         self.assertIn('data-wind-kt="40"', result)
 
+    def test_history_has_storm_search_loaded_on_use(self):
+        """#62: the box is on the page, but the index is fetched by script on
+        first use, never by a tag that loads with the page."""
+        html = generate_history_html(self._make_basin_data())
+        self.assertEqual(html.count('id="ss-q"'), 1)
+        self.assertIn('<label for="ss-q">', html)
+        self.assertIn("fetch('storm-index.json')", html)
+        self.assertNotIn('href="storm-index.json"', html)
+        self.assertNotIn('src="storm-index.json"', html)
+        self.assertNotIn('.innerHTML', html[html.index('var _ssRows'):])
+
     def test_history_html_generates(self):
         """generate_history_html() runs without error and returns non-empty HTML."""
         basin_data = self._make_basin_data()
